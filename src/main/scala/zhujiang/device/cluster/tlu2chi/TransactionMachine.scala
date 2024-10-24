@@ -10,6 +10,7 @@ import xijiang.router.base.DeviceIcnBundle
 import zhujiang.ZJModule
 import zhujiang.chi._
 import zhujiang.tilelink.{AOpcode, DFlit, DOpcode, TilelinkParams}
+import zhujiang.ZJParametersKey
 
 object MachineState {
   val width = 4
@@ -31,6 +32,7 @@ class TaskBundle(tlParams: TilelinkParams)(implicit p: Parameters) extends Bundl
   val source = UInt(tlParams.sourceBits.W)
   val data = UInt(tlParams.dataBits.W)
   val mask = UInt((tlParams.dataBits / 8).W)
+  val size = UInt(3.W)
 }
 
 class MachineStatus(tlParams: TilelinkParams)(implicit p: Parameters) extends Bundle {
@@ -186,17 +188,23 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   txreq.bits.Opcode := Mux(task.opcode === AOpcode.Get, ReqOpcode.ReadNoSnp, ReqOpcode.WriteNoSnpPtl /* TODO: WriteNoSnpFull ? */)
   txreq.bits.TxnID := io.id
   txreq.bits.AllowRetry := false.B // TODO: Retry
-  txreq.bits.ExpCompAck := Mux(task.opcode === AOpcode.Get, false.B, true.B /* OWO ordering require CompAck */)
+  txreq.bits.ExpCompAck := false.B
   txreq.bits.MemAttr := MemAttr(allocate = false.B, cacheable = false.B, device = true.B, ewa = false.B /* EAW can take any value for ReadNoSnp/WriteNoSnp* */).asUInt
-  txreq.bits.Size := 3.U // 2^3 = 8 bytes
-  txreq.bits.Order := Mux(task.opcode === AOpcode.Get, Order.RequestOrder, Order.OWO)
+  txreq.bits.Size := task.size
+  txreq.bits.Order := Mux(task.opcode === AOpcode.Get, Order.RequestOrder, Order.EndpointOrder)
 
+  private val chiDataBytes = p(ZJParametersKey).dataBits / 8
+  private val tlDataBytes = tlParams.dataBits / 8
+  private val segNum = chiDataBytes / tlDataBytes
+  private val segIdx = if(segNum > 1) task.address(log2Ceil(chiDataBytes) - 1, log2Ceil(tlDataBytes)) else 0.U
+  private val maskVec = Wire(Vec(segNum, UInt(tlDataBytes.W)))
+  maskVec.zipWithIndex.foreach({ case (a, b) => a := Mux(b.U === segIdx, task.mask, 0.U) })
   txdat.valid := state === MachineState.SEND_DAT && !datIsSend
   txdat.bits := DontCare
   txdat.bits.DBID := rspDBID
   txdat.bits.TgtID := rspSrcID
-  txdat.bits.BE := Mux(task.opcode === AOpcode.PutFullData, Fill(8, 1.U), task.mask)
-  txdat.bits.Data := task.data
+  txdat.bits.BE := maskVec.asUInt
+  txdat.bits.Data := Fill(segNum, task.data(0.U(tlParams.dataBits.W)))
   txdat.bits.Opcode := DatOpcode.NCBWrDataCompAck
   txdat.bits.Resp := 0.U
   txdat.bits.TxnID := io.id
