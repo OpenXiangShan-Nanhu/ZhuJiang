@@ -24,12 +24,12 @@ package object bridge {
       compAck := !expCompAck
       comp := true.B
     }
-    def writeReq(): Unit = {
+    def writeReq(expCompAck: Bool): Unit = {
       receiptResp := true.B
       dbidResp := false.B
       wdata := false.B
       rdata := true.B
-      compAck := false.B
+      compAck := !expCompAck
       comp := false.B
     }
     def completed: Bool = this.asUInt.andR
@@ -41,7 +41,7 @@ package object bridge {
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
         readReq(req.Order, req.ExpCompAck)
       }.otherwise {
-        writeReq()
+        writeReq(req.ExpCompAck)
       }
     }
   }
