@@ -59,7 +59,7 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   private val txdat = Wire(Decoupled(new DataFlit))
   io.icn.tx.data.get.valid := txdat.valid
   io.icn.tx.data.get.bits := txdat.bits.asTypeOf(io.icn.tx.data.get.bits)
-  txdat.ready := io.icn.tx.req.get.ready
+  txdat.ready := io.icn.tx.data.get.ready
   private val rxrsp = Wire(Decoupled(new RespFlit))
   rxrsp.valid := io.icn.rx.resp.get.valid
   rxrsp.bits := io.icn.rx.resp.get.bits.asTypeOf(rxrsp.bits)
