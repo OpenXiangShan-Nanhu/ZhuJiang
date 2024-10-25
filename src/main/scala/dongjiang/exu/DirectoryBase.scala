@@ -191,7 +191,7 @@ class DirectoryBase(
       m.io.r.req.valid        := sramCtrlReg.isReqFire & sramCtrlReg.ren
       m.io.r.req.bits.setIdx  := rSet
       // wen
-      m.io.w.req.valid        := sramCtrlReg.isReqFire & sramCtrlReg.wen & (i * ways/nrWayBank).U < OHToUInt(io.dirWrite.wayOH) & OHToUInt(io.dirWrite.wayOH) < ((i+1) * ways/nrWayBank - 1).U
+      m.io.w.req.valid        := sramCtrlReg.isReqFire & sramCtrlReg.wen & (i * ways/nrWayBank).U <= OHToUInt(io.dirWrite.wayOH) & OHToUInt(io.dirWrite.wayOH) <= ((i+1) * ways/nrWayBank - 1).U
       m.io.w.req.bits.setIdx  := wSet
       m.io.w.req.bits.data.foreach(_.tag      := wTag)
       m.io.w.req.bits.data.foreach(_.bank     := wBank)
