@@ -12,7 +12,7 @@ import zhujiang.{ZJBundle, ZJModule}
 import scala.collection.immutable.SeqMap
 
 object AsyncUtils {
-  val params = AsyncQueueParams(narrow = true)
+  val params = AsyncQueueParams(depth = 8)
 }
 
 class AsyncSink[T <: Data](gen: T) extends AsyncQueueSink(gen, AsyncUtils.params)
