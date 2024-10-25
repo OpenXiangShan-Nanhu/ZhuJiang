@@ -43,6 +43,7 @@ case class Node(
   ringSize: Int = 3,
   globalId: Int = 0,
   splitFlit: Boolean = false,
+  domainId:Int = 0,
   bankId: Int = 0, // Only applied in SN, HNF and CRF
   bankBits: Int = 1, // Only applied in SN, HNF and CRF
   mainMemory: Boolean = false, // Only applied in SN
@@ -62,19 +63,33 @@ case class Node(
   var rightNodes: Seq[Node] = Seq()
 
   def genRouter(p: Parameters): BaseRouter = {
-    val csnStr = if(csnNode && nodeType != NodeType.C) "c" else ""
-    val (res, nodeStr) = nodeType match {
-      case NodeType.CC => (Module(new RxReqRouter(this)(p)), "CC")
-      case NodeType.RF => (Module(new RxReqRouter(this)(p)), "rnf")
-      case NodeType.RI => (Module(new RxReqRouter(this)(p)), "rni")
-      case NodeType.HF => (Module(new BaseRouter(this)(p)), "hnf")
-      case NodeType.HI => (Module(new BaseRouter(this)(p)), "hni")
-      case NodeType.C => (Module(new ChipToChipRouter(this)(p)), "c2c")
-      case NodeType.S => (Module(new BaseRouter(this)(p)), "sn")
-      case _ => (Module(new BaseRouter(this)(p)), "pip")
+    val res = nodeType match {
+      case NodeType.CC => Module(new RxReqRouter(this)(p))
+      case NodeType.RF => Module(new RxReqRouter(this)(p))
+      case NodeType.RI => Module(new RxReqRouter(this)(p))
+      case NodeType.HF => Module(new BaseRouter(this)(p))
+      case NodeType.HI => Module(new BaseRouter(this)(p))
+      case NodeType.C => Module(new ChipToChipRouter(this)(p))
+      case NodeType.S => Module(new BaseRouter(this)(p))
+      case _ => Module(new BaseRouter(this)(p))
     }
-    res.suggestName(s"$csnStr${nodeStr}_0x${nodeId.toHexString}")
+    res.suggestName(routerName)
     res
+  }
+
+  private lazy val routerName:String = {
+    val csnStr = if(csnNode && nodeType != NodeType.C) "c" else ""
+    val nstr = nodeType match {
+      case NodeType.CC => s"ccn_$domainId"
+      case NodeType.RF => s"rnf_pcu_$bankId"
+      case NodeType.RI => s"rni_$attr"
+      case NodeType.HF => s"hnf_pcu_$bankId"
+      case NodeType.HI => s"hni_$attr"
+      case NodeType.C => s"c2c_$domainId"
+      case NodeType.S => if(attr == "") s"sn_dcu_$bankId" else s"sn_$attr"
+      case _ => "pip"
+    }
+    s"$csnStr${nstr}_id_0x${nodeId.toHexString}"
   }
 
   private lazy val routerPrefixStr: String = if(csnNode) "Csn" else ""
@@ -134,7 +149,7 @@ case class Node(
       }
       case HF => chn match {
         case "RSP" => Seq(CC, RF, RI)
-        case "DAT" => Seq(CC, RF, RI)
+        case "DAT" => Seq(CC, RF, RI, S)
         case "SNP" => Seq(CC, RF)
         case "ERQ" => Seq(S)
         case _ => Seq[Int]()
@@ -230,7 +245,9 @@ case class Node(
          |  $routerStr {
          |    node_id: 0x${nodeId.toHexString}
          |    lefts: $leftsStr
-         |    rights: $rightsStr
+         |    rights: $rightsStr,
+         |    domainId: $domainId,
+         |    routerName: $routerName
          |""".stripMargin
 
     val frdsStr = if((nodeType == NodeType.HF || nodeType == NodeType.S && !mainMemory) && !csnNode) {
@@ -249,7 +266,7 @@ case class Node(
     }
 
     val ccAttrStr = if(nodeType == NodeType.CC) {
-      s"""    mhartid: $clusterId
+      s"""    mhartid: ${Seq.tabulate(cpuNum)(i => i + clusterId).map(_.toString).reduce((a:String, b:String) => s"$a, $b")}
          |""".stripMargin
     } else {
       ""

@@ -4,14 +4,15 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.Node
+import zhujiang.ZJParametersKey
 import zhujiang.axi.{ARFlit, AWFlit, AxiParams, BFlit, WFlit}
 import zhujiang.chi.DatOpcode
 import zhujiang.device.bridge.{BaseCtrlMachine, IcnIoDevCtrlOpVecCommon}
 
 class AxiBridgeCtrlMachine(
   icnNode: Node,
-  axiParams:AxiParams,
-  outstanding:Int,
+  axiParams: AxiParams,
+  outstanding: Int,
   compareTag: (UInt, UInt) => Bool
 )(implicit p: Parameters)
   extends BaseCtrlMachine(
@@ -20,22 +21,34 @@ class AxiBridgeCtrlMachine(
     genRsEntry = new AxiRsEntry,
     node = icnNode,
     outstanding = outstanding,
-    ioDataBits = 0,
+    ioDataBits = 64,
+    slvBusDataBits = p(ZJParametersKey).dataBits,
     compareTag = compareTag
-  ){
+  ) {
   val axi = IO(new Bundle {
     val aw = Decoupled(new AWFlit(axiParams))
     val ar = Decoupled(new ARFlit(axiParams))
     val w = Decoupled(new WFlit(axiParams))
     val b = Flipped(Decoupled(new BFlit(axiParams)))
   })
-  val dataBufferAlloc = IO(Decoupled(new AxiDataBufferAllocReq(outstanding)))
+  val dataBufferAlloc = IO(new Bundle {
+    val req = Decoupled(new DataBufferAllocReq(outstanding))
+    val resp = Input(Bool())
+  })
 
-  dataBufferAlloc.valid := valid && !payload.state.bufferAllocated
-  dataBufferAlloc.bits.idx := io.idx
-  dataBufferAlloc.bits.size := payload.info.size
+  private val allocReqIssued = RegInit(false.B)
+  dataBufferAlloc.req.valid := valid && !allocReqIssued && !payload.state.bufferAllocated
+  dataBufferAlloc.req.bits.idxOH := UIntToOH(io.idx)
+  dataBufferAlloc.req.bits.size := payload.info.size
+  dataBufferAlloc.req.bits.waitNum := waiting
 
-  when(dataBufferAlloc.fire) {
+  when(icn.rx.req.fire) {
+    allocReqIssued := false.B
+  }.elsewhen(dataBufferAlloc.req.fire) {
+    allocReqIssued := true.B
+  }
+
+  when(dataBufferAlloc.resp) {
     payloadMiscNext.state.bufferAllocated := true.B || payload.state.bufferAllocated
   }
 
@@ -43,7 +56,7 @@ class AxiBridgeCtrlMachine(
     assert(icn.rx.data.bits.Opcode === DatOpcode.NCBWrDataCompAck)
   }
 
-  wakeupOutCond := allDone && valid
+  wakeupOutCond := payload.state.d.waddr && payload.state.d.raddr && valid && payload.info.isSnooped
   when(io.wakeupOut.valid) {
     payloadMiscNext.info.isSnooped := false.B
   }

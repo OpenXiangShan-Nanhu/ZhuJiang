@@ -11,9 +11,14 @@ case class TrafficBoardParams(
 )
 
 object TrafficBoardFileManager {
-  def release(p: Parameters):Unit = {
+  def release(p: Parameters): Unit = {
     FileRegisters.add("env/tfb/include", "traffic_board.h", header, true)
     FileRegisters.add("env/tfb/src", "traffic_board.cpp", source(p), true)
+  }
+
+  def release(header_dir: String, src_dir: String, p: Parameters): Unit = {
+    FileRegisters.add(header_dir, "traffic_board.h", header, dontCarePrefix = true)
+    FileRegisters.add(src_dir, "traffic_board.cpp", source(p), dontCarePrefix = true)
   }
 
   private def getEject(nt: Int, csn: Boolean) = {
@@ -186,7 +191,7 @@ object TrafficBoardFileManager {
        |    TFB_ERR("cannot register node 0x%x more than once!\\n", node_id);
        |    return;
        |  }
-       |  if(!nodes_pool.contains(node_type)) {
+       |  if(nodes_pool.count(node_type) == 0) {
        |    TFB_ERR("unknown node type %d!\\n", node_type);
        |    return;
        |  }
@@ -222,7 +227,9 @@ object TrafficBoardFileManager {
        |  uint16_t src_id = get_field(*((const uint64_t *)flit), SRC_ID_OFF, NODE_ID_BITS);
        |  bool c2c = node_type == C2C_TYPE;
        |  bool csn = get_field(node_type, TYPE_NET_OFF, TYPE_NET_BITS) == 0x1;
-       |  uint16_t final_tgt_id = tgt_id;
+       |  const uint16_t router_aid_mask = (1 << NODE_AID_BITS) - 1;
+       |  const uint16_t router_match_mask = ~router_aid_mask;
+       |  uint16_t final_tgt_id = tgt_id & router_match_mask;
        |  if(verbose) {
        |    string &&flit_str = get_flit_str((const uint8_t *)flit);
        |    TFB_INFO("node_id 0x%x inject flit with src_id: 0x%x tgt_id: 0x%x on chn %d flit:\\n%s\\n", node_id, src_id, tgt_id, chn, flit_str.c_str());
@@ -234,7 +241,7 @@ object TrafficBoardFileManager {
        |    MONITOR_ERR(src_chip == tgt_chip, "csn node 0x%x injects illegal flit with tgt_id: 0x%x, target chip_id cannot be chip_id of itself!\\n", node_id, tgt_id);
        |    MONITOR_ERR(final_tgt_id == 0, "csn node 0x%x injects illegal flit with tgt_id: 0x%x tgt_chip: 0x%x, target c2c cannot be found!\\n", node_id, tgt_id, tgt_chip);
        |  }
-       |  MONITOR_ERR(scoreboard.count(final_tgt_id) == 0, "node 0x%x injected flit target node 0x%x is not registered on chn %d!\\n", node_id, final_tgt_id, chn);
+       |  MONITOR_ERR(scoreboard.count(final_tgt_id) == 0, "node 0x%x injected flit target node 0x%x is not registered on chn %d!\\n", node_id, tgt_id, chn);
        |  auto entry = make_unique<TrafficBoardEntry>();
        |  memcpy(entry->flit, flit, FLIT_BUF_SIZE);
        |  entry->inject_time = global_timer;
@@ -315,7 +322,7 @@ object TrafficBoardFileManager {
        |
        |uint16_t tfb_get_nodes_size(uint16_t type) {
        |  const auto &tfb = TrafficBoard::get_instance();
-       |  if(!tfb.nodes_pool.contains(type)) {
+       |  if(tfb.nodes_pool.count(type) == 0) {
        |    TFB_ERR("wrong node type %d\\n", type);
        |    return 0;
        |  }
@@ -324,7 +331,7 @@ object TrafficBoardFileManager {
        |
        |uint16_t tfb_get_nodes(uint16_t type, uint16_t *nodes_array_ptr) {
        |  const auto &tfb = TrafficBoard::get_instance();
-       |  if(!tfb.nodes_pool.contains(type)) {
+       |  if(tfb.nodes_pool.count(type) == 0) {
        |    TFB_ERR("wrong node type %d\\n", type);
        |    return 1;
        |  }

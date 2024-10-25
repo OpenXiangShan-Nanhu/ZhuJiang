@@ -50,7 +50,7 @@ package object chi {
     val d = new ChiDownstreamOpVec
     def icnReadReceipt: Bool = !u.receiptResp
     def icnDBID: Bool = !u.dbidResp
-    def icnComp: Bool = u.dbidResp && u.wdata && !u.comp
+    def icnComp: Bool = !u.comp
 
     def snWriteNoSnpPtl: Bool = !d.wreq
     def snReadNoSnp: Bool = !d.rreq

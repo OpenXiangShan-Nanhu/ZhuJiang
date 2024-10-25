@@ -1,4 +1,5 @@
 package zhujiang.device.bridge.axi
+
 import chisel3._
 import chisel3.util._
 import xs.utils.sram.SRAMTemplate
@@ -8,37 +9,39 @@ import zhujiang.axi.{AxiParams, WFlit}
 import zhujiang.{ZJBundle, ZJModule}
 import zhujiang.chi.DataFlit
 
-class AxiDataBufferCtrlEntry(bufferSize:Int)(implicit p:Parameters) extends ZJBundle {
+class AxiDataBufferCtrlEntry(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
   val buf = Vec(512 / dw, UInt(log2Ceil(bufferSize).W))
   val recvMax = UInt(3.W)
   val recvCnt = UInt(3.W)
 }
 
-class AxiDataBufferAllocReq(ctrlSize:Int) extends Bundle {
-  val idx = UInt(log2Ceil(ctrlSize).W)
+class AxiDataBufferAllocReq(ctrlSize: Int) extends Bundle {
+  val idxOH = UInt(ctrlSize.W)
   val size = UInt(3.W)
 }
 
-class AxiDataBufferReadReq(axiParams: AxiParams, bufferSize:Int) extends Bundle {
+class AxiDataBufferReadReq(axiParams: AxiParams, bufferSize: Int) extends Bundle {
   val set = UInt(log2Ceil(bufferSize).W)
   val flit = new WFlit(axiParams)
 }
 
-class AxiDataBufferTxReq(axiParams: AxiParams, ctrlSize:Int) extends Bundle {
+class AxiDataBufferTxReq(axiParams: AxiParams, ctrlSize: Int) extends Bundle {
   val idxOH = UInt(ctrlSize.W)
   val flit = new WFlit(axiParams)
 }
 
-class AxiDataBufferFreelist(ctrlSize:Int, bufferSize:Int)(implicit p:Parameters) extends ZJModule with HasCircularQueuePtrHelper {
+class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private class AxiDataBufferFreelistPtr extends CircularQueuePtr[AxiDataBufferFreelistPtr](bufferSize)
+
   private object AxiDataBufferFreelistPtr {
-    def apply(f:Bool, v:UInt): AxiDataBufferFreelistPtr = {
+    def apply(f: Bool, v: UInt): AxiDataBufferFreelistPtr = {
       val ptr = Wire(new AxiDataBufferFreelistPtr)
       ptr.flag := f
       ptr.value := v
       ptr
     }
   }
+
   val io = IO(new Bundle {
     val req = Flipped(Decoupled(new AxiDataBufferAllocReq(ctrlSize)))
     val resp = Valid(new AxiDataBufferCtrlEntry(bufferSize))
@@ -48,7 +51,7 @@ class AxiDataBufferFreelist(ctrlSize:Int, bufferSize:Int)(implicit p:Parameters)
   private val headPtr = RegInit(AxiDataBufferFreelistPtr(f = false.B, v = 0.U))
   private val tailPtr = RegInit(AxiDataBufferFreelistPtr(f = true.B, v = 0.U))
   private val availableSlots = RegInit(bufferSize.U(log2Ceil(bufferSize + 1).W))
-  assert(availableSlots === (distanceBetween(tailPtr, headPtr) +& 1.U))
+  assert(availableSlots === distanceBetween(tailPtr, headPtr))
 
   when(io.req.valid) {
     assert(io.req.bits.size <= 6.U)
@@ -81,21 +84,15 @@ class AxiDataBufferFreelist(ctrlSize:Int, bufferSize:Int)(implicit p:Parameters)
   }
 }
 
-class AxiDataBufferRam(axiParams: AxiParams, bufferSize:Int)(implicit p:Parameters) extends ZJModule {
+class AxiDataBufferRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Parameters) extends ZJModule {
   require(axiParams.dataBits == dw)
-  val io = IO(new Bundle{
+  val io = IO(new Bundle {
     val writeData = Flipped(Decoupled(new DataFlit))
     val readDataReq = Flipped(Decoupled(new AxiDataBufferReadReq(axiParams, bufferSize)))
     val readDataResp = Decoupled(new WFlit(axiParams))
     val stop = Input(Bool())
   })
-  private val maskRam = Module(new SRAMTemplate(
-    gen = UInt(bew.W),
-    set = bufferSize,
-    singlePort = true,
-    powerCtl = true,
-    holdRead = true
-  ))
+  private val maskRam = SyncReadMem(bufferSize, UInt(bew.W))
   private val dataRam = Module(new SRAMTemplate(
     gen = UInt(dw.W),
     set = bufferSize,
@@ -103,43 +100,38 @@ class AxiDataBufferRam(axiParams: AxiParams, bufferSize:Int)(implicit p:Paramete
     powerCtl = true,
     holdRead = true
   ))
-  maskRam.io.pwctl.get.ret := false.B
-  maskRam.io.pwctl.get.stop := io.stop
-  maskRam.io.w.req.valid := io.writeData.valid && dataRam.io.w.req.ready
-  maskRam.io.w.req.bits.setIdx := io.writeData.bits.TxnID(log2Ceil(bufferSize) - 1, 0)
-  maskRam.io.w.req.bits.data := io.writeData.bits.BE.asTypeOf(maskRam.io.w.req.bits.data)
+  when(io.writeData.valid) {
+    maskRam.write(io.writeData.bits.TxnID(log2Ceil(bufferSize) - 1, 0), io.writeData.bits.BE)
+  }
 
   dataRam.io.pwctl.get.ret := false.B
   dataRam.io.pwctl.get.stop := io.stop
-  dataRam.io.w.req.valid := io.writeData.valid && maskRam.io.w.req.ready
+  dataRam.io.w.req.valid := io.writeData.valid
   dataRam.io.w.req.bits.setIdx := io.writeData.bits.TxnID(log2Ceil(bufferSize) - 1, 0)
   dataRam.io.w.req.bits.data := io.writeData.bits.Data.asTypeOf(dataRam.io.w.req.bits.data)
-
-  io.writeData.ready := dataRam.io.w.req.ready && maskRam.io.w.req.ready
+  io.writeData.ready := dataRam.io.w.req.ready
 
   private val readStage1Pipe = Module(new Queue(new WFlit(axiParams), entries = 1, pipe = true))
   private val readStage2Pipe = Module(new Queue(new WFlit(axiParams), entries = 1, pipe = true))
 
-  io.readDataReq.ready := readStage1Pipe.io.enq.ready && dataRam.io.r.req.ready && maskRam.io.r.req.ready
+  io.readDataReq.ready := readStage1Pipe.io.enq.ready && dataRam.io.r.req.ready
 
-  readStage1Pipe.io.enq.valid := io.readDataReq.valid && dataRam.io.r.req.ready && maskRam.io.r.req.ready
+  readStage1Pipe.io.enq.valid := io.readDataReq.valid && dataRam.io.r.req.ready
   readStage1Pipe.io.enq.bits := io.readDataReq.bits.flit
-  maskRam.io.r.req.valid := io.readDataReq.valid && readStage1Pipe.io.enq.ready && dataRam.io.r.req.ready
-  maskRam.io.r.req.bits.setIdx := io.readDataReq.bits.set
-  dataRam.io.r.req.valid := io.readDataReq.valid && readStage1Pipe.io.enq.ready && maskRam.io.r.req.ready
+  dataRam.io.r.req.valid := io.readDataReq.valid && readStage1Pipe.io.enq.ready
   dataRam.io.r.req.bits.setIdx := io.readDataReq.bits.set
 
   readStage1Pipe.io.deq.ready := readStage2Pipe.io.enq.ready
   readStage2Pipe.io.enq.valid := readStage1Pipe.io.deq.valid
   readStage2Pipe.io.enq.bits := readStage1Pipe.io.deq.bits
-  readStage2Pipe.io.enq.bits.strb := maskRam.io.r.resp.data.asUInt
+  readStage2Pipe.io.enq.bits.strb := maskRam.read(io.readDataReq.bits.set, io.readDataReq.fire)
   readStage2Pipe.io.enq.bits.data := dataRam.io.r.resp.data.asUInt
 
   io.readDataResp <> readStage2Pipe.io.deq
 }
 
-class AxiDataBuffer(axiParams: AxiParams, ctrlSize:Int, bufferSize:Int)(implicit p:Parameters) extends ZJModule {
-  val io = IO(new Bundle{
+class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implicit p: Parameters) extends ZJModule {
+  val io = IO(new Bundle {
     val alloc = Flipped(Decoupled(new AxiDataBufferAllocReq(ctrlSize)))
     val icn = Flipped(Decoupled(new DataFlit))
     val toCmDat = Output(Valid(new DataFlit))
@@ -162,18 +154,18 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize:Int, bufferSize:Int)(implicit
   freelist.io.release.bits := ctrlSelReg
 
   for(idx <- ctrlValidVec.indices) {
-    when(freelist.io.resp.valid && io.alloc.bits.idx === idx.U) {
+    when(freelist.io.resp.valid && io.alloc.bits.idxOH(idx)) {
       ctrlValidVec(idx) := true.B
     }.elsewhen(freelist.io.release.valid && txReqBitsReg.idxOH(idx)) {
       ctrlValidVec(idx) := false.B
     }
 
-    when(freelist.io.resp.valid && io.alloc.bits.idx === idx.U) {
+    when(freelist.io.resp.valid && io.alloc.bits.idxOH(idx)) {
       ctrlInfoVec(idx).buf := freelist.io.resp.bits.buf
       ctrlInfoVec(idx).recvMax := freelist.io.resp.bits.recvMax
     }
 
-    when(freelist.io.resp.valid && io.alloc.bits.idx === idx.U) {
+    when(freelist.io.resp.valid && io.alloc.bits.idxOH(idx)) {
       ctrlInfoVec(idx).recvCnt := freelist.io.resp.bits.recvCnt
     }.elsewhen(io.icn.fire && io.icn.bits.TxnID === idx.U) {
       assert(ctrlInfoVec(idx).recvCnt <= ctrlInfoVec(idx).recvMax)

@@ -9,19 +9,20 @@ import zhujiang.tilelink.{AFlit, AOpcode, TilelinkParams}
 
 class TLULBridgeCtrlMachine(
   icnNode: Node,
-  tlparams:TilelinkParams,
-  outstanding:Int,
+  tlparams: TilelinkParams,
+  outstanding: Int,
   ioDataBits: Int,
   compareTag: (UInt, UInt) => Bool
-)(implicit p: Parameters) extends BaseCtrlMachine (
+)(implicit p: Parameters) extends BaseCtrlMachine(
   genOpVec = new TLULBridgeCtrlOpVec,
   genInfo = new TLULCtrlInfo(ioDataBits),
   genRsEntry = new TLULRsEntry(ioDataBits),
   node = icnNode,
   outstanding = outstanding,
   ioDataBits = ioDataBits,
+  slvBusDataBits = tlparams.dataBits,
   compareTag = compareTag
-){
+) {
   val tla = IO(Decoupled(new AFlit(tlparams)))
 
   wakeupOutCond := allDone && valid
@@ -47,8 +48,8 @@ class TLULBridgeCtrlMachine(
   tlaB.size := payload.info.size
   tlaB.source := io.idx
   tlaB.address := payload.info.addr
-  tlaB.mask := payload.info.mask.get
-  tlaB.data := payload.info.data.get
+  tlaB.mask := slvMask
+  tlaB.data := slvData
   tla.bits := tlaB
 
   when(tla.fire) {

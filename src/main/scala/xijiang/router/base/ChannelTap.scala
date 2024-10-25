@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
+import xs.utils.ResetRRArbiter
 import zhujiang.{ZJModule, ZJParametersKey}
 import zhujiang.chi.{Flit, NodeIdBundle}
 
@@ -113,7 +114,7 @@ class ChannelTap[T <: Flit](
     s"ChannelTapCsn$channel"
   }
   private val taps = Seq.fill(2)(Module(new SingleChannelTap(gen, channel, node)))
-  private val ejectArb = Module(new RRArbiter(gen, 2))
+  private val ejectArb = Module(new ResetRRArbiter(gen, 2))
   for(idx <- taps.indices) {
     taps(idx).io.in := io.rx(idx)
     io.tx(idx) := taps(idx).io.out
@@ -121,15 +122,16 @@ class ChannelTap[T <: Flit](
     taps(idx).io.inject.bits := io.inject.bits
     taps(idx).io.matchTag := io.matchTag
     taps(idx).io.tapIdx := idx.U
-    ejectArb.io.in(idx) <> taps(idx).io.eject
+    if(ejectBuf > 0) {
+      val ejectBuffer = Module(new EjectBuffer(gen, ejectBuf, channel))
+      ejectBuffer.io.enq <> taps(idx).io.eject
+      ejectArb.io.in(idx) <> ejectBuffer.io.deq
+    } else {
+      val ejectBuffer = Module(new Queue(gen, 2))
+      ejectBuffer.io.enq <> taps(idx).io.eject
+      ejectArb.io.in(idx) <> ejectBuffer.io.deq
+    }
   }
   io.inject.ready := Mux1H(io.injectTapSelOH, taps.map(_.io.inject.ready))
-
-  private val ejectBuffer = if(ejectBuf > 0) Some(Module(new EjectBuffer(gen, ejectBuf, channel))) else None
-  if(ejectBuf > 0) {
-    io.eject <> ejectBuffer.get.io.deq
-    ejectBuffer.get.io.enq <> ejectArb.io.out
-  } else {
-    io.eject <> ejectArb.io.out
-  }
+  io.eject <> ejectArb.io.out
 }

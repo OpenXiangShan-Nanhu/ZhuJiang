@@ -11,8 +11,8 @@ comp:
 	mill -i zhujiang.compile
 	mill -i zhujiang.test.compile
 
-RTL_AGRS = --full-stacktrace --target systemverilog # --split-verilog
-RTL_DIR = build # /rtl
+RTL_AGRS = --full-stacktrace --target systemverilog --split-verilog
+RTL_DIR = build/rtl
 
 ifdef PREFIX
 RTL_AGRS += --prefix $(PREFIX)
@@ -30,6 +30,6 @@ verilog: build-dir
 clean:
 	rm -r build/*
 
-UNAME := Axi
+UNAME := AxiBridge
 ut-top:
 	mill -i zhujiang.test.runMain zhujiang.$(UNAME)Top $(RTL_AGRS) -td build/$(UNAME)

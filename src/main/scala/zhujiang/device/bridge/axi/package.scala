@@ -44,9 +44,9 @@ package object axi {
     val bufferAllocated = Bool()
     def icnReadReceipt: Bool = !u.receiptResp
     def icnDBID: Bool = bufferAllocated && !u.dbidResp
-    def icnComp: Bool = d.waddr && u.dbidResp  && !u.comp
+    def icnComp: Bool = bufferAllocated && !u.comp
 
-    def axiWaddr: Bool = bufferAllocated && !d.waddr
+    def axiWaddr: Bool = !d.waddr && u.wdata
     def axiRaddr: Bool = !d.raddr
     def axiWdata: Bool = d.waddr && !d.wdata && u.wdata
 

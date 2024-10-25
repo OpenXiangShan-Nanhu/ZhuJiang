@@ -75,5 +75,4 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   icn.tx.req.get.bits   := Mux(writeReqQ.io.deq.valid, writeReqQ.io.deq.bits, Mux(readReqQ.io.deq.valid, readReqQ.io.deq.bits, 0.U.asTypeOf(readReqQ.io.deq.bits)))
   icn.tx.resp.get.valid := writeHandle.io.chi_txrsp.valid
   icn.tx.resp.get.bits  := writeHandle.io.chi_txrsp.bits
-
 }

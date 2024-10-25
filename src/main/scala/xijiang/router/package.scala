@@ -29,7 +29,6 @@ package object router {
     if(p(ZJParametersKey).tfsParams.isEmpty) {
       injectsMap("REQ").bits.tgt := reqTarget
     }
-    icn.clusterId.foreach(cid => cid := Cat(router.chip, node.clusterId.U((clusterIdBits - nodeAidBits).W)))
   }
 
   class ChipToChipRouter(node: Node)(implicit p: Parameters) extends BaseRouter(node) {

@@ -5,21 +5,18 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
-import xs.utils.PickOneLow
+import xs.utils.{PickOneLow, ResetRRArbiter}
 import zhujiang.ZJModule
 import zhujiang.chi.{DatOpcode, DataFlit, ReqFlit, RespFlit}
-import zhujiang.tilelink.{AFlit, DFlit, TilelinkParams}
+import zhujiang.tilelink.{AFlit, DFlit, TLULBundle, TilelinkParams}
 
-class TLULBridge(node: Node, ioDataBits: Int, tagOffset: Int)(implicit p: Parameters) extends ZJModule {
+class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Parameters) extends ZJModule {
   private val compareTagBits = 16
   require(node.nodeType == NodeType.HI)
-  private val tlParams = TilelinkParams(sourceBits = log2Ceil(node.outstanding), dataBits = ioDataBits)
+  private val tlParams = TilelinkParams(sourceBits = log2Ceil(node.outstanding), dataBits = busDataBits)
 
   val icn = IO(new DeviceIcnBundle(node))
-  val tl = IO(new Bundle {
-    val a = Decoupled(new AFlit(tlParams))
-    val d = Flipped(Decoupled(new DFlit(tlParams)))
-  })
+  val tl = IO(new TLULBundle(tlParams))
 
   private def compareTag(addr0: UInt, addr1: UInt): Bool = {
     addr0(compareTagBits + tagOffset - 1, tagOffset) === addr1(compareTagBits + tagOffset - 1, tagOffset)
@@ -30,14 +27,14 @@ class TLULBridge(node: Node, ioDataBits: Int, tagOffset: Int)(implicit p: Parame
 
   private val wakeups = Wire(Vec(node.outstanding, Valid(UInt(raw.W))))
 
-  private val icnRspArb = Module(new RRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
+  private val icnRspArb = Module(new ResetRRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
   icn.tx.resp.get <> icnRspArb.io.out
 
-  private val tlaArb = Module(new RRArbiter(tl.a.bits.cloneType, node.outstanding))
+  private val tlaArb = Module(new ResetRRArbiter(tl.a.bits.cloneType, node.outstanding))
   tl.a <> tlaArb.io.out
 
   private val cms = for(idx <- 0 until node.outstanding) yield {
-    val cm = Module(new TLULBridgeCtrlMachine(node, tlParams, node.outstanding, ioDataBits, compareTag))
+    val cm = Module(new TLULBridgeCtrlMachine(node, tlParams, node.outstanding, 64, compareTag))
     cm.suggestName(s"cm_$idx")
     cm.io.wakeupIns := wakeups.zipWithIndex.filterNot(_._2 == idx).map(_._1)
     wakeups(idx).valid := cm.io.wakeupOut.valid
@@ -84,7 +81,7 @@ class TLULBridge(node: Node, ioDataBits: Int, tagOffset: Int)(implicit p: Parame
   tl.d.ready := readDataPipe.io.enq.ready
 
   readDataPipe.io.enq.bits := DontCare
-  readDataPipe.io.enq.bits.Data := Fill(dw / ioDataBits, tl.d.bits.data)
+  readDataPipe.io.enq.bits.Data := Fill(dw / busDataBits, tl.d.bits.data)
   readDataPipe.io.enq.bits.Opcode := DatOpcode.CompData
   readDataPipe.io.enq.bits.DataID := 0.U
   readDataPipe.io.enq.bits.TxnID := ctrlSel.txnId

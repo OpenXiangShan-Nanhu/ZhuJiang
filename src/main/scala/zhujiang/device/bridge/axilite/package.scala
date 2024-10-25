@@ -32,7 +32,7 @@ package object axilite {
     def decode(req: ReqFlit, check: Bool): Unit = {
       when(check) {
         assert(req.Opcode === ReqOpcode.ReadNoSnp || req.Opcode === ReqOpcode.WriteNoSnpPtl)
-        assert(req.Size === 3.U || req.Size === 2.U)
+        assert(req.Size <= 3.U)
       }
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
         readReq()
@@ -46,9 +46,9 @@ package object axilite {
     val d = new AxiLiteDownstreamOpVec
     def icnReadReceipt: Bool = !u.receiptResp
     def icnDBID: Bool = !u.dbidResp
-    def icnComp: Bool = d.waddr && u.dbidResp  && !u.comp
+    def icnComp: Bool = !u.comp
 
-    def axiWaddr: Bool = !d.waddr
+    def axiWaddr: Bool = !d.waddr && u.wdata
     def axiRaddr: Bool = !d.raddr
     def axiWdata: Bool = d.waddr && !d.wdata && u.wdata
 

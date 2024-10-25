@@ -5,24 +5,18 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
-import xs.utils.PickOneLow
+import xs.utils.{PickOneLow, ResetRRArbiter}
 import zhujiang.ZJModule
 import zhujiang.axi._
 import zhujiang.chi.{DatOpcode, DataFlit, ReqFlit, RespFlit}
 
-class AxiLiteBridge(node: Node, ioDataBits: Int, tagOffset: Int)(implicit p: Parameters) extends ZJModule {
+class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Parameters) extends ZJModule {
   private val compareTagBits = 16
   require(node.nodeType == NodeType.HI)
-  private val axiParams = AxiParams(idBits = log2Ceil(node.outstanding), dataBits = ioDataBits)
+  private val axiParams = AxiParams(idBits = log2Ceil(node.outstanding), dataBits = busDataBits, addrBits = raw)
 
   val icn = IO(new DeviceIcnBundle(node))
-  val axi = IO(new Bundle {
-    val aw = Decoupled(new AWFlit(axiParams))
-    val ar = Decoupled(new ARFlit(axiParams))
-    val w = Decoupled(new WFlit(axiParams))
-    val b = Flipped(Decoupled(new BFlit(axiParams)))
-    val r = Flipped(Decoupled(new RFlit(axiParams)))
-  })
+  val axi = IO(new AxiBundle(axiParams))
 
   private def compareTag(addr0: UInt, addr1: UInt): Bool = {
     addr0(compareTagBits + tagOffset - 1, tagOffset) === addr1(compareTagBits + tagOffset - 1, tagOffset)
@@ -33,17 +27,17 @@ class AxiLiteBridge(node: Node, ioDataBits: Int, tagOffset: Int)(implicit p: Par
 
   private val wakeups = Wire(Vec(node.outstanding, Valid(UInt(raw.W))))
 
-  private val icnRspArb = Module(new RRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
+  private val icnRspArb = Module(new ResetRRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
   icn.tx.resp.get <> icnRspArb.io.out
 
-  private val awArb = Module(new RRArbiter(axi.aw.bits.cloneType, node.outstanding))
+  private val awArb = Module(new ResetRRArbiter(axi.aw.bits.cloneType, node.outstanding))
   axi.aw <> awArb.io.out
 
-  private val arArb = Module(new RRArbiter(axi.ar.bits.cloneType, node.outstanding))
+  private val arArb = Module(new ResetRRArbiter(axi.ar.bits.cloneType, node.outstanding))
   axi.ar <> arArb.io.out
 
   private val cms = for(idx <- 0 until node.outstanding) yield {
-    val cm = Module(new AxiLiteBridgeCtrlMachine(node, axiParams, node.outstanding, ioDataBits, compareTag))
+    val cm = Module(new AxiLiteBridgeCtrlMachine(node, axiParams, node.outstanding, 64, compareTag))
     cm.suggestName(s"cm_$idx")
     cm.io.wakeupIns := wakeups.zipWithIndex.filterNot(_._2 == idx).map(_._1)
     wakeups(idx).valid := cm.io.wakeupOut.valid
@@ -108,7 +102,7 @@ class AxiLiteBridge(node: Node, ioDataBits: Int, tagOffset: Int)(implicit p: Par
   axi.r.ready := readDataPipe.io.enq.ready
 
   readDataPipe.io.enq.bits := DontCare
-  readDataPipe.io.enq.bits.Data := Fill(dw / ioDataBits, axi.r.bits.data)
+  readDataPipe.io.enq.bits.Data := Fill(dw / busDataBits, axi.r.bits.data)
   readDataPipe.io.enq.bits.Opcode := DatOpcode.CompData
   readDataPipe.io.enq.bits.DataID := 0.U
   readDataPipe.io.enq.bits.TxnID := ctrlSel.txnId

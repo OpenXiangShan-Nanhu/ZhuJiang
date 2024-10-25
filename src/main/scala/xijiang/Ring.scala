@@ -2,10 +2,10 @@ package xijiang
 
 import chisel3._
 import org.chipsalliance.cde.config.Parameters
-import xijiang.c2c.{C2cLinkPort, C2cPackLayer}
 import xijiang.router.base.IcnBundle
 import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 import xijiang.tfs._
+import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.chi.NodeIdBundle
 
 class TfsIO(local: Boolean)(implicit p: Parameters) extends ZJBundle {
@@ -20,6 +20,7 @@ class Ring(local: Boolean)(implicit p: Parameters) extends ZJModule {
   override val desiredName = ringName
   val tfsio = if(tfs) Some(IO(new TfsIO(local))) else None
   val io_chip = IO(Input(UInt(nodeAidBits.W)))
+  val dfx_reset = IO(Input(new DFTResetSignals))
 
   tfsio.foreach(dontTouch(_))
   dontTouch(io_chip)
@@ -32,6 +33,8 @@ class Ring(local: Boolean)(implicit p: Parameters) extends ZJModule {
     r.router.rings.head.rx := left._1.router.rings.head.tx
     r.router.rings.last.rx := right._1.router.rings.last.tx
     r.router.chip := io_chip
+    r.router.reset.rx := left._1.router.reset.tx
+    r.reset := withClockAndReset(clock, r.icn.resetState.get(1).asAsyncReset){ResetGen(dft = Some(dfx_reset))}
   }
   println("\n}\n")
 
@@ -54,7 +57,7 @@ class Ring(local: Boolean)(implicit p: Parameters) extends ZJModule {
       m.suggestName(s"${n.routerStr}TrafficGen")
       (None, n)
     } else {
-      val port = IO(new IcnBundle(n)(p))
+      val port = IO(new IcnBundle(n, true)(p))
       port.suggestName(n.icnStr)
       port <> r.icn
       if(r.router.c2cIds.isDefined) {
@@ -73,13 +76,9 @@ class Ring(local: Boolean)(implicit p: Parameters) extends ZJModule {
       m.suggestName(s"${n.routerStr}TrafficGen")
       (None, n)
     } else {
-      val c2cPacker = Module(new C2cPackLayer(n))
-      c2cPacker.io.local.icn <> r.icn
-      r.router.chip := c2cPacker.io.local.chip
-      c2cPacker.suggestName("c2cPackLayer")
-      val port = IO(new C2cLinkPort)
-      port.suggestName(s"c2c_link_$i")
-      port <> c2cPacker.io.remote
+      val port = IO(new IcnBundle(n, true)(p))
+      port.suggestName(n.icnStr)
+      port <> r.icn
       (Some(port), n)
     }
   }
@@ -90,8 +89,7 @@ class Ring(local: Boolean)(implicit p: Parameters) extends ZJModule {
   val icnHfs = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.HF).map(_._1.get)) else None
   val icnHis = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.HI).map(_._1.get)) else None
   val icnSns = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.S).map(_._1.get)) else None
-
-  val c2cs = if(!tfs) Some(c2csWithNodes.map(_._1.get)) else None
+  val icnC2cs = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.C).map(_._1.get)) else None
 
   private val functionalRouters = routersAndNodes.filter(_._2.nodeType != NodeType.P).map(_._1)
   for(i <- functionalRouters.indices) {

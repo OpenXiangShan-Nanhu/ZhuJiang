@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.Node
+import zhujiang.ZJParametersKey
 import zhujiang.chi._
 import zhujiang.device.bridge.BaseCtrlMachine
 
@@ -19,9 +20,10 @@ class ChiSnBridgeCtrlMachine(
   node = icnNode,
   outstanding = outstanding,
   ioDataBits = ioDataBits,
+  slvBusDataBits = p(ZJParametersKey).dataBits,
   compareTag = compareTag
 ) {
-  val sn = IO(new Bundle{
+  val sn = IO(new Bundle {
     val tx = new Bundle {
       val req = Decoupled(new ReqFlit)
       val data = Decoupled(new DataFlit)
@@ -83,8 +85,6 @@ class ChiSnBridgeCtrlMachine(
   snReqB.DoDWT := false.B
   sn.tx.req.bits := snReqB
 
-
-
   sn.tx.data.valid := valid && snNCBWrDataCompAck && !waiting.orR
   private val segNum = dw / ioDataBits
   private val segOff = payload.info.addr(log2Ceil(dw / 8) - 1, log2Ceil(ioDataBits / 8))
@@ -93,7 +93,7 @@ class ChiSnBridgeCtrlMachine(
 
   snDatB := DontCare
   snDatB.Opcode := DatOpcode.NCBWrDataCompAck
-  snDatB.Data := Fill(segNum, payload.info.data.get)
+  snDatB.Data := slvData
   snDatB.BE := maskVec.asUInt
   snDatB.TxnID := payload.info.dbid
   sn.tx.data.bits := snDatB

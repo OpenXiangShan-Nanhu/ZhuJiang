@@ -6,6 +6,7 @@ import chisel3.stage.ChiselGeneratorAnnotation
 import circt.stage.{ChiselStage, FirtoolOption}
 import xijiang.tfb.TrafficBoardFileManager
 import xs.utils.FileRegisters
+import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 
 import scala.annotation.tailrec
 
@@ -22,29 +23,23 @@ import scala.annotation.tailrec
 class ZhujiangTopConfig extends Config((site, here, up) => {
   case ZJParametersKey => ZJParameters(
     localNodeParams = Seq(
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2),
-      NodeParam(nodeType = NodeType.S, bankId = 0),
-      NodeParam(nodeType = NodeType.HF, bankId = 0),
-      NodeParam(nodeType = NodeType.S, bankId = 1),
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2),
-      NodeParam(nodeType = NodeType.RI),
-      NodeParam(nodeType = NodeType.HI, defaultHni = true),
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2),
-      NodeParam(nodeType = NodeType.S, bankId = 1),
-      NodeParam(nodeType = NodeType.HF, bankId = 1),
-      NodeParam(nodeType = NodeType.S, bankId = 0),
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2),
-      NodeParam(nodeType = NodeType.HI, addressRange = (0x1000000, 0x10010000)),
-      NodeParam(nodeType = NodeType.S, mainMemory = true)
-    ),
-    csnNodeParams = Seq(
-      NodeParam(nodeType = NodeType.HF, bankId = 0),
-      NodeParam(nodeType = NodeType.RF, bankId = 0),
-      NodeParam(nodeType = NodeType.C),
-      NodeParam(nodeType = NodeType.HF, bankId = 1),
-      NodeParam(nodeType = NodeType.RF, bankId = 1)
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, splitFlit = true, outstanding = 8),
+      NodeParam(nodeType = NodeType.S, bankId = 0, splitFlit = true),
+      NodeParam(nodeType = NodeType.HF, bankId = 0, splitFlit = true),
+      NodeParam(nodeType = NodeType.S, bankId = 1, splitFlit = true),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, splitFlit = true, outstanding = 8),
+      NodeParam(nodeType = NodeType.RI, attr = "dma", splitFlit = true),
+      NodeParam(nodeType = NodeType.HI, defaultHni = true, splitFlit = true, attr = "cfg"),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, splitFlit = true, outstanding = 8),
+      NodeParam(nodeType = NodeType.S, bankId = 1, splitFlit = true),
+      NodeParam(nodeType = NodeType.HF, bankId = 1, splitFlit = true),
+      NodeParam(nodeType = NodeType.S, bankId = 0, splitFlit = true),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, splitFlit = true, outstanding = 8),
+      NodeParam(nodeType = NodeType.HI, addressRange = (0x3803_0000, 0x3804_0000), splitFlit = true, attr = "ddr_cfg"),
+      NodeParam(nodeType = NodeType.S, mainMemory = true, splitFlit = true, outstanding = 32, attr = "ddr_data")
     )
   )
+  case DebugOptionsKey => DebugOptions()
 })
 
 object ZhujiangTopParser {

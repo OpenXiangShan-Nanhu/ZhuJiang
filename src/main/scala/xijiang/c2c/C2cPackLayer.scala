@@ -5,6 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.Node
 import xijiang.router.base.{IcnBundle, IcnRxBundle, IcnTxBundle}
+import xs.utils.ResetRRArbiter
 import zhujiang.chi._
 import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 
@@ -52,7 +53,7 @@ class C2cPackLayerTx(node: Node)(implicit p: Parameters) extends ZJModule with C
     val fromRing = Flipped(new IcnTxBundle(node))
     val toLink = Decoupled(new C2cPayload)
   })
-  private val arb = Module(new RRArbiter(UInt(maxFlitBits.W), node.ejects.size))
+  private val arb = Module(new ResetRRArbiter(UInt(maxFlitBits.W), node.ejects.size))
 
   private def connRing(chn: String): Unit = {
     val icnPort = io.fromRing.getBundle(chn)

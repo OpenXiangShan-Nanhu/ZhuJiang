@@ -18,6 +18,7 @@ abstract class BaseCtrlMachine[
   node: Node,
   outstanding: Int,
   ioDataBits: Int,
+  slvBusDataBits: Int,
   compareTag: (UInt, UInt) => Bool
 )(implicit p: Parameters) extends ZJModule {
   val icn = IO(new Bundle {
@@ -62,13 +63,14 @@ abstract class BaseCtrlMachine[
   icn.rx.resp.foreach(_.ready := true.B)
   icn.rx.data.ready := true.B
 
-  private val wakeupVec = Cat(io.wakeupIns.map(wkp => wkp.valid && compareTag(wkp.bits, payload.info.addr)))
-  private val wakeupValid = RegNext(wakeupVec.orR, false.B)
-  private val wakeupNum = RegEnable(PopCount(wakeupVec), wakeupValid)
+  private val wakeupVec = Cat(io.wakeupIns.map(wkp => wkp.valid && compareTag(wkp.bits, payload.info.addr) && valid))
+  private val wakeupValid = wakeupVec.orR
+  private val wakeupValidReg = RegNext(wakeupValid, false.B)
+  private val wakeupNumReg = RegEnable(PopCount(wakeupVec), wakeupValid)
   when(icn.rx.req.fire) {
     waiting := io.waitNum
-  }.elsewhen(wakeupValid) {
-    assert(wakeupNum === 1.U)
+  }.elsewhen(wakeupValidReg) {
+    assert(wakeupNumReg === 1.U)
     waiting := waiting - 1.U
   }
 
@@ -108,24 +110,35 @@ abstract class BaseCtrlMachine[
     plmnu.compAck := icnDatOp === DatOpcode.NCBWrDataCompAck || plu.compAck
   }
 
+  private val dwt = payload.info.dwt.getOrElse(false.B)
   private val icnReadReceipt = payload.state.icnReadReceipt
   private val icnDBID = payload.state.icnDBID
-  private val icnComp = payload.state.icnComp
+  private val icnComp = Mux(dwt, payload.state.icnComp && payload.state.u.wdata, payload.state.icnComp)
+  private val icnCompDBID = icnDBID && icnComp
   icn.tx.resp.valid := valid & (icnReadReceipt || icnDBID || icnComp)
   icn.tx.resp.bits := DontCare
-  icn.tx.resp.bits.Opcode := MuxCase(0.U, Seq(
+  icn.tx.resp.bits.Opcode := Mux(icnCompDBID, RspOpcode.CompDBIDResp, MuxCase(0.U, Seq(
     icnReadReceipt -> RspOpcode.ReadReceipt,
     icnDBID -> RspOpcode.DBIDResp,
     icnComp -> RspOpcode.Comp
-  ))
+  )))
   icn.tx.resp.bits.DBID := io.idx
-  icn.tx.resp.bits.TxnID := Mux(icnDBID && payload.info.dwt.getOrElse(false.B), payload.info.returnTxnId.getOrElse(0.U), payload.info.txnId)
+  icn.tx.resp.bits.TxnID := Mux(icnDBID && dwt, payload.info.returnTxnId.getOrElse(0.U), payload.info.txnId)
   icn.tx.resp.bits.SrcID := 0.U
-  icn.tx.resp.bits.TgtID := Mux(icnDBID && payload.info.dwt.getOrElse(false.B), payload.info.returnNid.getOrElse(0.U), payload.info.srcId)
+  icn.tx.resp.bits.TgtID := Mux(icnDBID && dwt, payload.info.returnNid.getOrElse(0.U), payload.info.srcId)
   icn.tx.resp.bits.Resp := Mux(icnDBID || icnComp, "b000".U, "b010".U)
   when(icn.tx.resp.fire) {
     plmnu.receiptResp := icn.tx.resp.bits.Opcode === RspOpcode.ReadReceipt || plu.receiptResp
-    plmnu.dbidResp := icn.tx.resp.bits.Opcode === RspOpcode.DBIDResp || plu.dbidResp
-    plmnu.comp := icn.tx.resp.bits.Opcode === RspOpcode.Comp || plu.comp
+    plmnu.dbidResp := icn.tx.resp.bits.Opcode === RspOpcode.DBIDResp || icn.tx.resp.bits.Opcode === RspOpcode.CompDBIDResp || plu.dbidResp
+    plmnu.comp := icn.tx.resp.bits.Opcode === RspOpcode.Comp || icn.tx.resp.bits.Opcode === RspOpcode.CompDBIDResp || plu.comp
   }
+
+  private val busDataBytes = slvBusDataBits / 8
+  private val bufDataBytes = ioDataBits / 8
+  private val segNum = busDataBytes / bufDataBytes
+  private val segIdx = if(segNum > 1) payload.info.addr(log2Ceil(busDataBytes) - 1, log2Ceil(bufDataBytes)) else 0.U
+  private val maskVec = Wire(Vec(segNum, UInt(bufDataBytes.W)))
+  maskVec.zipWithIndex.foreach({ case (a, b) => a := Mux(b.U === segIdx, payload.info.mask.getOrElse(0.U), 0.U) })
+  val slvMask = maskVec.asUInt
+  val slvData = Fill(segNum, payload.info.data.getOrElse(0.U(ioDataBits.W)))
 }

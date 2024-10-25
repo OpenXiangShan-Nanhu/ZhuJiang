@@ -7,7 +7,21 @@ import xijiang.{Node, NodeType}
 import zhujiang.ZJBundle
 import zhujiang.chi._
 
-class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle {
+trait BaseIcnMonoBundle {
+  def req: Option[DecoupledIO[Data]]
+  def resp: Option[DecoupledIO[Data]]
+  def data: Option[DecoupledIO[Data]]
+  def snoop: Option[DecoupledIO[Data]]
+  def chnMap: Map[String, Option[DecoupledIO[Data]]] = Map(
+    ("REQ", req),
+    ("RSP", resp),
+    ("DAT", data),
+    ("SNP", snoop),
+    ("ERQ", req)
+  )
+}
+
+class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseIcnMonoBundle {
   private val illegal = node.ejects.contains("REQ") && node.ejects.contains("ERQ")
   require(!illegal)
   val req = if(node.ejects.contains("REQ") || node.ejects.contains("ERQ") && !node.csnNode) {
@@ -38,7 +52,7 @@ class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle {
   }
 }
 
-class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle {
+class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseIcnMonoBundle {
   private val illegal = node.injects.contains("REQ") && node.injects.contains("ERQ")
   require(!illegal)
   val req = if(node.injects.contains("REQ") || node.injects.contains("ERQ") && !node.csnNode) {
@@ -69,24 +83,22 @@ class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle {
   }
 }
 
-class IcnBundle(val node: Node)(implicit p: Parameters) extends ZJBundle {
+class IcnBundle(val node: Node, hasReset:Boolean = false)(implicit p: Parameters) extends ZJBundle {
   val tx = new IcnTxBundle(node)
   val rx = new IcnRxBundle(node)
-  val clusterId = if(node.nodeType == NodeType.CC) Some(Output(UInt(clusterIdBits.W))) else None
-  def <>(that: DeviceIcnBundle):Unit = {
+  val resetState = if(hasReset) Some(Output(Vec(2, Bool()))) else None
+  val resetInject = if(hasReset && node.defaultHni && node.nodeType == NodeType.HI) Some(Input(Vec(2, Bool()))) else None
+  def <>(that: DeviceIcnBundle): Unit = {
     this.rx <> that.tx
     that.rx <> this.tx
-    if(node.nodeType == NodeType.CC) that.clusterId.get := this.clusterId.get
   }
 }
 
 class DeviceIcnBundle(val node: Node)(implicit p: Parameters) extends ZJBundle {
   val tx = Flipped(new IcnRxBundle(node))
   val rx = Flipped(new IcnTxBundle(node))
-  val clusterId = if(node.nodeType == NodeType.CC) Some(Input(UInt(clusterIdBits.W))) else None
-  def <>(that: IcnBundle):Unit = {
+  def <>(that: IcnBundle): Unit = {
     this.rx <> that.tx
     that.rx <> this.tx
-    if(node.nodeType == NodeType.CC) this.clusterId.get := that.clusterId.get
   }
 }

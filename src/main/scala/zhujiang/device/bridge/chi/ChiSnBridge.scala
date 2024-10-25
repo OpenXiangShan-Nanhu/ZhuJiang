@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.{DeviceIcnBundle, IcnBundle}
-import xs.utils.PickOneLow
+import xs.utils.{PickOneLow, ResetRRArbiter}
 import zhujiang.chi._
 import zhujiang.ZJModule
 
@@ -33,13 +33,13 @@ class ChiSnBridge(node: Node)(implicit p: Parameters) extends ZJModule {
 
   private val wakeups = Wire(Vec(node.outstanding, Valid(UInt(raw.W))))
 
-  private val icnRspArb = Module(new RRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
+  private val icnRspArb = Module(new ResetRRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
   icn.tx.resp.get <> icnRspArb.io.out
 
-  private val snReqArb = Module(new RRArbiter(sn.tx.req.get.bits.cloneType, node.outstanding))
+  private val snReqArb = Module(new ResetRRArbiter(sn.tx.req.get.bits.cloneType, node.outstanding))
   sn.tx.req.get <> snReqArb.io.out
 
-  private val snDatArb = Module(new RRArbiter(sn.tx.data.get.bits.cloneType, node.outstanding))
+  private val snDatArb = Module(new ResetRRArbiter(sn.tx.data.get.bits.cloneType, node.outstanding))
   sn.tx.data.get <> snDatArb.io.out
 
   private val cms = for(idx <- 0 until node.outstanding) yield {
