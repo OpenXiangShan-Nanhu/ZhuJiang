@@ -269,7 +269,7 @@ class DirectoryBase(
   metaResp_s3_g   := metaResp_s2
   addr_s3_g       := addr_s2
   mshrMes_s3_g.zip(mshrMes_s2).foreach { case(a, b) => a := b }
-  replResp_s3_g   := replResp_s3_g
+  replResp_s3_g   := replResp_s2
   pipeId_s3_g     := pipeId_s2
 
   tag_s3          := parseDirAddress(addr_s3_g)._1
