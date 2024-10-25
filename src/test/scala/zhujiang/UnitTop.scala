@@ -4,7 +4,6 @@ import xijiang.{Node, NodeType}
 import chisel3.stage.ChiselGeneratorAnnotation
 import circt.stage.{ChiselStage, FirtoolOption}
 import zhujiang.UnitTop.firtoolOpts
-import zhujiang.axi.AxiParams
 import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.bridge.chi.ChiSnBridge
@@ -12,9 +11,8 @@ import zhujiang.device.bridge.tlul.TLULBridge
 import zhujiang.device.cluster.peripheral.{ClusterPLL, DistributedAclint}
 import zhujiang.device.dma.Axi2Chi
 import zhujiang.device.cluster.ClusterInterconnectComplex
-import zhujiang.device.ddr.MemoryComplex
-import zhujiang.device.uncore.UncoreComplex
 import zhujiang.tilelink.TilelinkParams
+import zhujiang.device.ddr.MemoryComplex
 
 object UnitTop {
   val firtoolOpts = Seq(
