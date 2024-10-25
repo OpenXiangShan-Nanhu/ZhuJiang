@@ -32,7 +32,7 @@ package object axilite {
     def decode(req: ReqFlit, check: Bool): Unit = {
       when(check) {
         assert(req.Opcode === ReqOpcode.ReadNoSnp || req.Opcode === ReqOpcode.WriteNoSnpPtl)
-        assert(req.Size === 3.U || req.Size === 2.U)
+        assert(req.Size <= 3.U)
       }
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
         readReq()
