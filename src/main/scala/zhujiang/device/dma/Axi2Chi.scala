@@ -76,21 +76,4 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   icn.tx.resp.get.valid := writeHandle.io.chi_txrsp.valid
   icn.tx.resp.get.bits  := writeHandle.io.chi_txrsp.bits
 
-  // //How to use CHI rx flit
-  // private val rxRespBits = WireInit(icn.rx.resp.get.bits.asTypeOf(new RespFlit))
-  // private val rxDataBits = WireInit(icn.rx.data.get.bits.asTypeOf(new DataFlit))
-  // dontTouch(rxRespBits)
-  // dontTouch(rxDataBits)
-
-  // //How to drive CHI tx flit
-  // private val txReqFlit = Wire(new ReqFlit)
-  // txReqFlit := DontCare
-  // txReqFlit.Opcode := ReqOpcode.ReadOnce
-  // txReqFlit.Addr := 0x12345678L.U
-  // icn.tx.req.get.bits := txReqFlit.asTypeOf(icn.tx.req.get.bits)
-  // icn.tx.req.get.valid := true.B
-
-  // icn.rx.resp.get.ready := false.B
-  // icn.rx.data.get.ready := false.B
-
 }
