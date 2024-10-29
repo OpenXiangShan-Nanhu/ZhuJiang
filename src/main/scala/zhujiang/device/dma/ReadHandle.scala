@@ -157,7 +157,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   val txReqFlit          = Wire(new ReqFlit)
   txReqFlit             := 0.U.asTypeOf(txReqFlit)
   txReqFlit.Addr        := Mux(txReqValid, arEntrys(sramStateEntrys(selSramSendReq).areid).addr, 0.U)
-  txReqFlit.Opcode      := Mux(txReqValid, ReqOpcode.ReadOnce, 0.U)
+  txReqFlit.Opcode      := Mux(txReqValid & arEntrys(sramStateEntrys(selSramSendReq).areid).addr(raw - 1), ReqOpcode.ReadNoSnp, Mux(txReqValid, ReqOpcode.ReadOnce, 0.U))
   txReqFlit.ExpCompAck  := Mux(txReqValid, true.B, false.B)
   txReqFlit.Order       := Mux(txReqValid, "b11".U, 0.U)
   txReqFlit.TxnID       := Mux(txReqValid, selSramSendReq, 0.U)

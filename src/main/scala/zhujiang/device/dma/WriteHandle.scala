@@ -221,7 +221,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
 
   txReqFlit.Addr       := Mux(txWrReqValid, awEntrys(wrStateEntrys(selSendReqEntry).areid).addr, 0.U)
   txReqFlit.ExpCompAck := Mux(txWrReqValid, true.B, false.B)
-  txReqFlit.Opcode     := Mux(txWrReqValid, ReqOpcode.WriteUniquePtl, 0.U)
+  txReqFlit.Opcode     := Mux(txWrReqValid & awEntrys(wrStateEntrys(selSendReqEntry).areid).addr(raw - 1), ReqOpcode.WriteNoSnpPtl, Mux(txWrReqValid, ReqOpcode.WriteUniquePtl, 0.U))
   txReqFlit.Order      := Mux(txWrReqValid, "b10".U, 0.U)
   txReqFlit.SrcID      := 1.U
   txReqFlit.TxnID      := selSendReqEntry
