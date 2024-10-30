@@ -155,12 +155,12 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
 
  
   dataSram.io.w.req.valid        := Mux(maskValid & mergeValid_s2, true.B, false.B)
-  dataSram.io.w.req.bits.setIdx  := Mux(maskValid & mergeValid_s2, endIndex, 0.U)
-  dataSram.io.w.req.bits.data(0) := Mux(maskValid & mergeValid_s2, mergeDataReg, 0.U)
+  dataSram.io.w.req.bits.setIdx  := endIndex
+  dataSram.io.w.req.bits.data(0) := mergeDataReg
 
   maskSram.io.w.req.valid        := Mux(maskValid & mergeValid_s2, true.B, false.B)
-  maskSram.io.w.req.bits.setIdx  := Mux(maskValid & mergeValid_s2, endIndex, 0.U)
-  maskSram.io.w.req.bits.data(0) := Mux(maskValid & mergeValid_s2, mergeMaskReg, 0.U)
+  maskSram.io.w.req.bits.setIdx  := endIndex
+  maskSram.io.w.req.bits.data(0) := mergeMaskReg
 
 
   val sendReqNum                  = wrStateEntrys.map(w => w.areid === selWrDataEntry && (w.state === WRState.SendWrReq || w.state === WRState.WaitDBID && (w.full && !w.last || !w.full)))
@@ -219,10 +219,10 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   val txReqFlit         = Wire(new ReqFlit)
   txReqFlit            := 0.U.asTypeOf(txReqFlit)
 
-  txReqFlit.Addr       := Mux(txWrReqValid, awEntrys(wrStateEntrys(selSendReqEntry).areid).addr, 0.U)
-  txReqFlit.ExpCompAck := Mux(txWrReqValid, true.B, false.B)
-  txReqFlit.Opcode     := Mux(txWrReqValid & awEntrys(wrStateEntrys(selSendReqEntry).areid).addr(raw - 1), ReqOpcode.WriteNoSnpPtl, Mux(txWrReqValid, ReqOpcode.WriteUniquePtl, 0.U))
-  txReqFlit.Order      := Mux(txWrReqValid, "b10".U, 0.U)
+  txReqFlit.Addr       := awEntrys(wrStateEntrys(selSendReqEntry).areid).addr
+  txReqFlit.ExpCompAck := true.B
+  txReqFlit.Opcode     := Mux(awEntrys(wrStateEntrys(selSendReqEntry).areid).addr(raw - 1), ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteUniquePtl)
+  txReqFlit.Order      := "b10".U
   txReqFlit.SrcID      := 1.U
   txReqFlit.TxnID      := selSendReqEntry
   txReqFlit.Size       := Mux(wrStateEntrys(selSendReqEntry).full, 6.U, 5.U)
@@ -394,7 +394,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   io.chi_txreq.valid := txWrReqValid
   io.chi_txreq.bits  := txReqFlit
   io.chi_txdat.valid := RegNext(RegNext(dataSram.io.r.req.fire))
-  io.chi_txdat.bits  := Mux(RegNext(RegNext(dataSram.io.r.req.fire)), txDatFlit, 0.U.asTypeOf(txDatFlit))
+  io.chi_txdat.bits  := txDatFlit
   io.chi_rxrsp.ready := true.B
 
   //AXI interface

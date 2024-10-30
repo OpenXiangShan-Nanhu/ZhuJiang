@@ -156,11 +156,10 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   val txReqValid         = sramSendReqVec.reduce(_|_)
   val txReqFlit          = Wire(new ReqFlit)
   txReqFlit             := 0.U.asTypeOf(txReqFlit)
-  txReqFlit.Addr        := Mux(txReqValid, arEntrys(sramStateEntrys(selSramSendReq).areid).addr, 0.U)
-  txReqFlit.Opcode      := Mux(txReqValid & arEntrys(sramStateEntrys(selSramSendReq).areid).addr(raw - 1), ReqOpcode.ReadNoSnp, Mux(txReqValid, ReqOpcode.ReadOnce, 0.U))
-  txReqFlit.ExpCompAck  := Mux(txReqValid, true.B, false.B)
-  txReqFlit.Order       := Mux(txReqValid, "b11".U, 0.U)
-  txReqFlit.TxnID       := Mux(txReqValid, selSramSendReq, 0.U)
+  txReqFlit.Addr        := arEntrys(sramStateEntrys(selSramSendReq).areid).addr
+  txReqFlit.Opcode      := Mux(arEntrys(sramStateEntrys(selSramSendReq).areid).addr(raw - 1), ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
+  txReqFlit.Order       := "b11".U
+  txReqFlit.TxnID       := selSramSendReq
   txReqFlit.Size        := Mux(!sramStateEntrys(selSramSendReq).full, "b101".U, "b110".U)
   txReqFlit.SrcID       := 1.U
 
@@ -193,7 +192,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
 
   val axiRFlit      = Wire(new RFlit(axiParams))
   axiRFlit         := 0.U.asTypeOf(axiRFlit)
-  axiRFlit.data    := Mux(io.axi_r.fire, sramRdDatReg, 0.U)
+  axiRFlit.data    := sramRdDatReg
   axiRFlit.id      := arEntrys(sramStateEntrys(axiRSet).areid).arid
   axiRFlit.last    := arEntrys(sramStateEntrys(axiRSet).areid).sendDatNum === arEntrys(sramStateEntrys(axiRSet).areid).len & arEntrys(sramStateEntrys(axiRSet).areid).state =/= ARState.Free
 
