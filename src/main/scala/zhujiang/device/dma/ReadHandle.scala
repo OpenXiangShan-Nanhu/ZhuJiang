@@ -176,7 +176,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
 
   val sramWrDatReg       = RegInit(0.U(dw.W))
   val sramWrDatRegValid  = RegInit(false.B)
-  val writeSram          = (sramStateEntrys(dataTxnid).state =/= SRAMState.Wait || sramStateEntrys(dataTxnid).state =/= SRAMState.WaitData) & io.chi_rxdat.fire
+  val writeSram          = sramStateEntrys(dataTxnid).state =/= SRAMState.Wait && sramStateEntrys(dataTxnid).state =/= SRAMState.WaitData && io.chi_rxdat.fire
   val selWrEntry         = Mux(writeSram, sramStateEntrys(dataTxnid).next, dataTxnid)
   val sramWrSet            = RegNext(selWrEntry)
   sramWrDatRegValid     := io.chi_rxdat.fire
