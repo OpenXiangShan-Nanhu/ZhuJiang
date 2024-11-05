@@ -323,7 +323,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
    }
    wrStateEntrys.zipWithIndex.foreach{
     case(w, i) =>
-      when(io.chi_rxrsp.fire && io.chi_rxrsp.bits.TxnID === i.U && (io.chi_rxrsp.bits.Opcode === RspOpcode.Comp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
+      when(w.state =/= WRState.Free && io.chi_rxrsp.fire && io.chi_rxrsp.bits.TxnID === i.U && (io.chi_rxrsp.bits.Opcode === RspOpcode.Comp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
         w.haveRecComp := true.B
       }
    }
