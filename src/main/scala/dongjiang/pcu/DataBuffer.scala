@@ -5,6 +5,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import dongjiang.utils.Encoder.RREncoder
+import xs.utils.perf.HasPerfLogging
 
 /*
  * ID Transfer:
@@ -48,7 +49,7 @@ class DBEntry(implicit p: Parameters) extends DJBundle with HasToIncoID {
 }
 
 
-class DataBuffer()(implicit p: Parameters) extends DJModule {
+class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging {
 // --------------------- IO declaration ------------------------//
   val io = IO(Flipped(new DBBundle(hasDBRCReq = true)))
 
@@ -180,6 +181,15 @@ class DataBuffer()(implicit p: Parameters) extends DJModule {
   val cntReg = RegInit(VecInit(Seq.fill(djparam.nrDatBuf) { 0.U(64.W) }))
   cntReg.zip(entrys).foreach { case (c, e) => c := Mux(e.isFree, 0.U, c + 1.U) }
   cntReg.zipWithIndex.foreach { case (c, i) => assert(c < TIMEOUT_DB.U, "DataBuffer ENTRY[0x%x] STATE[0x%x] TIMEOUT", i.U, entrys(i).state) }
+
+
+// ----------------------------------------------------- Perf Counter ------------------------------------------------------- //
+  require(djparam.nrDatBuf >= 4 & djparam.nrDatBuf % 4 == 0)
+  for (i <- 0 until (djparam.nrDatBuf / 4)) {
+    XSPerfAccumulate(s"pcu_dataBuf_group[${i}]_deal_req_cnt", io.getDBID.fire & (i * 4).U <= getDBIDId & getDBIDId <= (i * 4 + 3).U)
+  }
+  XSPerfAccumulate("pcu_dataBuf_deal_req_cnt", io.getDBID.fire)
+  XSPerfAccumulate("pcu_dataBuf_req_block_cnt", io.getDBID.valid & PopCount(dbFreeVec) === 0.U)
 
 }
 
