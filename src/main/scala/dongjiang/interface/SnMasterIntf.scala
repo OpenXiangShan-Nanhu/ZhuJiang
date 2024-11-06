@@ -493,7 +493,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   cntReg.zipWithIndex.foreach { case (c, i) => assert(c < TIMEOUT_SMINTF.U, "SNMAS Intf[0x%x] STATE[0x%x] ADDR[0x%x] OP[0x%x] TIMEOUT", i.U, entrys(i).state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.opcode) }
 
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
-  require(param.nrEntry > 4 & param.nrEntry % 4 == 0)
+  require(param.nrEntry >= 4 & param.nrEntry % 4 == 0)
   for (i <- 0 until (param.nrEntry / 4)) {
     XSPerfAccumulate(s"pcu_localSnMaster_entry_group[${i}]_deal_req_cnt", io.req2Intf.fire & (i * 4).U <= entryGetReqID & entryGetReqID <= (i * 4 + 3).U)
   }

@@ -454,7 +454,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
 
 
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
-  require(djparam.nrMSHRWays > 4 & djparam.nrMSHRWays % 4 == 0)
+  require(djparam.nrMSHRWays >= 4 & djparam.nrMSHRWays % 4 == 0)
   for (i <- 0 until djparam.nrMSHRSets) {
     for (j <- 0 until (djparam.nrMSHRWays / 4)) {
       XSPerfAccumulate(s"pcu_MSHRCtl_entry_group[${i}][${j}]_deal_req_cnt", io.req2Exu.fire & canReceiveReq & req2ExuMSet === i.U & (j * 4).U <= nodeReqInvWay & nodeReqInvWay <= (j * 4 + 3).U)

@@ -723,7 +723,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
 
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
   val reqFire = rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire
-  require(param.nrEntry > 4 & param.nrEntry % 4 == 0)
+  require(param.nrEntry >= 4 & param.nrEntry % 4 == 0)
   for(i <- 0 until  (param.nrEntry/4)) {
     XSPerfAccumulate(s"pcu_localRnSlave_entry_group[${i}]_deal_req_cnt", reqFire & (i*4).U <= entryFreeID & entryFreeID <= (i*4+3).U)
   }
