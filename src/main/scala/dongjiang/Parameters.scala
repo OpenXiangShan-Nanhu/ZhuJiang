@@ -36,21 +36,21 @@ case class DJParam(
                   addressBits:        Int = 48,
                   // ------------------------- Interface Mes -------------------- //
                   localRnSlaveIntf:   InterfaceParam = InterfaceParam( name = "RnSalve_LOCAL",  intfID = IncoID.LOCALSLV, isRn = true,   isSlave = true,   nrEntry = 32, nrEvictEntry = 8),
-                  localSnMasterIntf:  InterfaceParam = InterfaceParam( name = "SnMaster_LOCAL", intfID = IncoID.LOCALMST, isRn = false,  isSlave = false,  nrEntry = 32),
+                  localSnMasterIntf:  InterfaceParam = InterfaceParam( name = "SnMaster_LOCAL", intfID = IncoID.LOCALMST, isRn = false,  isSlave = false,  nrEntry = 16),
                   csnRnSlaveIntf:     Option[InterfaceParam] = None,
                   csnRnMasterIntf:    Option[InterfaceParam] = None,
                   openDCT:            Boolean = false,
                   openDMT:            Boolean = true,
                   // ------------------------ DCU Base Mes Per Bank ------------------ //
                   nrDSBank:           Int = 4,
-                  nrDCUWBuf:          Int = 16,
-                  nrDCURBuf:          Int = 16,
+                  nrDCUWBuf:          Int = 8,
+                  nrDCURBuf:          Int = 4,
                   nrDCURespQ:         Int = 4,
                   dcuSetup:           Int = 2,
                   dcuLatency:         Int = 3,
                   dcuExtraHold:       Boolean = true,
                   // --------------------------- Data Buffer Base Mes ------------------- //
-                  nrDatBuf:           Int = 32, // The number of Data Buffer entries Per PCU
+                  nrDatBuf:           Int = 24, // The number of Data Buffer entries Per PCU
                   // ------------------------ EXU Base Mes Per Bank ------------------ //
                   nrPipeTaskQueue:    Int = 4,
                   nrExuReqQueue:      Int = 4,
