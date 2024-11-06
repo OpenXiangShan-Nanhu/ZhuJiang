@@ -335,7 +335,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
         is(DCURState.ReadSram) {
           val hit         = sramRFire & sramReplID === i.U & sramRepl
           when(hit) {
-            r.state       := DCURState.Free
+            r.replRState  := DCURState.Free
             r.returnTxnID := 0.U
           }
         }
