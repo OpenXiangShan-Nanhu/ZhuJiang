@@ -215,11 +215,13 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   val sramRead              = willSendRVec.reduce(_ | _)
   val sramRepl              = !sramRead & willSendReplVec.reduce(_ | _)
 
+  val sramRFire             = ds.map(_.io.read.fire).reduce(_ | _); assert(PopCount(ds.map(_.io.read.fire)) <= 1.U)
+  val sramWFire             = ds.map(_.io.write.fire).reduce(_ | _); assert(PopCount(ds.map(_.io.write.fire)) <= 1.U)
   ds.zipWithIndex.foreach {
     case(d, i) =>
-      d.io.read.valid       := rBufRegVec(sramRID).dsBank === i.U & (willSendRVec.reduce(_ | _) | willSendReplVec.reduce(_ | _))
+      d.io.read.valid       := (sramRead & rBufRegVec(sramRID).dsBank === i.U) | (sramRepl & wBufRegVec(sramReplID).dsBank === i.U)
+      d.io.read.bits        := Mux(sramRead, rBufRegVec(sramRID).dsIndex, wBufRegVec(sramReplID).dsIndex)
       d.io.write.valid      := wBufRegVec(sramWID).dsBank === i.U &  willSendWVec.reduce(_ | _)
-      d.io.read.bits        := rBufRegVec(sramRID).dsIndex
       d.io.write.bits.index := wBufRegVec(sramWID).dsIndex
       d.io.write.bits.data  := Cat(wBufRegVec(sramWID).data.map(_.bits).reverse)
       assert(wBufRegVec(sramWID).data.map(_.valid).reduce(_ & _) | !d.io.write.valid)
@@ -231,8 +233,6 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   /*
     * Get Read CHI Resp
     */
-  val sramRFire               = ds.map(_.io.read.fire).reduce(_ | _)
-  val sramWFire               = ds.map(_.io.write.fire).reduce(_ | _)
   rRespQ.io.enq.valid         := sramRFire; assert(Mux(sramRFire, rRespQ.io.enq.ready, true.B))
   rRespQ.io.enq.bits          := DontCare
   rRespQ.io.enq.bits.Opcode   := Mux(sramRead, CompData,                        NonCopyBackWriteData)
