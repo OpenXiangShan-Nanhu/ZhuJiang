@@ -156,12 +156,13 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 
   // DataStorage
   val ds                    = Seq.fill(djparam.nrDSBank) { Module(new DataStorage(sets = nrDSEntry)) }
+  val dsRespIdPipe          = Module(new Pipe(UInt(dsBankBits.W), latency = djparam.dcuSetup + djparam.dcuLatency + 1)) // Designed for timing optimization
 
   // ChiRespQueue
   val rRespQ                = Module(new Queue(new DataFlit(), entries = djparam.nrDCURespQ, flow = false, pipe = true))
   val rDatQ                 = Module(new Queue(Vec(nrBeat, UInt(beatBits.W)), entries = djparam.nrDCURespQ, flow = false, pipe = true))
   val sendBeatNumReg        = RegInit(0.U(beatNumBits.W))
-  val respVec               = Wire(Vec(djparam.nrDSBank, Valid(UInt(dataBits.W))))
+  val dsRespVec             = Wire(Vec(djparam.nrDSBank, Valid(UInt(dataBits.W))))
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -223,6 +224,8 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
       d.io.write.bits.data  := Cat(wBufRegVec(sramWID).data.map(_.bits).reverse)
       assert(wBufRegVec(sramWID).data.map(_.valid).reduce(_ & _) | !d.io.write.valid)
   }
+  dsRespIdPipe.io.enq.valid := sramRFire
+  dsRespIdPipe.io.enq.bits  := rBufRegVec(sramRID).dsBank
 
 
   /*
@@ -349,13 +352,15 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   /*
     * Receive SRAM Resp
     */
-  val respId          = PriorityEncoder(respVec.map(_.valid))
-  respVec             := ds.map(_.io.resp)
-  rDatQ.io.enq.valid  := respVec.map(_.valid).reduce(_ | _)
+  val dsRespID        = dsRespIdPipe.io.deq.bits
+  rDatQ.io.enq.valid  := dsRespIdPipe.io.deq.valid
+  dsRespVec           := ds.map(_.io.resp)
   rDatQ.io.enq.bits.zipWithIndex.foreach { case (beat, i) =>
-    beat := respVec(respId).bits(beatBits * (i + 1) - 1, beatBits * i)
+    beat := dsRespVec(dsRespID).bits(beatBits * (i + 1) - 1, beatBits * i)
   }
-  assert(PopCount(respVec.map(_.valid)) <= 1.U)
+  // assert
+  assert(Mux(dsRespIdPipe.io.deq.valid, PopCount(dsRespVec.map(_.valid)) === 1.U, PopCount(dsRespVec.map(_.valid)) === 0.U))
+  assert(Mux(dsRespIdPipe.io.deq.valid, OHToUInt(dsRespVec.map(_.valid)) === dsRespID, true.B))
 
   /*
     * Send Resp To CHI RxDat
