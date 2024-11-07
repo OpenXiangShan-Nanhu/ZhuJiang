@@ -12,12 +12,11 @@ import freechips.rocketchip.rocket.CSR.W
 import freechips.rocketchip.diplomacy.BufferParams.pipe
 
 case class DmaParams(
-  bufferSize: Int = 32,
+  chiEntrySize: Int = 32,
   idBits: Int = 12,
-  entrySize: Int = 4,
-  nidBits: Int = 2,
-  sendReqNumBits: Int = 6,
-  nrBeats: Int = 2
+  axiEntrySize: Int = 16,
+  nrBeats: Int = 2,
+  queueSize: Int = 4
 )
 
 class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
@@ -36,8 +35,8 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val readHandle  = Module(new ReadHandle)
   private val writeHandle = Module(new WriteHandle)
 
-  private val readReqQ    = Module(new Queue(new ReqFlit, entries = dmaParams.entrySize, flow = false, pipe = true))
-  private val writeReqQ   = Module(new Queue(new ReqFlit, entries = 4, flow = false, pipe =  true))
+  private val readReqQ    = Module(new Queue(new ReqFlit, entries = dmaParams.queueSize, flow = false, pipe = true))
+  private val writeReqQ   = Module(new Queue(new ReqFlit, entries = dmaParams.queueSize, flow = false, pipe =  true))
 
 
   //Connect logic

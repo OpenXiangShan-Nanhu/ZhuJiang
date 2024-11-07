@@ -34,21 +34,21 @@ class AWEntry(implicit p: Parameters) extends ZJBundle {
     val size            = UInt(3.W)
     val awid            = UInt(8.W)
     val state           = UInt(AWState.width.W)
-    val nid             = UInt(zjParams.dmaParams.nidBits.W)
+    val nid             = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
 }
 
 class WrStateEntry(implicit p: Parameters) extends ZJBundle {
-  val areid        = UInt(log2Ceil(zjParams.dmaParams.entrySize).W)
+  val areid        = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
   val dbid         = UInt(12.W)
   val last         = Bool()
   val full         = Bool()
   val separate     = Bool()
-  val sendReqOrder = UInt(6.W)
+  val sendReqOrder = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
   val state        = UInt(WRState.width.W)
   val tgtID        = UInt(niw.W)
   val sendFull     = Bool()
   val mmioReq      = Bool()
-  val sendAckOrder = UInt(log2Ceil(zjParams.dmaParams.entrySize).W)
+  val sendAckOrder = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
   val haveRecComp  = Bool()
 }
 
@@ -75,10 +75,10 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   //---------------------------------------------------------------------------------------------------------------------------------//
   //-------------------------------------------------- Reg and Wire Define ----------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
-  val awEntrys           = RegInit(VecInit.fill(dmaParams.entrySize)(0.U.asTypeOf(new AWEntry)))
-  val dataSram           = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.bufferSize, singlePort = true))
-  val wrStateEntrys      = RegInit(VecInit.fill(dmaParams.bufferSize)(0.U.asTypeOf(new WrStateEntry)))
-  val maskSram           = Module(new SRAMTemplate(gen = UInt(bew.W), set = dmaParams.bufferSize, singlePort = true))
+  val awEntrys           = RegInit(VecInit.fill(dmaParams.axiEntrySize)(0.U.asTypeOf(new AWEntry)))
+  val dataSram           = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.chiEntrySize, singlePort = true))
+  val wrStateEntrys      = RegInit(VecInit.fill(dmaParams.chiEntrySize)(0.U.asTypeOf(new WrStateEntry)))
+  val maskSram           = Module(new SRAMTemplate(gen = UInt(bew.W), set = dmaParams.chiEntrySize, singlePort = true))
 
   val mergeDataReg       = RegInit(0.U(dw.W))
   val mergeMaskReg       = RegInit(0.U(bew.W))
@@ -95,15 +95,15 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   val mask              = RegInit(VecInit(Seq.fill(dw/8){0.U(8.W)}))
   val data              = RegInit(0.U(dw.W))
   val strbReg           = RegInit(0.U(bew.W))
-  val rxRspTxnid        = WireInit(io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0))
-  val txReqTxnid        = WireInit(io.chi_txreq.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0))
+  val rxRspTxnid        = WireInit(io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))
+  val txReqTxnid        = WireInit(io.chi_txreq.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))
   
   /* 
   Sram start Index pointer and End Index pointer
    */
 
-  val startIndex        = RegInit(0.U(log2Ceil(dmaParams.bufferSize).W))
-  val endIndex          = RegInit(0.U(log2Ceil(dmaParams.bufferSize).W))
+  val startIndex        = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
+  val endIndex          = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
   
 
   /* 
@@ -257,7 +257,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   txReqFlit.TxnID      := selSendReqEntry
   txReqFlit.Size       := Mux(wrStateEntrys(selSendReqEntry).full, 6.U, 5.U)
 
-  val txnid               = io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0) + 1.U
+  val txnid               = io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0) + 1.U
 
   when(io.chi_rxrsp.fire && wrStateEntrys(rxRspTxnid).full && (io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
     wrStateEntrys(txnid).state := WRState.SendWrData
@@ -287,11 +287,11 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
 
   
 
-  val selSendReg   = RegInit(0.U(log2Ceil(dmaParams.bufferSize).W))
+  val selSendReg   = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
   selSendReg       := selSendDataEntry
 
   when(RegNext(dataSram.io.r.req.fire)){
-    txDatFlit.Opcode := Mux(wrStateEntrys(selSendReg).separate || wrStateEntrys(selSendReg).mmioReq, DatOpcode.NonCopyBackWriteData, DatOpcode.NCBWrDataCompAck)
+    txDatFlit.Opcode := Mux(wrStateEntrys(selSendReg).separate, DatOpcode.NonCopyBackWriteData, DatOpcode.NCBWrDataCompAck)
     txDatFlit.SrcID  := 1.U
     txDatFlit.DataID := Mux(wrStateEntrys(selSendReg).full &&  wrStateEntrys(selSendReg).last, 2.U, 0.U)
     txDatFlit.TxnID  := wrStateEntrys(selSendReg).dbid
@@ -396,7 +396,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
         is(WRState.SendWrData){
           val hit    = dataSram.io.r.req.fire && dataSram.io.r.req.bits.setIdx === i.U
           when(hit){
-            w.state   := Mux(!w.separate || w.mmioReq || w.full && w.last, WRState.Complete, WRState.SendCompAck)
+            w.state   := Mux(!w.separate || w.full && w.last, WRState.Complete, WRState.SendCompAck)
           }
         }
         is(WRState.SendCompAck){

@@ -22,17 +22,17 @@ class AREntry(implicit p: Parameters) extends ZJBundle {
     val burst           = UInt(BurstMode.width.W)
     val len             = UInt(8.W)
     val arid            = UInt(8.W)
-    val nid             = UInt(zjParams.dmaParams.nidBits.W)
-    val sendReqNum      = UInt(zjParams.dmaParams.sendReqNumBits.W)
-    val sendDatNum      = UInt(8.W)  
+    val nid             = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
+    val sendReqNum      = UInt(6.W)
+    val sendDatNum      = UInt(6.W)  
 }
 
 class sramStateEntry(implicit p : Parameters) extends ZJBundle {
-  val areid         = UInt(2.W)
+  val areid         = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
   val state         = UInt(SRAMState.width.W)
   val num           = UInt(6.W)
   val last          = Bool()
-  val next          = UInt((log2Ceil(zjParams.dmaParams.bufferSize)).W)
+  val next          = UInt((log2Ceil(zjParams.dmaParams.chiEntrySize)).W)
   val full          = Bool()
   val homeNid       = UInt(niw.W)
   val dbid          = UInt(12.W)
@@ -52,10 +52,10 @@ object SRAMState {
 class SRAMSelector(implicit p: Parameters) extends ZJModule {
   private val dmaParams = zjParams.dmaParams
   val io = IO(new Bundle() {
-    val idle = Input(Vec(dmaParams.bufferSize, Bool()))
-    val idleNum = Output(UInt((log2Ceil(dmaParams.bufferSize) + 1).W))
-    val out0 = UInt(log2Ceil(dmaParams.bufferSize).W)
-    val out1 = UInt(log2Ceil(dmaParams.bufferSize).W)
+    val idle = Input(Vec(dmaParams.chiEntrySize, Bool()))
+    val idleNum = Output(UInt((log2Ceil(dmaParams.chiEntrySize) + 1).W))
+    val out0 = UInt(log2Ceil(dmaParams.chiEntrySize).W)
+    val out1 = UInt(log2Ceil(dmaParams.chiEntrySize).W)
   })
   io.idleNum := PopCount(io.idle)
   io.out0    := PriorityEncoder(io.idle)
@@ -88,15 +88,15 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   //-------------------------------------------------- Reg and Wire Define ----------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
 
-  val arEntrys          = RegInit(VecInit.fill(dmaParams.entrySize)(0.U.asTypeOf(new AREntry)))
+  val arEntrys          = RegInit(VecInit.fill(dmaParams.axiEntrySize)(0.U.asTypeOf(new AREntry)))
   val sramSelector      = Module(new SRAMSelector)
-  val readSram          = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.bufferSize, singlePort = true))
+  val readSram          = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.chiEntrySize, singlePort = true))
 
 
-  val sramStateEntrys   = RegInit(VecInit.fill(dmaParams.bufferSize)(0.U.asTypeOf(new sramStateEntry)))
+  val sramStateEntrys   = RegInit(VecInit.fill(dmaParams.chiEntrySize)(0.U.asTypeOf(new sramStateEntry)))
   val sendDataReg       = RegInit(0.U(dw.W))
   val sendDataRegValid  = WireInit(false.B)
-  val dataTxnid         = WireInit(io.chi_rxdat.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0))
+  val dataTxnid         = WireInit(io.chi_rxdat.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))
 
 
 
