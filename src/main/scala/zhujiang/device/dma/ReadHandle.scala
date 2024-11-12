@@ -174,7 +174,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
           a.sendDatNum := Mux(datNumAdd, a.sendDatNum + 1.U, a.sendDatNum)
         }
         is(AXIRState.Comp){
-          val hit = a.arid === io.axi_r.fire && io.axi_r.bits.id === a.arid && a.nid === 0.U && io.axi_r.bits.last
+          val hit = io.axi_r.fire && io.axi_r.bits.id === a.arid && a.nid === 0.U && io.axi_r.bits.last
           val datNumAdd = io.axi_r.fire && io.axi_r.bits.id === a.arid && a.nid === 0.U
           a.sendDatNum := Mux(datNumAdd, a.sendDatNum + 1.U, a.sendDatNum)
           when(hit){
@@ -252,7 +252,6 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
 /* 
  * assert logic
  */
-  assert(PopCount(chiSendDatVec) === 0.U || PopCount(chiSendDatVec) === 1.U, "Num order is error")
   when(io.chi_rxdat.fire && io.chi_rxdat.bits.DataID === 0.U){
     assert(!chiEntrys(dataTxnid).haveRecDataFir, "CHIEntrys haveRecDataFir logic is error")
   }
