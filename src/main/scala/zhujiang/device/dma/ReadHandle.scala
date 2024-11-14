@@ -52,7 +52,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
 
   val chiFreeVec     = chiEntrys.map(_.state === CHIRState.Free)
   val chiSendAckVec  = chiEntrys.map(_.state === CHIRState.sendCompAck)
-  val chiSendDatVec  = chiEntrys.map(c => c.state === CHIRState.SendData && c.num === 0.U)
+  val chiSendDatVec  = chiEntrys.map(c => c.state === CHIRState.SendData && c.num === 0.U && axiEntrys(c.areid).nid === 0.U)
 
   val selSendAckChiEntry = PriorityEncoder(chiSendAckVec)
   val selSendDatChiEntry = PriorityEncoder(chiSendDatVec)
