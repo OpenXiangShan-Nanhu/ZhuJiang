@@ -24,7 +24,7 @@ class RequestArbiter(tlParams: TilelinkParams, outstanding: Int)(implicit p: Par
   private val blockA = (addrMatchVec & blockVec).orR
   io.a.ready := io.alloc_s1.ready && !blockA
 
-  io.alloc_s1.valid := io.a.valid
+  io.alloc_s1.valid := io.a.fire
   io.alloc_s1.bits.address := io.a.bits.address
   io.alloc_s1.bits.opcode := io.a.bits.opcode
   io.alloc_s1.bits.param := io.a.bits.param
