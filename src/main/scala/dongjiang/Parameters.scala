@@ -44,9 +44,9 @@ case class DJParam(
                   nrDCUWBuf:          Int = 8,
                   nrDCURBuf:          Int = 4,
                   nrDCURespQ:         Int = 4,
-                  dcuSetup:           Int = 2,
+                  dcuSetup:           Int = 3,
                   dcuLatency:         Int = 3,
-                  dcuExtraHold:       Boolean = true,
+                  dcuExtraHold:       Boolean = false,
                   // --------------------------- Data Buffer Base Mes ------------------- //
                   nrDatBuf:           Int = 24, // The number of Data Buffer entries Per PCU
                   nrAPU:              Int = 8, // The number of Atomic Process entries Per PCU
