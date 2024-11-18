@@ -4,6 +4,7 @@ import chisel3.util._
 import chisel3._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
+import xs.utils.perf.DebugOptionsKey
 import zhujiang.ZJModule
 import zhujiang.chi._
 
@@ -147,4 +148,14 @@ abstract class BaseCtrlMachine[
   maskVec.zipWithIndex.foreach({ case (a, b) => a := Mux(b.U === segIdx, payload.info.mask.getOrElse(0.U), 0.U) })
   val slvMask = maskVec.asUInt
   val slvData = Fill(segNum, payload.info.data.getOrElse(0.U(ioDataBits.W)))
+
+  if(!p(DebugOptionsKey).FPGAPlatform) {
+    val timer = RegInit(0.U(64.W))
+    when(icn.rx.req.fire) {
+      timer := 0.U
+    }.elsewhen(valid) {
+      timer := timer + 1.U
+    }
+    assert(timer < 5000.U, "bridge CM time out!")
+  }
 }
