@@ -34,7 +34,7 @@ class ZhujiangTopConfig extends Config((site, here, up) => {
       NodeParam(nodeType = NodeType.S, mainMemory = true, splitFlit = true, outstanding = 32, attr = "ddr_data")
     )
   )
-  case DebugOptionsKey => DebugOptions()
+  case DebugOptionsKey => DebugOptions(EnablePerfDebug = false)
 })
 
 object ZhujiangTopParser {
