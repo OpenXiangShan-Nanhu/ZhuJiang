@@ -259,16 +259,16 @@ object LocalReadWithDCTDecode {
 
 object LoaclDatalessDecode {
   def evict: Seq[(UInt, UInt)] = Seq(
-    LocalReqInst(Evict, I,  I,  I) -> NothingTODO,
-    LocalReqInst(Evict, I, UC,  I) -> NothingTODO,
-    LocalReqInst(Evict, I, UD,  I) -> NothingTODO,
-    LocalReqInst(Evict, I, SC,  I) -> NothingTODO,
-    LocalReqInst(Evict, I, SC, SC) -> NothingTODO,
-    LocalReqInst(Evict, I, SC, SD) -> NothingTODO,
-    LocalReqInst(Evict, I,  I, SC) -> NothingTODO,
-    LocalReqInst(Evict, I,  I, SD) -> NothingTODO,
-    LocalReqInst(Evict, I,  I, UC) -> NothingTODO,
-    LocalReqInst(Evict, I,  I, UD) -> NothingTODO,
+    LocalReqInst(Evict, I,  I,  I) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
+    LocalReqInst(Evict, I, UC,  I) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
+    LocalReqInst(Evict, I, UD,  I) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
+    LocalReqInst(Evict, I, SC,  I) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
+    LocalReqInst(Evict, I, SC, SC) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
+    LocalReqInst(Evict, I, SC, SD) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
+    LocalReqInst(Evict, I,  I, SC) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
+    LocalReqInst(Evict, I,  I, SD) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
+    LocalReqInst(Evict, I,  I, UC) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
+    LocalReqInst(Evict, I,  I, UD) ->  (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) ),
 
     LocalReqInst(Evict, UC,  I,  I) -> (Commit | WSFDir |         RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | HnState(I)  | SrcState(I) | OthState(I)),
     LocalReqInst(Evict, SC,  I,  I) -> (Commit | WSFDir |         RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | HnState(I)  | SrcState(I) | OthState(I)),
