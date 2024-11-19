@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 
 abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
-  def regSeq: Seq[(String, UInt, UInt, Int, Option[UInt], Option[UInt])] //ReadSrc, WriteDst, Address, Write Mask, Read Mask
+  def regSeq: Seq[(String, Data, Data, Int, Option[UInt], Option[UInt])] //ReadSrc, WriteDst, Address, Write Mask, Read Mask
   val tls = IO(Flipped(new TLULBundle(tlParams)))
   val myclock = WireInit(clock)
   val myreset = WireInit(reset)
@@ -103,7 +103,7 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
         regUpdate.suggestName(s"${name}_write_en")
         regUpdate := wen && addr(tlParams.addrBits - 1, 3) === regAddr(tlParams.addrBits - 1, 3)
         when(regUpdate) {
-          dst := (finalWmask & finalWdata) | (keepMask & src)
+          dst := ((finalWmask & finalWdata) | (keepMask & src.asUInt)).asTypeOf(dst)
         }
         name -> regUpdate
       }).toMap
