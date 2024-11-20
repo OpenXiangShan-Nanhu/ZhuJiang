@@ -28,7 +28,7 @@ object UnitTop {
 object AxiBridgeTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new AxiBridge(Node(nodeType = NodeType.S, outstanding = 8))(config))
+    ChiselGeneratorAnnotation(() => new AxiBridge(Node(nodeType = NodeType.S, splitFlit = true, outstanding = 8))(config))
   ))
 }
 
