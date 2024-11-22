@@ -446,6 +446,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   commit_s3.pcuIndex.dbID         := dbid_s3.bits; assert(dbid_s3.valid | !(decode_s3.commit & decode_s3.respChnl === CHIChannel.DAT))
   commit_s3.pcuIndex.mshrSet      := task_s3_g.bits.taskMes.mSet
   commit_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
+  commit_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
 
 
   /*

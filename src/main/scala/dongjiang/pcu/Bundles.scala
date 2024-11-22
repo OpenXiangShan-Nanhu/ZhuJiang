@@ -105,6 +105,7 @@ class Resp2IntfBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
   val chiIndex      = new ChiIndexBundle()
   val chiMes        = new ChiMesBundle()
   val pcuIndex      = new PcuIndexBundle()
+  val pcuMes        = new DJBundle with HasUseAddr
 }
 
 
