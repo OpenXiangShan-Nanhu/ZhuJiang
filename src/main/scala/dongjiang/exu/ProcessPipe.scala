@@ -384,7 +384,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskRepl_s3.to                    := IncoID.LOCALMST.U
   taskRepl_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
   taskRepl_s3.pcuIndex.dbID         := dbid_s3.bits; assert(dbid_s3.valid | !todo_s3_replace)
-  taskRepl_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
+  taskRepl_s3.pcuMes.useAddr        := dirRes_s3.bits.s.useAddr
   taskRepl_s3.pcuMes.selfWay        := OHToUInt(dirRes_s3.bits.s.wayOH)
   taskRepl_s3.pcuMes.toDCU          := false.B
 
