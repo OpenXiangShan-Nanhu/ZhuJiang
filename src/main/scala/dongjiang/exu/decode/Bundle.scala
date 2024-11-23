@@ -76,9 +76,6 @@ trait HasOperationsBundle extends Bundle {
   // Write New State to Directory
   val wSDir       = Bool()
   val wSFDir      = Bool()
-
-  def reqToSlv    = snoop
-  def reqToMst    = readDown | writeDown | readDCU | writeDCU
 }
 
 class OperationsBundle extends Bundle with HasOperationsBundle
@@ -119,6 +116,9 @@ class DecodeBundle extends Bundle with HasOperationsBundle {
 
   // No need to do anything
   val nothingTODO = Bool()
+
+  def needWaitSlv = snoop | (commit & respOp === CompDBIDResp)
+  def needWaitMst = readDown | writeDown | readDCU | writeDCU
 
   def decode(inst: InstBundle, table: Seq[(UInt, UInt)]): DecodeBundle = {
     this := ParallelLookUp(

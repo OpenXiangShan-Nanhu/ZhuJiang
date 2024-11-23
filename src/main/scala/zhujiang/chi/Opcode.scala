@@ -98,6 +98,7 @@ object ReqOpcode {
   // Judge req type
   def isReadX         (x: UInt): Bool = (ReadShared <= x & x <= ReadNoSnp) | x === ReadUnique | x === ReadNoSnpSep |
                                         (ReadOnceCleanInvalid <= x & x <= ReadNotSharedDirty) | x === ReadPreferUnique
+  def isDatalessX     (x: UInt): Bool = (CleanShared <= x & x <= Evict) | x === CleanSharedPersistSep | (StashOnceShared <= x & x <= StashOnceUnique) | x === CleanSharedPersist | (StashOnceSepShared <= x & x <= StashOnceSepUnique) | x === CleanInvalidPoPAa
   def isWriteX        (x: UInt): Bool = (WriteEvictFull <= x & x <= WriteUniquePtlStash) | (WriteEvictOrEvict <= x & x <= WriteNoSnpZero) |
                                         (WriteNoSnpDef <= x & x <= WriteBackFullCleanInvPoPA)
   def isCBX           (x: UInt): Bool = x === WriteBackFull | x === WriteBackPtl | x === WriteCleanFull | x === WriteEvictFull | x === WriteEvictOrEvict // is CopyBack

@@ -180,7 +180,8 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val taskIsCB        = isCBX(task_s3_g.bits.chiMes.opcode)     & task_s3_g.bits.chiMes.isReq
   val taskIsAtomic    = isAtomicX(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq
 
-  assert(Mux(taskIsCB     & task_s3_g.valid, task_s3_g.bits.respMes.slvResp.valid, true.B))
+  assert(Mux(taskIsWriPtl & task_s3_g.valid, !task_s3_g.bits.respMes.slvResp.valid, true.B))
+  assert(Mux(taskIsWriPtl & task_s3_g.valid, task_s3_g.bits.respMes.slvDBID.valid, true.B))
   assert(Mux(taskIsAtomic & task_s3_g.valid, task_s3_g.bits.respMes.slvDBID.valid, true.B))
   assert(Mux(taskIsAtomic & task_s3_g.valid, !isAtomicStoreX(task_s3_g.bits.chiMes.opcode), true.B))
 
@@ -190,7 +191,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   inst_s3.srcState    := Mux(task_s3_g.bits.taskMes.readDir, srcState, ChiState.I)
   inst_s3.othState    := Mux(task_s3_g.bits.taskMes.readDir, othState, ChiState.I)
   inst_s3.hnState     := Mux(task_s3_g.bits.taskMes.readDir, hnState, ChiState.I)
-  inst_s3.respType    := Cat(taskIsCB,                                          // Copy Back Resp
+  inst_s3.respType    := Cat(taskIsCB & task_s3_g.bits.respMes.slvResp.valid,   // Copy Back Resp
                              task_s3_g.bits.respMes.mstResp.valid,              // Read Down Resp
                              task_s3_g.bits.respMes.fwdState.valid,             // Snoop Fwd Resp
                              task_s3_g.bits.respMes.slvResp.valid & !taskIsCB)  // Snoop Resp
@@ -482,7 +483,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   todo_s3_retry       := todo_s3.wSDir & dirRes_s3.bits.s.replRetry | todo_s3.wSFDir & dirRes_s3.bits.sf.replRetry; assert(Mux(valid_s3, !todo_s3_retry, true.B), "TODO")
   todo_s3_replace     := todo_s3.wSDir & !hnHit & !dirRes_s3.bits.s.metaVec(0).isInvalid & !todo_s3_retry // TODO: Only need to replace when it is Dirty
   todo_s3_sfEvict     := todo_s3.wSFDir & !srcHit & !othHit & dirRes_s3.bits.sf.metaVec.map(!_.isInvalid).reduce(_ | _) & !todo_s3_retry
-  todo_s3_updateMSHR  := todo_s3.reqToMst | todo_s3.reqToSlv | todo_s3_replace | todo_s3_sfEvict
+  todo_s3_updateMSHR  := decode_s3.needWaitSlv | decode_s3.needWaitMst | todo_s3_replace | todo_s3_sfEvict
   todo_s3_cleanMSHR   := !(todo_s3_retry | todo_s3_updateMSHR)
   assert(Mux(valid_s3, PopCount(Seq(todo_s3_retry, todo_s3_updateMSHR, todo_s3_cleanMSHR)) === 1.U, true.B))
   assert(Mux(valid_s3, PopCount(Seq(todo_s3_replace, todo_s3_sfEvict)) <= 1.U, true.B))
@@ -494,10 +495,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   io.updMSHR.bits.mshrSet     := task_s3_g.bits.taskMes.mSet
   io.updMSHR.bits.mshrWay     := task_s3_g.bits.taskMes.mshrWay
   io.updMSHR.bits.updType     := Mux(todo_s3_retry,   UpdMSHRType.RETRY,  UpdMSHRType.UPD)
-  io.updMSHR.bits.waitIntfVec := (Mux(todo_s3.reqToSlv | todo_s3_sfEvict, UIntToOH(IncoID.LOCALSLV.U), (todo_s3.readDown | todo_s3.readDCU) & task_s3_g.bits.chiMes.expCompAck & djparam.openDMT.asBool) |
-                                  Mux(todo_s3.reqToMst | todo_s3_replace, UIntToOH(IncoID.LOCALMST.U), 0.U)).asBools
+  io.updMSHR.bits.waitIntfVec := (Mux(decode_s3.needWaitSlv | todo_s3_sfEvict, UIntToOH(IncoID.LOCALSLV.U), (todo_s3.readDown | todo_s3.readDCU) & task_s3_g.bits.chiMes.expCompAck & djparam.openDMT.asBool) |
+                                  Mux(decode_s3.needWaitMst | todo_s3_replace, UIntToOH(IncoID.LOCALMST.U), 0.U)).asBools
   io.updMSHR.bits.mTag        := Mux(todo_s3_replace | todo_s3_sfEvict, Mux(todo_s3_replace, dirRes_s3.bits.s.mTag, dirRes_s3.bits.sf.mTag), task_s3_g.bits.taskMes.mTag)
-  assert(!((todo_s3.reqToSlv | todo_s3_sfEvict) & ((todo_s3.readDown | todo_s3.readDCU) & task_s3_g.bits.chiMes.expCompAck & djparam.openDMT.B)))
+  assert(!((decode_s3.needWaitSlv | todo_s3_sfEvict) & ((todo_s3.readDown | todo_s3.readDCU) & task_s3_g.bits.chiMes.expCompAck & djparam.openDMT.B)))
   // Only Use In New Req
   io.updMSHR.bits.hasNewReq   := todo_s3_replace | todo_s3_sfEvict
   io.updMSHR.bits.opcode      := Mux(todo_s3_replace, Replace,            SnpUniqueEvict)

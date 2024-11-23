@@ -309,6 +309,7 @@ object LoaclDatalessDecode {
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(CleanShared, UD, I,   I) -> (SnpAll | SnpOp(SnpCleanShared)        | RetToSrc),
     LocalReqInst(CleanShared, UC, I,   I) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(CleanShared, SC, I,   I) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
     LocalReqInst(CleanShared, SC, I,  SC) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
     LocalReqInst(CleanShared, SC, I,  SD) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(SC)),
     LocalReqInst(CleanShared, SC, SC,  I) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
@@ -338,6 +339,7 @@ object LoaclDatalessDecode {
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(CleanInvalid, UD, I,   I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
     LocalReqInst(CleanInvalid, UC, I,   I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid, SC, I,   I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
     LocalReqInst(CleanInvalid, SC, I,  SC) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
     LocalReqInst(CleanInvalid, SC, I,  SD) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
     LocalReqInst(CleanInvalid, SC, SC,  I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
@@ -361,6 +363,8 @@ object LoaclDatalessDecode {
     // UC  I  I
     LocalRespInst(REQ, CleanInvalid, UC,  I,  I, Snp, HasData, rn = ChiResp.I)      -> (Commit | WSFDir |         RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(I) | WriteDown | WriOp(WriteNoSnpFullCleanInv)),
     LocalRespInst(REQ, CleanInvalid, UC,  I,  I, Snp, HasData, rn = ChiResp.I_PD)   -> (Commit | WSFDir |         RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(I) | WriteDown | WriOp(WriteNoSnpFullCleanInv)),
+    // SC  I  I
+    LocalRespInst(REQ, CleanInvalid, SC,  I,  I, Snp, HasData, rn = ChiResp.I)      -> (Commit | WSFDir |         RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(I) | WriteDown | WriOp(WriteNoSnpFullCleanInv)),
     // SC  I SC
     LocalRespInst(REQ, CleanInvalid, SC,  I, SC, Snp, HasData, rn = ChiResp.I)      -> (Commit | WSFDir | WSDir | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(I) | WriteDown | WriOp(WriteNoSnpFullCleanInv)),
     // SC  I SD
@@ -389,6 +393,7 @@ object LoaclDatalessDecode {
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(MakeInvalid, UD, I,   I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
     LocalReqInst(MakeInvalid, UC, I,   I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid, SC, I,   I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
     LocalReqInst(MakeInvalid, SC, I,  SC) -> (SnpAll | SnpOp(SnpMakeInvalid)),
     LocalReqInst(MakeInvalid, SC, I,  SD) -> (SnpAll | SnpOp(SnpMakeInvalid)),
     LocalReqInst(MakeInvalid, SC, SC,  I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
@@ -411,6 +416,8 @@ object LoaclDatalessDecode {
     LocalRespInst(REQ, MakeInvalid, UD,  I,  I, Snp, rn = ChiResp.I)      -> (Commit | WSFDir|          RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(I)),
     // UC  I  I
     LocalRespInst(REQ, MakeInvalid, UC,  I,  I, Snp, rn = ChiResp.I)      -> (Commit | WSFDir |         RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(I)),
+    // SC  I  I
+    LocalRespInst(REQ, MakeInvalid, SC,  I,  I, Snp, rn = ChiResp.I)      -> (Commit | WSFDir |         RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(I)),
     // SC  I SC
     LocalRespInst(REQ, MakeInvalid, SC,  I, SC, Snp, rn = ChiResp.I)      -> (Commit | WSFDir | WSDir | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(I)),
     // SC  I SD
@@ -500,26 +507,58 @@ object LoaclDatalessDecode {
 
 object LoaclWriteDecode {
   def writeBackFull: Seq[(UInt, UInt)] = Seq(
-    LocalRespInst(REQ, WriteBackFull,  I,  I,  I, CB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, UC,  I, CB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, UD,  I, CB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, SC,  I, CB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, SC, SC, CB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, SC, SD, CB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I,  I, SC, CB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I,  I, SD, CB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I,  I, UC, CB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I,  I, UD, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
+    LocalReqInst(WriteBackFull, UD, I,   I) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull, UC, I,   I) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull, SC, I,   I) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull, SC, I,  SC) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull, SC, I,  SD) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull, SC, SC,  I) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull, SC, SC, SC) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull, SC, SC, SD) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
 
-    LocalRespInst(REQ, WriteBackFull, UD,  I,  I, CB, HasData, rn = ChiResp.UD_PD) -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
-    LocalRespInst(REQ, WriteBackFull, UC,  I,  I, CB, HasData, rn = ChiResp.UC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | WriteDCU | WriOp(WriteNoSnpFull)),
-    LocalRespInst(REQ, WriteBackFull, UC,  I,  I, CB, HasData, rn = ChiResp.UD_PD) -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
-    LocalRespInst(REQ, WriteBackFull, SC,  I,  I, CB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | WriteDCU | WriOp(WriteNoSnpFull)),
-    LocalRespInst(REQ, WriteBackFull, SC, SC,  I, CB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(SC) | HnState(SC) | WriteDCU | WriOp(WriteNoSnpFull)),
-    LocalRespInst(REQ, WriteBackFull, SC, SC, SC, CB, HasData, rn = ChiResp.SC)    -> (WSFDir |         SrcState(I) | OthState(SC) | HnState(SC) | CleanDB),
-    LocalRespInst(REQ, WriteBackFull, SC, SC, SD, CB, HasData, rn = ChiResp.SC)    -> (WSFDir |         SrcState(I) | OthState(SC) | HnState(SD) | CleanDB),
-    LocalRespInst(REQ, WriteBackFull, SC,  I, SC, CB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | CleanDB),
-    LocalRespInst(REQ, WriteBackFull, SC,  I, SD, CB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | CleanDB),
+    LocalReqInst(WriteBackFull,  I,  I,  I) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull,  I,  I, SC) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull,  I,  I, SD) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull,  I,  I, UC) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull,  I,  I, UD) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull,  I, UC,  I) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull,  I, UD,  I) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull,  I, SC,  I) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull,  I, SC, SC) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+    LocalReqInst(WriteBackFull,  I, SC, SD) -> (Commit | RespOp(CompDBIDResp) |RespChnl(RSP) | Resp(ChiResp.I)),
+
+    // ----------------------------------------------------------- LOCAL RESP ---------------------------------------------------------------//
+    // UD  I  I
+    LocalRespInst(REQ, WriteBackFull, UD,  I,  I, CB, HasData, rn = ChiResp.UD_PD)  -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // UC  I  I
+    LocalRespInst(REQ, WriteBackFull, UC,  I,  I, CB, HasData, rn = ChiResp.UC)     -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, WriteBackFull, UC,  I,  I, CB, HasData, rn = ChiResp.UD_PD)  -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // SC  I   I
+    LocalRespInst(REQ, WriteBackFull, SC,  I,  I, CB, HasData, rn = ChiResp.SC)     -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // SC  I  SC
+    LocalRespInst(REQ, WriteBackFull, SC,  I, SC, CB, HasData, rn = ChiResp.SC)     -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | CleanDB),
+    // SC  I SD
+    LocalRespInst(REQ, WriteBackFull, SC,  I, SD, CB, HasData, rn = ChiResp.SC)     -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | CleanDB),
+    // SC SC  I
+    LocalRespInst(REQ, WriteBackFull, SC, SC,  I, CB, HasData, rn = ChiResp.SC)     -> (WSFDir | WSDir | SrcState(I) | OthState(SC) | HnState(SC) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // SC SC SC
+    LocalRespInst(REQ, WriteBackFull, SC, SC, SC, CB, HasData, rn = ChiResp.SC)     -> (WSFDir |         SrcState(I) | OthState(SC) | HnState(SC) | CleanDB),
+    // SC SC SD
+    LocalRespInst(REQ, WriteBackFull, SC, SC, SD, CB, HasData, rn = ChiResp.SC)     -> (WSFDir |         SrcState(I) | OthState(SC) | HnState(SD) | CleanDB),
+
+
+    //  I XX XX
+    LocalRespInst(REQ, WriteBackFull,  I,  I,  I, CB, HasData, rn = ChiResp.I)      -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I,  I, SC, CB, HasData, rn = ChiResp.I)      -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I,  I, SD, CB, HasData, rn = ChiResp.I)      -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I,  I, UC, CB, HasData, rn = ChiResp.I)      -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I,  I, UD, CB, HasData, rn = ChiResp.I)      -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, UC,  I, CB, HasData, rn = ChiResp.I)      -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, UD,  I, CB, HasData, rn = ChiResp.I)      -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, SC,  I, CB, HasData, rn = ChiResp.I)      -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, SC, SC, CB, HasData, rn = ChiResp.I)      -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, SC, SD, CB, HasData, rn = ChiResp.I)      -> CleanDB,
   )
 
   def writeUniqueFull: Seq[(UInt, UInt)] = Seq(
@@ -584,6 +623,7 @@ object LoaclAtomicDecode {
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(AtomicLoadADD, UD, I,   I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
     LocalReqInst(AtomicLoadADD, UC, I,   I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD, SC, I,   I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
     LocalReqInst(AtomicLoadADD, SC, I,  SC, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
     LocalReqInst(AtomicLoadADD, SC, I,  SD, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
     LocalReqInst(AtomicLoadADD, SC, SC,  I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
@@ -607,6 +647,8 @@ object LoaclAtomicDecode {
     // UC  I  I
     LocalRespInst(REQ, AtomicLoadADD, UC,  I,  I, Snp,  HasData, rn = ChiResp.I_PD)   -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
     LocalRespInst(REQ, AtomicLoadADD, UC,  I,  I, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // SC  I  I
+    LocalRespInst(REQ, AtomicLoadADD, SC,  I,  I, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
     // SC  I SC
     LocalRespInst(REQ, AtomicLoadADD, SC,  I, SC, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
     // SC  I SD

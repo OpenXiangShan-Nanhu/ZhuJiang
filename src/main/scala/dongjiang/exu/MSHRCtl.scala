@@ -157,11 +157,9 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
   mshrAlloc_s0.chiMes.expCompAck        := io.req2Exu.bits.chiMes.expCompAck
   mshrAlloc_s0.chiMes.opcode            := io.req2Exu.bits.chiMes.opcode
   mshrAlloc_s0.chiIndex                 := io.req2Exu.bits.chiIndex
-  when(io.req2Exu.bits.chiMes.isReq & isWriteX(io.req2Exu.bits.chiMes.opcode)) {
+  when(io.req2Exu.bits.chiMes.isReq & isWriteX(io.req2Exu.bits.chiMes.opcode) & !isCBX(io.req2Exu.bits.chiMes.opcode)) {
     mshrAlloc_s0.respMes.slvDBID.valid  := true.B
     mshrAlloc_s0.respMes.slvDBID.bits   := io.req2Exu.bits.pcuIndex.dbID
-    mshrAlloc_s0.respMes.slvResp.valid  := true.B
-    mshrAlloc_s0.respMes.slvResp.bits   := io.req2Exu.bits.chiMes.resp
   }
 
 
@@ -232,8 +230,17 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
               m.respMes.mstDBID.valid   := io.resp2Exu.bits.pcuMes.hasData
               m.respMes.mstDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
             }.elsewhen(io.resp2Exu.bits.pcuMes.isWriResp) {
-              // Nothing to do and State Will be Free
-              assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+              when(io.resp2Exu.bits.from === IncoID.LOCALSLV.U) {
+                m.respMes.slvResp.valid := true.B
+                m.respMes.slvResp.bits  := io.resp2Exu.bits.chiMes.resp
+                m.respMes.slvDBID.valid := true.B; assert(io.resp2Exu.bits.pcuMes.hasData)
+                m.respMes.slvDBID.bits  := io.resp2Exu.bits.pcuIndex.dbID
+              }.elsewhen(io.resp2Exu.bits.from === IncoID.LOCALMST.U) {
+                // Nothing to do and State Will be Free
+                assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+              }.otherwise {
+                assert(false.B)
+              }
             }
             assert(m.mshrMes.waitIntfVec(io.resp2Exu.bits.from), s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             assert(m.isWaitResp, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
