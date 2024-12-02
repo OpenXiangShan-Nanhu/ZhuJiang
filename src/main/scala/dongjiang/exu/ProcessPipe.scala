@@ -79,7 +79,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
 
   // s4 basic signals
   val canGo_s4            = Wire(Bool())
-  val valid_s4_g          = Reg(Bool())
+  val valid_s4_g          = RegInit(false.B)
   // s4 signals get from s3
   val task_s4_g           = Reg(new PipeTaskBundle());    dontTouch(task_s4_g)
   val decode_s4_g         = Reg(new DecodeBundle());      dontTouch(decode_s4_g)
