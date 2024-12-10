@@ -16,6 +16,7 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
 import xijiang.router.base.DeviceIcnBundle
 import xs.utils.sram._
 import dongjiang.utils.FastArb._
+import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
 /*
  * Read Req:
@@ -413,7 +414,16 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 
   assert(Mux(rxReq.valid, rxReq.bits.Opcode === ReadNoSnp | rxReq.bits.Opcode === WriteNoSnpFull | rxReq.bits.Opcode === WriteNoSnpPtl | rxReq.bits.Opcode === Replace |  rxReq.bits.Opcode === FlushDCU, true.B))
 
+  HardwareAssertion(rxReq.bits.Addr(fullAddrBits - 1, fullAddrBits - sTagBits) === 0.U, rxReq.valid, "request bank not match")
+  HardwareAssertion(Mux(rDataQ.io.enq.valid, rDataQ.io.enq.ready, true.B), "rdata queue block")
 
+  private val assertionNode = HardwareAssertion.placePipe(2, true)
+
+  @public
+  val assertionOut = IO(Output(assertionNode.assertion.cloneType))
+  @public
+  val assertionInfo = DomainInfo(assertionNode.desc)
+  assertionOut := assertionNode.assertion
 
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
   // DCURBuf

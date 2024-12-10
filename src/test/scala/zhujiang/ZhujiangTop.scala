@@ -6,6 +6,7 @@ import chisel3.stage.ChiselGeneratorAnnotation
 import circt.stage.{ChiselStage, FirtoolOption}
 import xijiang.tfb.TrafficBoardFileManager
 import xs.utils.FileRegisters
+import xs.utils.debug.HardwareAssertion
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 
 import scala.annotation.tailrec
@@ -22,6 +23,8 @@ import scala.annotation.tailrec
 
 class ZhujiangTopConfig extends Config((site, here, up) => {
   case ZJParametersKey => ZJParameters(
+    cacheSizeInMiB = 2,
+    cpuAsync = false,
     localNodeParams = Seq(
       NodeParam(nodeType = NodeType.S, bankId = 0, splitFlit = true),
       NodeParam(nodeType = NodeType.CC, cpuNum = 2, splitFlit = true, outstanding = 8, attr = "nanhu"),
@@ -84,5 +87,6 @@ object ZhujiangTop extends App {
     ChiselGeneratorAnnotation(() => new Zhujiang()(config))
   ))
   if(config(ZJParametersKey).tfbParams.isDefined) TrafficBoardFileManager.release(config)
+  HardwareAssertion.release("misc")
   FileRegisters.write()
 }
