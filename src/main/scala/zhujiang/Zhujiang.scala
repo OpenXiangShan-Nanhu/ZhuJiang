@@ -14,7 +14,7 @@ import xs.utils.debug.HardwareAssertion
 import xs.utils.sram.SramBroadcastBundle
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.axi.AxiBundle
-import zhujiang.device.async.{DeviceIcnAsyncBundle, IcnAsyncBundle, IcnSideAsyncModule}
+import zhujiang.device.socket.{DeviceIcnAsyncBundle, IcnAsyncBundle, IcnSideAsyncModule}
 import zhujiang.device.ddr.MemoryComplex
 import zhujiang.device.reset.ResetDevice
 import scala.math.pow

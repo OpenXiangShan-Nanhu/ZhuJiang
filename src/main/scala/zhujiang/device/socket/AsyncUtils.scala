@@ -1,4 +1,4 @@
-package zhujiang.device.async
+package zhujiang.device.socket
 
 import chisel3._
 import chisel3.util.{Decoupled, DecoupledIO}
