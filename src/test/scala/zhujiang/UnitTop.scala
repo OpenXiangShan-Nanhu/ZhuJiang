@@ -3,6 +3,7 @@ package zhujiang
 import xijiang.{Node, NodeType}
 import chisel3.stage.ChiselGeneratorAnnotation
 import circt.stage.{ChiselStage, FirtoolOption}
+import xijiang.c2c.C2cLoopBack
 import xijiang.router.base.{EjectBuffer, SingleChannelTap}
 import zhujiang.UnitTop.firtoolOpts
 import zhujiang.chi.SnoopFlit
@@ -92,10 +93,16 @@ object SctTop extends App {
 
 object EbTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
-  val ccNode = Node(nodeType = NodeType.C)
   (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
     ChiselGeneratorAnnotation(() => {
       new EjectBuffer(new SnoopFlit()(config), 5, "SNP")(config)
     })
+  ))
+}
+
+object ClbTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
+    ChiselGeneratorAnnotation(() => new C2cLoopBack()(config))
   ))
 }
