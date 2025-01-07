@@ -5,16 +5,20 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
-import zhujiang.ZJModule
+import zhujiang.{ZJBundle, ZJModule}
+import xs.utils.FastArbiter
 import zhujiang.axi._
 import zhujiang.chi._
 
 case class DmaParams(
-  chiEntrySize: Int = 32,
+  chiEntrySize: Int = 16,
   idBits: Int = 12,
-  axiEntrySize: Int = 16,
+  axiEntrySize: Int = 4,
+  bufferSize: Int = 16,
   nrBeats: Int = 2,
-  queueSize: Int = 2
+  axiSpiltSize: Int = 4,
+  axiMergeSize: Int = 8,
+  shiftAddrBits: Int = 6,
 )
 
 class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
@@ -24,51 +28,75 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   val axi = IO(Flipped(new AxiBundle(axiParams)))
   val icn = IO(new DeviceIcnBundle(node))
 
-  dontTouch(icn)
-  dontTouch(axi)
-  icn.tx := DontCare
-  axi := DontCare
+  axi.aw := DontCare
+  axi.w := DontCare
+  axi.b := DontCare
+  icn := DontCare
 
-  //SubModule
-  private val readHandle  = Module(new ReadHandle)
-  private val writeHandle = Module(new WriteHandle)
+  // //SubModule
+  private val axiSpilt    = Module(new AxiSpilt)
+  private val chiRdE      = Module(new ChiREntrys)
+  private val rdDB        = Module(new DataBufferForRead(axiParams, dmaParams.bufferSize, dmaParams.chiEntrySize))
 
-  private val readReqQ    = Module(new Queue(new ReqFlit, entries = dmaParams.queueSize, flow = true, pipe = true))
-  private val writeReqQ   = Module(new Queue(new ReqFlit, entries = dmaParams.queueSize, flow = true, pipe = true))
+  axiSpilt.rxAxi := DontCare
+  axiSpilt.txAxi := DontCare
+
+  axiSpilt.txAxi.ar <> chiRdE.io.axiAr
+  axiSpilt.txAxi.r  <> rdDB.io.axiR
+
+  chiRdE.io.reqDB  <> rdDB.io.alloc
+  chiRdE.io.respDB <> rdDB.io.allocRsp
+  chiRdE.io.chiReq <> icn.tx.req.get
+  chiRdE.io.chiRsp <> icn.rx.resp.get
+  chiRdE.io.chiDat <> icn.rx.data.get
+  chiRdE.io.wrDB   <> rdDB.io.wrDB
+  chiRdE.io.rdDB   <> rdDB.io.rdDB
+
+  axi.ar <> axiSpilt.rxAxi.ar
+  axi.r  <> axiSpilt.rxAxi.r
+
+  // private val axiWrE = Module(new AXIWEntrys)
+  // private val chiWrE = Module(new ChiWEntrys)
+  // private val wrDB   = Module(new DataBufferForWrite(dmaParams.bufferSize, dmaParams.chiEntrySize))
 
 
-  //Connect logic
-  readReqQ.io.enq.bits           := readHandle.io.chi_txreq.bits
-  readReqQ.io.enq.valid          := readHandle.io.chi_txreq.valid
-  readHandle.io.chi_txreq.ready  := readReqQ.io.enq.ready
+  // def isWrRcvOpcode(op : UInt) : Bool = {
+  //   val canRcv   = WireInit(false.B)
+  //    canRcv := op === RspOpcode.Comp | op === RspOpcode.DBIDResp | op === RspOpcode.CompDBIDResp
+  //    canRcv
+  // }
 
-  writeReqQ.io.enq.bits          := writeHandle.io.chi_txreq.bits
-  writeReqQ.io.enq.valid         := writeHandle.io.chi_txreq.valid
-  writeHandle.io.chi_txreq.ready := writeReqQ.io.enq.ready
+  // // //Connect logic
+  // axi.ar <> axiRdE.io.ar
+  // axi.aw <> axiWrE.io.aw
+  // axi.b  <> chiWrE.io.uB
+  // axi.r  <> rdDB.io.axiR
+  // axi.w  <> chiWrE.io.uW
 
-  writeReqQ.io.deq.ready         := icn.tx.req.get.ready
-  readReqQ.io.deq.ready          := icn.tx.req.get.ready & !writeReqQ.io.deq.fire
+  // FastArbiter(VecInit(Seq(chiRdE.io.chiReq, chiWrE.io.dTxReq)), icn.tx.req.get)
+
+  // axiRdE.io.alloc <> chiRdE.io.alloc
+  // axiWrE.io.alloc <> chiWrE.io.alloc
+
+  // chiWrE.io.reqDB  <> wrDB.io.alloc
+  // chiWrE.io.respDB <> wrDB.io.allocRsp
+  // chiWrE.io.rdDB   <> wrDB.io.rdDB
+  // chiWrE.io.wrDB   <> wrDB.io.wrDB
+
+  // chiWrE.io.dTxRsp <> icn.tx.resp.get
+  // wrDB.io.dData    <> icn.tx.data.get
+
+  // icn.rx.resp.get.ready     := chiWrE.io.dRxRsp.ready & chiRdE.io.chiRsp.ready
   
+  // chiWrE.io.dRxRsp.valid    := icn.rx.resp.get.valid & isWrRcvOpcode(icn.rx.resp.get.bits.asTypeOf(new RespFlit).Opcode)
+  // chiRdE.io.chiRsp.valid    := icn.rx.resp.get.valid & icn.rx.resp.get.bits.asTypeOf(new RespFlit).Opcode === RspOpcode.ReadReceipt
+  // chiWrE.io.dRxRsp.bits     := icn.rx.resp.get.bits
+  // chiRdE.io.chiRsp.bits     := icn.rx.resp.get.bits
   
-  axi.ar <> readHandle.io.axi_ar
-  axi.aw <> writeHandle.io.axi_aw
-  axi.r  <> readHandle.io.axi_r
-  axi.w  <> writeHandle.io.axi_w
-  axi.b  <> writeHandle.io.axi_b
-
-  icn.rx.data.get                <> readHandle.io.chi_rxdat
-  writeHandle.io.chi_rxrsp.valid <> icn.rx.resp.get.valid
-  writeHandle.io.chi_rxrsp.bits  <> icn.rx.resp.get.bits
-
-  readHandle.io.chi_rxrsp.valid  <> icn.rx.resp.get.valid
-  readHandle.io.chi_rxrsp.bits   <> icn.rx.resp.get.bits
-
-  writeHandle.io.chi_txrsp.ready := icn.tx.resp.get.ready
-
-  icn.rx.resp.get.ready := writeHandle.io.chi_rxrsp.ready && readHandle.io.chi_rxrsp.ready
-  icn.tx.data.get       <> writeHandle.io.chi_txdat
-  icn.tx.req.get.valid  := writeReqQ.io.deq.valid | readReqQ.io.deq.valid
-  icn.tx.req.get.bits   := Mux(writeReqQ.io.deq.valid, writeReqQ.io.deq.bits, Mux(readReqQ.io.deq.valid, readReqQ.io.deq.bits, 0.U.asTypeOf(readReqQ.io.deq.bits)))
-  icn.tx.resp.get.valid := writeHandle.io.chi_txrsp.valid
-  icn.tx.resp.get.bits  := writeHandle.io.chi_txrsp.bits
+  // chiRdE.io.reqDB  <> rdDB.io.alloc
+  // chiRdE.io.chiDat <> icn.rx.data.get
+  // chiRdE.io.wrDB   <> rdDB.io.wrDB
+  // chiRdE.io.rdDB   <> rdDB.io.rdDB
+  // chiRdE.io.respDB <> rdDB.io.allocRsp
+  
 }
