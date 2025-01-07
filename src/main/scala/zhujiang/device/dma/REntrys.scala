@@ -133,6 +133,6 @@ class ChiREntrys(implicit p: Parameters) extends ZJModule with HasCircularQueueP
  * Assertion
  */
   when(io.chiReq.fire && io.chiReq.bits.Addr(raw - 1)){
-    assert(io.chiReq.bits.Size === 5.U, "AxiSpilt error, MMIO req conversion error")
+    assert(io.chiReq.bits.Size <= 3.U, "AxiSpilt error, MMIO req conversion error")
   }
 }
