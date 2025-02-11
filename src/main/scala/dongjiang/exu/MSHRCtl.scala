@@ -146,6 +146,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Get Block Message
    */
+  // TODO: merge compare logic
   val canReceiveReq   = !nodeReqMatchVec.reduce(_ | _) & !lockMatchVec.reduce(_ | _) & PopCount(nodeReqInvVec) > 0.U
 
 
@@ -171,7 +172,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
   reqAck_s0_q.io.enq.bits.to      := io.req2Exu.bits.from
   reqAck_s0_q.io.enq.bits.entryID := io.req2Exu.bits.pcuIndex.entryID
   io.reqAck2Intf                  <> reqAck_s0_q.io.deq
-  io.req2Exu.ready                  := reqAck_s0_q.io.enq.ready
+  io.req2Exu.ready                := reqAck_s0_q.io.enq.ready
 
 
   assert(Mux(io.resp2Exu.valid, mshrTableReg(io.resp2Exu.bits.pcuIndex.mshrSet)(io.resp2Exu.bits.pcuIndex.mshrWay).isWaitResp, true.B))
@@ -287,7 +288,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
           // Free ---> BeSend
           when(m.isFree & ns(BeSend)) {
             val lockSrcVec      = mVec.map { case a => a.mshrMes.selfLock & a.minDirSet(i.U) === mshrAlloc_s0.minDirSet(i.U) }; assert(PopCount(lockSrcVec) <= 1.U, s"MSHR[${i}][${j}]")
-            m.mshrMes.othLock   := lockSrcVec.reduce(_ | _)
+            m.mshrMes.othLock   := lockSrcVec.reduce(_ | _) // TODO: del it, add assert
           // BeSend/WaitResp ---> BeSend
           }.elsewhen((m.isBeSend | m.isWaitResp) & ns(BeSend)) {
             val lockSrcVec      = mVec.map { case a => a.mshrMes.selfLock & a.minDirSet(i.U) === m.minDirSet(i.U) }; assert(PopCount(lockSrcVec) <= 1.U, s"MSHR[${i}][${j}]")
@@ -371,6 +372,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Get Can Send Set From Dir Read Ready
    */
+  // TODO: create reg vec use to replace sram ready
   // TODO: if dont need to read Dir, it should not be ctrl by mshr selfLock and othLock
   mshrTableReg.zip(reqWillSendVecVec).zipWithIndex.foreach  { case((m, v), i) => m.zip(v).foreach { case(m, v) => v := m.reqBeSend  & io.dirRReadyVec(m.dirBank(i.U)) } }
   mshrTableReg.zip(respWillSendVecVec).zipWithIndex.foreach { case((m, v), i) => m.zip(v).foreach { case(m, v) => v := m.respBeSend & io.dirRReadyVec(m.dirBank(i.U)) } }
@@ -441,8 +443,9 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
 
 
   // ---------------------------------------------------------------------------------------------------------------------- //
-  // ---------------------------------- S0: Read Dir and send task to MainPipe -------------------------------------------- //
+  // ---------------------------------- S1: Read Dir and send task to MainPipe -------------------------------------------- //
   // ---------------------------------------------------------------------------------------------------------------------- //
+  // TODO: Del it
   /*
    * Set Task S1 Value
    */

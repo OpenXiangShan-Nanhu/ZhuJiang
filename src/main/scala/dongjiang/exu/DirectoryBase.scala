@@ -300,6 +300,7 @@ class DirectoryBase(
    */
   io.dirResp.valid          := valid_s3_g
   io.dirResp.bits.hit       := hit
+  // TODO: block same set
   // [Resp Mes]                         [Hit Way Mes]                      [Invalid Way Mes]                        [Unuse Way Mes]                     [Replace Way Mes]
   io.dirResp.bits.wayOH     := Mux(hit, hitWayVec.asUInt,   Mux(hasInvWay, selInvWayVec.asUInt, Mux(replWayIsUsing, UIntToOH(selUnuseWay),              UIntToOH(replWay))))
   io.dirResp.bits.useAddr   := Mux(hit, addr_s3_g,          Mux(hasInvWay, 0.U,                 Mux(replWayIsUsing, unUseWayAddr,                       replWayAddr)))

@@ -411,7 +411,6 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 
 
 // ------------------------------------------------------------ Assertion ----------------------------------------------- //
-
   HardwareAssertion.withEn(rxReq.bits.Addr(fullAddrBits - 1, fullAddrBits - sTagBits) === 0.U, rxReq.valid, cf"Illegal DCU address")
 
   HardwareAssertion.withEn(rDataQ.io.enq.ready, rDataQ.io.enq.valid, cf"rdata queue block [${rDataQ.io.enq.bits.beatOH}]", rDataQ.io.enq.bits.beatOH)

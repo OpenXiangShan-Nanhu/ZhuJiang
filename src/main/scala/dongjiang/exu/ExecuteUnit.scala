@@ -56,7 +56,7 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   reqPipe.io.dcuID          := io.dcuID
 
 
-  io.req2Intf               <> fastArb(Seq(respPipe.io.req2Intf, reqPipe.io.req2Intf))
+  io.req2Intf               <> fastArb(Seq(respPipe.io.req2Intf, reqPipe.io.req2Intf)) // TODO: RR -> pri
   io.resp2Intf              <> fastArb(Seq(respPipe.io.resp2Intf, reqPipe.io.resp2Intf))
   io.dbRCReq                <> fastArb(Seq(respPipe.io.dbRCReq, reqPipe.io.dbRCReq))
 

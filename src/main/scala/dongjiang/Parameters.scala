@@ -58,6 +58,7 @@ case class DJParam(
                   // MSHR
                   nrMSHRSets:         Int = 4,
                   // ------------------------ Directory Mes Per Bank ------------------ //
+                  // TODO: dirSetup and dirLatency must more than 2
                   // self dir & ds mes, dont care when hasLLC is false
                   selfWays:           Int = 16,
                   selfSets:           Int = 4096, // The number of Self Directory sets Per EXU
