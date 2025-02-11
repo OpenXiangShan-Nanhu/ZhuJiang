@@ -3,7 +3,7 @@ package dongjiang.utils
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
-
+// TODO: move to xs-utils
 class DecoupledQueue[T <: Data](gen:T) extends Module {
   val io = IO(new Bundle {
     val enq = Flipped(Decoupled(gen))
@@ -21,6 +21,7 @@ class DecoupledQueue[T <: Data](gen:T) extends Module {
     is(0.U) { enqReadyReg := true.B }
   }
   assert(!(enqReadyReg ^ q.io.enq.ready))
+  assert(enqReadyReg === q.io.enq.ready)
 
   // Solving deq valid timing problems
   val deqValidReg = RegInit(false.B)

@@ -22,7 +22,7 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
  * Req Retry:             [Free]  -----> [Req2Exu] -----> [WaitExuAck] ---retry---> [Req2Exu]
  * Req Receive:           [Free]  -----> [Req2Exu] -----> [WaitExuAck] --receive--> ([waitSendRRec]) -----> [Free]
  *                                           ^
- *
+ * // TODO:
  * Amotic Retry:          [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] ---retry---> [Req2Exu]
  * Atomic:                [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] --receive--> [Free]
  *                                           ^
@@ -30,10 +30,9 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
  * Write Retry:           [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] ---retry---> [Req2Exu]
  * Write:                 [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] --receive--> [WaitCompAck] -----> [Free]
  *                                                                                                                       ^
- *
+ * // TODO:
  * Read / Dataless / Atomic Resp:  [Free]  -----> [Resp2Node] -----> ([WaitCompAck]) -----> [Free]
  * CopyBack Resp:                  [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Resp2Node] -----> [Free]
- *
  *
  * Snoop Need Data:       [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
  * Snoop No Need Data:    [Free]                   ----->                   [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
@@ -65,12 +64,6 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
  * Req / Write / Atomic Nest By Snp:
  * [------] <- Req0x0 | [Req0x0]                 | [Req0x0] need to wait snoop done
  * [------]           | [------] <-Snp0x0        | [Snp0x0]
- * [------]           | [------]                 | [------]
- * [------]           | [------]                 | [------]
- *
- * Resp Nest By Snp:
- * [------] <- Snp0x0 | [Snp0x0]                 | [Snp0x0] need to wait Resp Get CompAck
- * [------]           | [------] <-Resp0x0       | [Rsp0x0]
  * [------]           | [------]                 | [------]
  * [------]           | [------]                 | [------]
  *
@@ -133,7 +126,7 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
 
 class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) extends IntfBaseIO(param, node) with HasPerfLogging  {
 // --------------------- Reg and Wire declaration ------------------------//
-  val entrys            = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U.asTypeOf(new RSEntry(param)) }))
+  val entrys            = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U.asTypeOf(new RSEntry(param)) })) // TODO: dont use RegInit
   // ENTRY Receive Task ID
   val entryFreeID       = Wire(UInt(param.entryIdBits.W))
   // ENTRY Send Req To EXU
@@ -326,6 +319,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ---------------------------------------------------  State Transfer -------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
+  // TODO: to Module
   entrys.map(_.state).zipWithIndex.foreach {
     case(state, i) =>
       switch(state) {
@@ -474,12 +468,13 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
 
   entrys.map(_.entryMes.nID).zipWithIndex.foreach {
     case(nID, i) =>
+      // TODO: assert nid only +1 or -1 or 0
       /*
        * Set New NID
        */
       when(entryFreeID_g === i.U) {
         // Resp always takes priority
-        when(setRespNID_g)      { nID := 0.U }
+        when(setRespNID_g)      { nID := 0.U } // TODO: need set NID
         // Snp
         .elsewhen(setSnpNID_g)  { nID := snpMatchNum_g - compAckMatchReq_g ;                                              assert(snpMatchNum_g >= compAckMatchReq_g.asUInt, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
         // Req
@@ -544,6 +539,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    * Set Ready Value
    */
   rxReq.ready           := entryFreeNum >= param.nrEvictEntry.U & !io.req2Intf.valid & !io.resp2Intf.valid
+  // TODO: use RR
   io.req2Intf.ready     := entryFreeNum > 0.U & !io.resp2Intf.valid
   io.resp2Intf.ready    := entryFreeNum > 0.U
   io.reqAck2Intf.ready  := true.B

@@ -172,7 +172,7 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   // rx rsp
   val rxResp                              = Wire(new DecoupledIO(new RespFlit()))
   rxResp                                  <> fastDecoupledQueue(io.toLocal.rx.resp.get) // Adding queues for timing considerations
-  localSnMaster.io.chi.rx.resp.get.valid  := rxResp.valid & fromSnNode(rxResp.bits.SrcID)
+  localSnMaster.io.chi.rx.resp.get.valid  := rxResp.valid & fromSnNode(rxResp.bits.SrcID) // TODO: use TxnID
   localRnSlave.io.chi.rx.resp.get.valid   := rxResp.valid & fromCcNode(rxResp.bits.SrcID)
   localSnMaster.io.chi.rx.resp.get.bits   := rxResp.bits
   localRnSlave.io.chi.rx.resp.get.bits    := rxResp.bits
@@ -185,7 +185,7 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   // rx data
   val rxData                              = Wire(new DecoupledIO(new DataFlit()))
   rxData                                  <> fastDecoupledQueue(io.toLocal.rx.data.get) // Adding queues for timing considerations
-  localSnMaster.io.chi.rx.data.get.valid  := rxData.valid & fromSnNode(rxData.bits.SrcID)
+  localSnMaster.io.chi.rx.data.get.valid  := rxData.valid & fromSnNode(rxData.bits.SrcID) // TODO: use TxnID
   localRnSlave.io.chi.rx.data.get.valid   := rxData.valid & fromRnNode(rxData.bits.SrcID)
   localSnMaster.io.chi.rx.data.get.bits   := rxData.bits
   localRnSlave.io.chi.rx.data.get.bits    := rxData.bits
@@ -214,6 +214,7 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   io.toLocal.tx.resp.get                  <> fastDecoupledQueue(localRnSlave.io.chi.tx.resp.get) // Adding queues for timing considerations
 
   // tx data
+  // TODO: use RR
   val txData                              = WireInit(0.U.asTypeOf(Decoupled(new DataFlit)))
   txData.valid                            := localSnMaster.io.chi.tx.data.get.valid | localRnSlave.io.chi.tx.data.get.valid
   txData.bits                             := Mux(localSnMaster.io.chi.tx.data.get.valid, localSnMaster.io.chi.tx.data.get.bits, localRnSlave.io.chi.tx.data.get.bits)
