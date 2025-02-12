@@ -116,14 +116,16 @@ class SpiltAwValue(implicit p: Parameters) extends ZJBundle {
 class ChiDBPtr(chiEntrySize: Int) extends Bundle {
   val set    = UInt(log2Ceil(chiEntrySize).W)
   val poi    = UInt(1.W)
+  val flag   = Bool()
   def PtrRdAdd[T <: CHIREntry](c: T): ChiDBPtr = {
     this.poi := Mux(c.double & this.poi === 0.U, 1.U, 0.U)
     this.set := Mux(!c.double | c.double & this.poi === 1.U, this.set + 1.U, this.set)
     this
   }
   def PtrWrAdd[T <: CHIWEntry](c: T): ChiDBPtr = {
-    this.poi := Mux(c.double & this.poi === 0.U, 1.U, 0.U)
-    this.set := Mux(!c.double | c.double & this.poi === 1.U, this.set + 1.U, this.set)
+    this.poi  := Mux(c.double & this.poi === 0.U, 1.U, 0.U)
+    this.flag := Mux((this.set + 1.U)(log2Ceil(chiEntrySize) - 1, 0) === 0.U & this.poi === 0.U, !this.flag, this.flag)
+    this.set  := Mux(!c.double | c.double & this.poi === 1.U, this.set + 1.U, this.set)
     this
   }
 }

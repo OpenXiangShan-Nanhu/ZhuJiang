@@ -68,7 +68,7 @@ class AxiSpilt(implicit p : Parameters) extends ZJModule with HasCircularQueuePt
   private val wDataPtr      = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
 
   private val txAwBdl     = WireInit(0.U.asTypeOf(new AWFlit(axiParams)))
-  private val wrDataReg   = Reg(UInt(dw.W))
+  private val wrDataReg   = RegInit(0.U(dw.W))
   private val wrMaskReg   = RegInit(0.U(bew.W))
   private val maskData    = WireInit(VecInit.fill(dw/8){0.U(8.W)})
 

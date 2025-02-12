@@ -52,7 +52,7 @@ class ChiWEntrys(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   private val sendReqPtr = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val reqDBPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val sendDatPtr = RegInit(0.U.asTypeOf(new ChiDBPtr(dmaParams.chiEntrySize)))
-  private val sendBPtr   = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
+  private val sendBPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
 
   when(io.axiAw.fire){
     dEntrys(dHeadPtr.value).AWMesInit(io.axiAw.bits)
@@ -109,9 +109,9 @@ class ChiWEntrys(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   rdDBBdl.tgtId  := dEntrys(sendDatPtr.set).tgtid
   rdDBBdl.txnID  := dEntrys(sendDatPtr.set).dbid
 
-  sendBPtr   := Mux(sendBPtr =/= uWPtr.set & io.axiB.fire, sendBPtr + 1.U, sendBPtr)
+  sendBPtr   := Mux(io.axiB.fire, sendBPtr + 1.U, sendBPtr)
   axiBBdl    := 0.U.asTypeOf(axiBBdl)
-  axiBBdl.id := dEntrys(sendBPtr).awId
+  axiBBdl.id := dEntrys(sendBPtr.value).awId
 
 /* 
  * IO Interface Connection
@@ -126,8 +126,8 @@ class ChiWEntrys(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   io.chiTxRsp.bits   := chiRspBdl
   io.chiRxRsp.ready  := true.B
   io.wrDB.valid      := io.axiW.valid
-  io.rdDB.valid      := sendDatPtr.set =/= uWPtr.set & dEntrys(sendDatPtr.set).haveRcvDBID
+  io.rdDB.valid      := !(sendDatPtr.set === uWPtr.set & sendDatPtr.flag === uWPtr.flag) & dEntrys(sendDatPtr.set).haveRcvDBID
   io.rdDB.bits       := rdDBBdl
-  io.axiB.valid      := sendBPtr =/= uWPtr.set
+  io.axiB.valid      := !(sendBPtr.value === uWPtr.set & sendBPtr.flag === uWPtr.flag)
   io.axiB.bits       := axiBBdl
 }
