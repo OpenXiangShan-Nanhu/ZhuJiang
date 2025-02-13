@@ -40,6 +40,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   })
 
 // --------------------- Modules declaration ------------------------//
+  // TODO
   val taskQ   = Module(new Queue(new PipeTaskBundle(), entries = djparam.nrPipeTaskQueue, pipe = true, flow = true))
   val dirResQ = Module(new Queue(new DirRespBundle(), entries = djparam.nrPipeTaskQueue + 1, pipe = true, flow = true)) // Add one for mp_s1 read Dir before send task to mp_2
 
@@ -164,6 +165,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
 // ------------------------------------- S3_Receive: Receive task and dirRes from s2 -------------------------------------//
 // ---------------------------------------------------------------------------------------------------------------------- //
   // TODO: consider readDir
+  // TODO: use Queue
   /*
    * Recieve task_s2
    */
@@ -244,6 +246,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   if(djparam.openDCT) table = table ++ LocalReadWithDCTDecode.table
   else table = table ++ LocalReadDecode.table
   // require
+  // TODO
   table.zipWithIndex.foreach { case(t, i) =>
     val width0 = t._1.getWidth
     val width1 = inst_s3.asUInt.getWidth

@@ -60,7 +60,7 @@ case class DJParam(
                   // ------------------------ Directory Mes Per Bank ------------------ //
                   // TODO: dirSetup and dirLatency must more than 2
                   // self dir & ds mes, dont care when hasLLC is false
-                  selfWays:           Int = 16,
+                  selfWays:           Int = 16, // TODO: require same with sf and mshr ways
                   selfSets:           Int = 4096, // The number of Self Directory sets Per EXU
                   selfReplacementPolicy: String = "plru",
                   // snoop filter dir mes
