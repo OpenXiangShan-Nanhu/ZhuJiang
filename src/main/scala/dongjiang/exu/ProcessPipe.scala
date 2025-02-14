@@ -314,6 +314,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
 // ---------------------------------------------------------------------------------------------------------------------- //
   // Send Retry to MSHR When need write Dir but cant do it
   todo_s3             := decode_s3
+  // TODO: del or assert retry
   todo_s3_retry       := todo_s3.wSDir & dirRes_s3_g.bits.s.replRetry | todo_s3.wSFDir & dirRes_s3_g.bits.sf.replRetry; assert(Mux(valid_s3, !todo_s3_retry, true.B), "TODO")
   todo_s3_replace     := todo_s3.wSDir & !hnHit_s3 & dirRes_s3_g.bits.s.metaVec(0).isDirty & !todo_s3_retry // Only need to replace when it is Dirty
   todo_s3_sfEvict     := todo_s3.wSFDir & !srcHit_s3 & !othHit_s3 & dirRes_s3_g.bits.sf.metaVec.map(!_.isInvalid).reduce(_ | _) & !todo_s3_retry
