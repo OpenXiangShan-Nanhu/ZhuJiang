@@ -10,6 +10,7 @@ import freechips.rocketchip.util.ReplacementPolicy
 import xs.utils.ParallelPriorityMux
 import xs.utils.sram.SRAMTemplate
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
 class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
 // --------------------- IO declaration ------------------------//
@@ -92,9 +93,9 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       // sf
       sf.io.dirRead.valid := rHit0 | rHit1
       sf.io.dirRead.bits  := Mux(rHit0, io.dirRead(0).bits, io.dirRead(1).bits)
-      assert(!(rHit0 & rHit1))
-      assert(Mux(s.io.dirRead.valid,  s.io.dirRead.ready,  true.B))
-      assert(Mux(sf.io.dirRead.valid, sf.io.dirRead.ready, true.B))
+      HardwareAssertion(!(rHit0 & rHit1))
+      HardwareAssertion(Mux(s.io.dirRead.valid,  s.io.dirRead.ready,  true.B))
+      HardwareAssertion(Mux(sf.io.dirRead.valid, sf.io.dirRead.ready, true.B))
   }
 
 
@@ -112,9 +113,9 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       // assert
       val wSFire0 = io.dirWrite(0).s.fire & io.dirWrite(0).s.bits.dirBank === i.U
       val wSFire1 = io.dirWrite(1).s.fire & io.dirWrite(1).s.bits.dirBank === i.U
-      assert(!(wSFire0 & wSFire1))
+      HardwareAssertion(!(wSFire0 & wSFire1))
   }
-  io.dirWrite.map(_.s.ready).zip(selfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); assert(PopCount(b) <= 1.U) }
+  io.dirWrite.map(_.s.ready).zip(selfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); HardwareAssertion(PopCount(b) <= 1.U) }
 
 
 
@@ -132,9 +133,9 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       // assert
       val wSfFire0 = io.dirWrite(0).sf.fire & io.dirWrite(0).sf.bits.dirBank === i.U
       val wSfFire1 = io.dirWrite(1).sf.fire & io.dirWrite(1).sf.bits.dirBank === i.U
-      assert(!(wSfFire0 & wSfFire1))
+      HardwareAssertion(!(wSfFire0 & wSfFire1))
   }
-  io.dirWrite.map(_.sf.ready).zip(sfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); assert(PopCount(b) <= 1.U) }
+  io.dirWrite.map(_.sf.ready).zip(sfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); HardwareAssertion(PopCount(b) <= 1.U) }
 
 
 
@@ -152,8 +153,8 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
   val rMSHRVal1 = selfs.map(_.io.readMshr).map { case s => s.valid & s.bits.pipeID === 1.U }
   val rMSHRId1  = PriorityEncoder(rMSHRVal1)
 
-  assert(PopCount(rMSHRVal0) <= 1.U)
-  assert(PopCount(rMSHRVal1) <= 1.U)
+  HardwareAssertion(PopCount(rMSHRVal0) <= 1.U)
+  HardwareAssertion(PopCount(rMSHRVal1) <= 1.U)
 
   io.readMshr(0).valid  := rMSHRVal0.reduce(_ | _)
   io.readMshr(0).bits   := readMSHRVec(rMSHRId0)
@@ -173,7 +174,7 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       s.io.mshrResp := Mux(hitVec(0), io.mshrResp(0).bits, io.mshrResp(1).bits)
       sf.io.mshrResp := Mux(hitVec(0), io.mshrResp(0).bits, io.mshrResp(1).bits)
       // Assert
-      assert(PopCount(hitVec) <= 1.U)
+      HardwareAssertion(PopCount(hitVec) <= 1.U)
   }
 
 
@@ -201,20 +202,22 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
 
 
 // ------------------------------------------------------- Assertion --------------------------------------------------- //
-  assert(PopCount(selfs.map(_.io.dirRead.valid)) <= 2.U, "selfDirs: no more than two read request can be entered at the same time")
-  assert(PopCount(selfs.map(_.io.dirWrite.valid)) <= 2.U, "selfDirs: no more than two write request can be entered at the same time")
-  assert(PopCount(sfs.map(_.io.dirRead.valid)) <= 2.U, "sfDirs: no more than two read request can be entered at the same time")
-  assert(PopCount(sfs.map(_.io.dirWrite.valid)) <= 2.U, "sfDirs: no more than two write request can be entered at the same time")
-  assert(!selfs.map(_.io.dirRead.fire).zip(sfs.map(_.io.dirRead.fire)).map { case(s, sf) => s ^ sf }.reduce(_ | _), "selfDirs and sfDirs dirRead must be fire at the same time")
+  HardwareAssertion(PopCount(selfs.map(_.io.dirRead.valid)) <= 2.U, "selfDirs: no more than two read request can be entered at the same time")
+  HardwareAssertion(PopCount(selfs.map(_.io.dirWrite.valid)) <= 2.U, "selfDirs: no more than two write request can be entered at the same time")
+  HardwareAssertion(PopCount(sfs.map(_.io.dirRead.valid)) <= 2.U, "sfDirs: no more than two read request can be entered at the same time")
+  HardwareAssertion(PopCount(sfs.map(_.io.dirWrite.valid)) <= 2.U, "sfDirs: no more than two write request can be entered at the same time")
+  HardwareAssertion(!selfs.map(_.io.dirRead.fire).zip(sfs.map(_.io.dirRead.fire)).map { case(s, sf) => s ^ sf }.reduce(_ | _), "selfDirs and sfDirs dirRead must be fire at the same time")
 
-  assert(PopCount(selfs.map(_.io.dirResp.valid)) <= 2.U, "selfDirs dirResp: no more than two resp can be output at a time")
-  assert(PopCount(sfs.map(_.io.dirResp.valid)) <= 2.U, "sfDirs dirResp: no more than two resp can be output at a time")
+  HardwareAssertion(PopCount(selfs.map(_.io.dirResp.valid)) <= 2.U, "selfDirs dirResp: no more than two resp can be output at a time")
+  HardwareAssertion(PopCount(sfs.map(_.io.dirResp.valid)) <= 2.U, "sfDirs dirResp: no more than two resp can be output at a time")
 
   val sReadFireVec  = selfs.map(_.io.dirRead.fire)
   val sfReadFireVec = sfs.map(_.io.dirRead.fire)
-  assert(sReadFireVec.zip(sfReadFireVec).map { case (s, sf) => s === sf }.reduce(_ & _))
+  HardwareAssertion(sReadFireVec.zip(sfReadFireVec).map { case (s, sf) => s === sf }.reduce(_ & _))
 
   val sResValVec    = selfs.map(_.io.dirResp.valid)
   val sfResValVec   = sfs.map(_.io.dirResp.valid)
-  assert(sResValVec.zip(sfResValVec).map { case (s, sf) => s === sf }.reduce(_ & _))
+  HardwareAssertion(sResValVec.zip(sfResValVec).map { case (s, sf) => s === sf }.reduce(_ & _))
+
+  HardwareAssertion.placePipe(2)
 }

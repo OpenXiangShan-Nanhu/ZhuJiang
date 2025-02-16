@@ -15,6 +15,7 @@ import dongjiang.utils.StepRREncoder
 import xijiang.Node
 import xs.utils._
 import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
+import xs.utils.debug.{DomainInfo, HardwareAssertion, awhen}
 
 /*
  * ************************************************************** State transfer ***********************************************************************************
@@ -200,6 +201,10 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
     dontTouch(entrys_dbg_addr)
   }
 
+val hwaFlags = Array.fill(33)(Wire(Bool()))
+for (i <- 0 until 33) {
+  hwaFlags(i) := true.B
+}
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ----------------------------------------------------  Update Entry Value --------------------------------------------- //
@@ -212,8 +217,10 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       // Receive New Req
       when((rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire) & entryFreeID === i.U) {
         chiIdx          := entrySave.chiIndex
-        assert(entrys(i).state === RSState.Free, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        // HardwareAssertion(entrys(i).state === RSState.Free, cf"RNSLV ENTRY[0x${i}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        hwaFlags(0) := entrys(i).state === RSState.Free
       }
+      HardwareAssertion(hwaFlags(0), cf"RNSLV ENTRY[0x${i}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
   }
 
   /*
@@ -236,13 +243,24 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         chiMes.fwdState := Mux(isFwdResp, fwdState, chiMes.fwdState)
         // assert
         when(hitRespDat) {
-          assert(rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === SnpRespDataFwded | rxDat.bits.Opcode === CopyBackWriteData | rxDat.bits.Opcode === NonCopyBackWriteData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-          assert(Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-        }.elsewhen(hitRespRsp) {
-          when(rxRsp.bits.Opcode === CompAck) { assert(entrys(i).state === RSState.WaitCompAck | entrys(i).entryMes.snpFwdWaitAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }
-          .otherwise { assert(entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }
+          // HardwareAssertion(rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === SnpRespDataFwded | rxDat.bits.Opcode === CopyBackWriteData | rxDat.bits.Opcode === NonCopyBackWriteData, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          // HardwareAssertion(Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          hwaFlags(1) := rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === SnpRespDataFwded | rxDat.bits.Opcode === CopyBackWriteData | rxDat.bits.Opcode === NonCopyBackWriteData
+          hwaFlags(2) := Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData)
+        }
+        when(!hitRespDat & hitRespRsp & (rxRsp.bits.Opcode === CompAck)) { 
+          // HardwareAssertion(entrys(i).state === RSState.WaitCompAck | entrys(i).entryMes.snpFwdWaitAck, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) 
+          hwaFlags(3) := entrys(i).state === RSState.WaitCompAck | entrys(i).entryMes.snpFwdWaitAck
+        }
+        when(!hitRespDat & hitRespRsp & (!(rxRsp.bits.Opcode === CompAck))) { 
+          // HardwareAssertion(entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) 
+          hwaFlags(4) := entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp
         }
       }
+      HardwareAssertion(hwaFlags(1), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(2), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(3))
+      HardwareAssertion(hwaFlags(4))
   }
 
   /*
@@ -256,10 +274,11 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       // Receive DBID From DataBuffer
       }.elsewhen(io.dbSigs.dbidResp.fire & io.dbSigs.dbidResp.bits.receive & entryRecDBID === i.U) {
         pcuIdx.dbID     := io.dbSigs.dbidResp.bits.dbID
-        assert(entrys(i).state === RSState.WaitDBID, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        // HardwareAssertion(entrys(i).state === RSState.WaitDBID, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        hwaFlags(5) := entrys(i).state === RSState.WaitDBID
       }
+      HardwareAssertion(hwaFlags(5), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
   }
-
 
   /*
    * Update entryMes
@@ -272,54 +291,77 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       // ------------------------------------------- Update Base Values -------------------------------------------------- //
       // Receive New Req
       when((rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire) & entryFreeID === i.U) {
-        entryMes                := entrySave.entryMes
+        entryMes := entrySave.entryMes
       // Modify getBeatNum / snpFwdSVal / snpFwdWaitAck
       }.elsewhen(hitRespDat | hitRespRsp | hitFDB) {
         // getBeatNum
-        entryMes.getBeatNum     := entryMes.getBeatNum + hitRespDat.asUInt + hitFDB.asUInt
+        entryMes.getBeatNum := entryMes.getBeatNum + hitRespDat.asUInt + hitFDB.asUInt
         // snpFwdSVal
-        entryMes.snpFwdSVal     := entryMes.snpFwdSVal | Mux(hitRespDat, rxDat.bits.Opcode === SnpRespDataFwded, rxRsp.bits.Opcode === SnpRespFwded)
+        entryMes.snpFwdSVal := entryMes.snpFwdSVal | Mux(hitRespDat, rxDat.bits.Opcode === SnpRespDataFwded, rxRsp.bits.Opcode === SnpRespFwded)
         // snpFwdWaitAck
-        entryMes.snpFwdWaitAck  := Mux(hitRespRsp & rxRsp.bits.Opcode === CompAck, false.B, entryMes.snpFwdWaitAck)
+        entryMes.snpFwdWaitAck := Mux(hitRespRsp & rxRsp.bits.Opcode === CompAck, false.B, entryMes.snpFwdWaitAck)
         // assert
-        assert(!(hitRespDat & hitFDB), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        // HardwareAssertion(!(hitRespDat & hitFDB), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        hwaFlags(6) := !(hitRespDat & hitFDB)
         when(hitRespDat) {
-          assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isReq & isAtomicX(entrys(i).chiMes.opcode)) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          // HardwareAssertion(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isReq & isAtomicX(entrys(i).chiMes.opcode)) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          hwaFlags(7) := isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isReq & isAtomicX(entrys(i).chiMes.opcode)) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc)
         }.elsewhen(hitFDB) {
-          assert(entrys(i).isDatBeSend, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          // HardwareAssertion(entrys(i).isDatBeSend, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          hwaFlags(8) := entrys(i).isDatBeSend
         }.elsewhen(entrys(i).chiMes.isSnp & hitRespRsp & rxRsp.bits.Opcode === CompAck) {
-          assert(entryMes.snpFwdWaitAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-          assert(getUseNodeID(rxRsp.bits.SrcID) === entrys(i).chiIndex.nodeID, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          // HardwareAssertion(entryMes.snpFwdWaitAck, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          // HardwareAssertion(getUseNodeID(rxRsp.bits.SrcID) === entrys(i).chiIndex.nodeID, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          hwaFlags(9) := entryMes.snpFwdWaitAck
+          hwaFlags(10) := getUseNodeID(rxRsp.bits.SrcID) === entrys(i).chiIndex.nodeID
         }
-      // Receive DBID From DataBuffer
+        // Receive DBID From DataBuffer
       }.elsewhen(io.dbSigs.dbidResp.fire & io.dbSigs.dbidResp.bits.receive & entryRecDBID === i.U) {
-        entryMes.hasData        := true.B
-        assert(!entryMes.hasData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-      // Send ReadReceipt
+        entryMes.hasData := true.B
+        // HardwareAssertion(!entryMes.hasData, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        hwaFlags(11) := !entryMes.hasData
+        // Send ReadReceipt
       }.elsewhen(txRsp.fire & entrySendRspID === i.U & txRsp.bits.Opcode === ReadReceipt) {
-        entryMes.needSendRRec   := false.B
+        entryMes.needSendRRec := false.B
       }
+      HardwareAssertion(hwaFlags(6), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(7), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(8), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(9), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(10), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(11), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
 
 
       // ---------------------------------------------- Record Snp Resp --------------------------------------------------- //
-      when(entrys(i).chiMes.isSnp) {
-        when(entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp) {
-          val rspHit        = rxRsp.fire & (rxRsp.bits.Opcode === SnpResp     | rxRsp.bits.Opcode === SnpRespFwded)     & entryRecChiRspID === i.U & !rspIsDMTComp
-          val datHit        = rxDat.fire & (rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === SnpRespDataFwded) & entryRecChiDatID === i.U & entrys(i).isLastBeat
-          val rspId         = getMetaIDByNodeID(rxRsp.bits.SrcID); assert(fromCcNode(rxRsp.bits.SrcID) | !rxRsp.valid, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-          val datId         = getMetaIDByNodeID(rxDat.bits.SrcID); assert(fromCcNode(rxDat.bits.SrcID) | !rxDat.valid, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-          val rspIdOH       = Mux(rspHit, UIntToOH(rspId), 0.U)
-          val datIdOH       = Mux(datHit, UIntToOH(datId), 0.U)
-          // Record GetSnpRespOH
-          entryMes.getSnpRespVec := (entryMes.getSnpRespVec.asUInt | rspIdOH | datIdOH).asBools
-          // assert
-          assert(Mux(rspHit, !entryMes.getSnpRespVec(rspId).asBool, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-          assert(Mux(datHit, !entryMes.getSnpRespVec(datId).asBool, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-          assert(Mux(rspHit, entryMes.snpTgtVec(rspId).asBool,      true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-          assert(Mux(datHit, entryMes.snpTgtVec(datId).asBool,      true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-        }
+      when(entrys(i).chiMes.isSnp & (entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp)) {
+        val rspHit        = rxRsp.fire & (rxRsp.bits.Opcode === SnpResp     | rxRsp.bits.Opcode === SnpRespFwded)     & entryRecChiRspID === i.U & !rspIsDMTComp
+        val datHit        = rxDat.fire & (rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === SnpRespDataFwded) & entryRecChiDatID === i.U & entrys(i).isLastBeat
+        val rspId         = getMetaIDByNodeID(rxRsp.bits.SrcID) 
+        // HardwareAssertion(fromCcNode(rxRsp.bits.SrcID) | !rxRsp.valid, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        hwaFlags(12) := fromCcNode(rxRsp.bits.SrcID) | !rxRsp.valid
+        val datId         = getMetaIDByNodeID(rxDat.bits.SrcID) 
+        // HardwareAssertion(fromCcNode(rxDat.bits.SrcID) | !rxDat.valid, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        hwaFlags(13) := fromCcNode(rxDat.bits.SrcID) | !rxDat.valid
+        val rspIdOH       = Mux(rspHit, UIntToOH(rspId), 0.U)
+        val datIdOH       = Mux(datHit, UIntToOH(datId), 0.U)
+        // Record GetSnpRespOH
+        entryMes.getSnpRespVec := (entryMes.getSnpRespVec.asUInt | rspIdOH | datIdOH).asBools
+        // assert
+        // HardwareAssertion(Mux(rspHit, !entryMes.getSnpRespVec(rspId).asBool, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        // HardwareAssertion(Mux(datHit, !entryMes.getSnpRespVec(datId).asBool, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        // HardwareAssertion(Mux(rspHit, entryMes.snpTgtVec(rspId).asBool,      true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        // HardwareAssertion(Mux(datHit, entryMes.snpTgtVec(datId).asBool,      true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        hwaFlags(14) := Mux(rspHit, !entryMes.getSnpRespVec(rspId).asBool, true.B)
+        hwaFlags(15) := Mux(datHit, !entryMes.getSnpRespVec(datId).asBool, true.B)
+        hwaFlags(16) := Mux(rspHit, entryMes.snpTgtVec(rspId).asBool,      true.B)
+        hwaFlags(17) := Mux(datHit, entryMes.snpTgtVec(datId).asBool,      true.B)
       }
+      HardwareAssertion(hwaFlags(14), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(15), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(16),cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(17),cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
   }
+
 
 
 
@@ -335,7 +377,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
           val isOthResp   = io.resp2Intf.fire & !(io.resp2Intf.bits.chiMes.opcode === CompDBIDResp & io.resp2Intf.bits.chiMes.isRsp) // Expect of CompDBIDResp
           val isDBIDResp  = io.resp2Intf.fire &   io.resp2Intf.bits.chiMes.opcode === CompDBIDResp & io.resp2Intf.bits.chiMes.isRsp; assert(Mux(io.resp2Intf.fire & io.resp2Intf.bits.chiMes.isRsp, io.resp2Intf.bits.chiMes.opcode =/= DBIDResp, true.B))
           val isSnp       = io.req2Intf.fire
-          val snpGetDBID  = io.req2Intf.bits.pcuMes.snpNeedDB; assert(Mux(isSnp, !(io.req2Intf.bits.pcuMes.snpNeedDB & io.req2Intf.bits.pcuMes.hasPcuDBID), true.B))
+          val snpGetDBID  = io.req2Intf.bits.pcuMes.snpNeedDB; 
           val isRead      = rxReq.fire & isReadX(rxReq.bits.Opcode)
           val isDataLess  = rxReq.fire & isDatalessX(rxReq.bits.Opcode)
           val isCB        = rxReq.fire & isCBX(rxReq.bits.Opcode)
@@ -350,9 +392,13 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
                               Mux(isWrite, RSState.GetDBID,
                                 Mux(isAtomic, RSState.GetDBID, state)))))))
           }
-          assert(PopCount(Seq(isOthResp, isDBIDResp, isSnp, isRead, isDataLess, isCB, isWrite, isAtomic)) <= 1.U, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-          assert(Mux(io.resp2Intf.fire, isOthResp | isDBIDResp, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
-          assert(Mux(rxReq.fire, isRead | isDataLess | isCB | isWrite | isAtomic, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          // assert(PopCount(Seq(isOthResp, isDBIDResp, isSnp, isRead, isDataLess, isCB, isWrite, isAtomic)) <= 1.U, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          // assert(Mux(io.resp2Intf.fire, isOthResp | isDBIDResp, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          // assert(Mux(rxReq.fire, isRead | isDataLess | isCB | isWrite | isAtomic, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          hwaFlags(18) := PopCount(Seq(isOthResp, isDBIDResp, isSnp, isRead, isDataLess, isCB, isWrite, isAtomic)) <= 1.U
+          hwaFlags(19) := Mux(io.resp2Intf.fire, isOthResp | isDBIDResp, true.B)
+          hwaFlags(20) := Mux(rxReq.fire, isRead | isDataLess | isCB | isWrite | isAtomic, true.B)
+
         }
         // State: Req2Exu
         is(RSState.Req2Exu) {
@@ -370,25 +416,32 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         }
         // State: WaitSendRRec
         is(RSState.WaitSendRRec) {
-          val hit = !entrys(i).entryMes.needSendRRec | (txRsp.fire & entrySendRspID === i.U); assert(Mux(txRsp.fire & entrySendRspID === i.U, txRsp.bits.Opcode === ReadReceipt, true.B))
+          val hit = !entrys(i).entryMes.needSendRRec | (txRsp.fire & entrySendRspID === i.U)
+          // assert(Mux(txRsp.fire & entrySendRspID === i.U, txRsp.bits.Opcode === ReadReceipt, true.B))
+          hwaFlags(21) := Mux(txRsp.fire & entrySendRspID === i.U, txRsp.bits.Opcode === ReadReceipt, true.B)
           state := Mux(hit, RSState.Free, state)
         }
         // State: Resp2Node
         is(RSState.Resp2Node) {
           val txDatHit  = txDat.fire & entryRecDataFDBID === i.U & entrys(i).isLastBeat
-          val txRspHit  = txRsp.fire & entrySendRspID === i.U; assert(txRsp.bits.Opcode === Comp | !txRspHit)
+          val txRspHit  = txRsp.fire & entrySendRspID === i.U
+          // assert(txRsp.bits.Opcode === Comp | !txRspHit)
+          hwaFlags(22) := txRsp.bits.Opcode === Comp | !txRspHit
           val expAck    = entrys(i).chiMes.expCompAck
           state         := Mux(txDatHit | txRspHit, Mux(expAck, RSState.WaitCompAck, RSState.Free), state)
         }
         // State: WaitCompAck
         is(RSState.WaitCompAck) {
           val hit       = rxRsp.fire & rxRsp.bits.TxnID === i.U
-          assert(Mux(hit, rxRsp.bits.Opcode === CompAck, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          // assert(Mux(hit, rxRsp.bits.Opcode === CompAck, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          hwaFlags(23) := Mux(hit, rxRsp.bits.Opcode === CompAck, true.B)
           state         := Mux(hit, RSState.Free, state)
         }
         // State: GetDBID
         is(RSState.GetDBID) {
-          val hit       = io.dbSigs.getDBID.fire & entryGetDBID === i.U; assert(Mux(hit, entrys(i).entryMes.nID === 0.U, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          val hit       = io.dbSigs.getDBID.fire & entryGetDBID === i.U
+          // assert(Mux(hit, entrys(i).entryMes.nID === 0.U, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          hwaFlags(24) := Mux(hit, entrys(i).entryMes.nID === 0.U, true.B)
           state         := Mux(hit, RSState.WaitDBID, state)
         }
         // State: WaitDBID
@@ -399,7 +452,9 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         }
         // State: DBIDResp2Node
         is(RSState.DBIDResp2Node) {
-          val hit       = txRsp.fire & entrySendRspID === i.U; assert(txRsp.bits.Opcode === CompDBIDResp | txRsp.bits.Opcode === DBIDResp | !hit)
+          val hit       = txRsp.fire & entrySendRspID === i.U
+          // assert(txRsp.bits.Opcode === CompDBIDResp | txRsp.bits.Opcode === DBIDResp | !hit)
+          hwaFlags(25) := txRsp.bits.Opcode === CompDBIDResp | txRsp.bits.Opcode === DBIDResp | !hit
           state         := Mux(hit, RSState.WaitData, state)
         }
         // State: WaitData
@@ -431,7 +486,15 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
           state         := Mux(hit, RSState.Free, state)
         }
       }
-  }
+      HardwareAssertion(hwaFlags(21), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(22), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(23), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(24))
+      HardwareAssertion(hwaFlags(25))
+      HardwareAssertion(hwaFlags(26), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(27), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+      HardwareAssertion(hwaFlags(28))
+    }
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -475,26 +538,49 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrys.map(_.entryMes.nID).zipWithIndex.foreach {
     case(nID, i) =>
       /*
-       * Set New NID
-       */
+      * Set New NID
+      */
       when(entryFreeID_g === i.U) {
         // Resp always takes priority
-        when(setRespNID_g)      { nID := 0.U }
+        when(setRespNID_g)  { 
+          nID := 0.U 
+        }
         // Snp
-        .elsewhen(setSnpNID_g)  { nID := snpMatchNum_g - compAckMatchReq_g ;                                              assert(snpMatchNum_g >= compAckMatchReq_g.asUInt, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        .elsewhen(setSnpNID_g)  { 
+          nID := snpMatchNum_g - compAckMatchReq_g                                              
+          // HardwareAssertion(snpMatchNum_g >= compAckMatchReq_g.asUInt, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) 
+          hwaFlags(29) := snpMatchNum_g >= compAckMatchReq_g.asUInt
+          }
         // Req
-        .elsewhen(setReqNID_g)  { nID := reqMatchNum_g - snpRespMatchReq_g - reqAckMatchReq_g;                            assert(reqMatchNum_g >= snpRespMatchReq_g.asTypeOf(UInt(2.W)) + reqAckMatchReq_g, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
-      }
+        .elsewhen(setReqNID_g)  { 
+          nID := reqMatchNum_g - snpRespMatchReq_g - reqAckMatchReq_g                            
+          // HardwareAssertion(reqMatchNum_g >= snpRespMatchReq_g.asTypeOf(UInt(2.W)) + reqAckMatchReq_g, cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) 
+          hwaFlags(30) := reqMatchNum_g >= snpRespMatchReq_g.asTypeOf(UInt(2.W)) + reqAckMatchReq_g
+          }
+        }
       /*
-       * Modify NID
-       */
+      * Modify NID
+      */
       .elsewhen(entrysValVec_g(i)) {
         // Snp
-        when(entrysIsSnpVec_g(i))       { nID := nID - compAckHitVec_g(i);                                                assert(nID >= compAckHitVec_g(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        when(entrysIsSnpVec_g(i)){ 
+          nID := nID - compAckHitVec_g(i)
+          // HardwareAssertion(nID >= compAckHitVec_g(i), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) 
+          hwaFlags(31) := nID >= compAckHitVec_g(i)
+        }
         // Req
-        .elsewhen(entrysIsReqVec_g(i))  { nID := nID + snp2IntfHitVec_g(i) - snpResp2ExuHitVec_g(i) - reqAckHitVec_g(i);  assert(nID + snp2IntfHitVec_g(i) >= snpResp2ExuHitVec_g(i).asTypeOf(UInt(2.W))  + reqAckHitVec_g(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        .elsewhen(entrysIsReqVec_g(i))  { 
+          nID := nID + snp2IntfHitVec_g(i) - snpResp2ExuHitVec_g(i) - reqAckHitVec_g(i)
+          // HardwareAssertion(nID + snp2IntfHitVec_g(i) >= snpResp2ExuHitVec_g(i).asTypeOf(UInt(2.W))  + reqAckHitVec_g(i), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) 
+          hwaFlags(32) := nID + snp2IntfHitVec_g(i) >= snpResp2ExuHitVec_g(i).asTypeOf(UInt(2.W))  + reqAckHitVec_g(i)
+        }
       }
+      HardwareAssertion(hwaFlags(29), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID)
+      HardwareAssertion(hwaFlags(30), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID)
+      HardwareAssertion(hwaFlags(31), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID)
+      HardwareAssertion(hwaFlags(32), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID)
   }
+
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -511,7 +597,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    * Receive req2Intf(Snoop)
    */
   val reqVal        = rxReq.valid
-  val snpVal        = io.req2Intf.valid; assert(Mux(snpVal, io.req2Intf.bits.chiMes.isSnp, true.B))
+  val snpVal        = io.req2Intf.valid; HardwareAssertion(Mux(snpVal, io.req2Intf.bits.chiMes.isSnp, true.B))
   val respVal       = io.resp2Intf.valid
   //                                              | RESP(resp2Intf)                                 | SNP(req2Intf)                             | REQ(rxReq)
   entrySave.entryMes.useAddr      := Mux(respVal, io.resp2Intf.bits.pcuMes.useAddr,     Mux(snpVal, io.req2Intf.bits.pcuMes.useAddr,            parseFullAddr(rxReq.bits.Addr)._6))
@@ -535,9 +621,9 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrySave.chiMes.channel        := Mux(respVal, io.resp2Intf.bits.chiMes.channel,     Mux(snpVal, CHIChannel.SNP,                             CHIChannel.REQ))
   entrySave.chiMes.resp           := Mux(respVal, io.resp2Intf.bits.chiMes.resp,        Mux(snpVal, 0.U,                                        0.U))
   entrySave.chiMes.expCompAck     := Mux(respVal, io.resp2Intf.bits.chiMes.expCompAck,  Mux(snpVal, false.B,                                    rxReq.bits.ExpCompAck))
-  assert(Mux(snpVal, io.req2Intf.bits.chiIndex.fullSize, true.B))
-  assert(Mux(snpVal, io.req2Intf.bits.chiMes.isSnp, true.B))
-  assert(Mux(snpVal, io.req2Intf.bits.chiIndex.offset === 0.U, true.B))
+  HardwareAssertion(Mux(snpVal, io.req2Intf.bits.chiIndex.fullSize, true.B))
+  HardwareAssertion(Mux(snpVal, io.req2Intf.bits.chiMes.isSnp, true.B))
+  HardwareAssertion(Mux(snpVal, io.req2Intf.bits.chiIndex.offset === 0.U, true.B))
 
 
   /*
@@ -588,7 +674,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    */
   val datBeSendVec   = entrys.map { case p => p.isDatBeSend & io.dbSigs.dataFDB.valid & p.pcuIndex.dbID === io.dbSigs.dataFDB.bits.dbID }
   entryRecDataFDBID  := PriorityEncoder(datBeSendVec)
-  assert(PopCount(datBeSendVec) <= 1.U)
+  HardwareAssertion(PopCount(datBeSendVec) <= 1.U)
 
   txDat.valid        := datBeSendVec.reduce(_ | _)
   txDat.bits         := DontCare
@@ -645,7 +731,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   /*
    * Set ready value
    */
-  rspIsDMTComp              := rxRsp.bits.TxnID(chiTxnIdBits - 1).asBool; assert(Mux(rxRsp.valid & rspIsDMTComp, rxRsp.bits.Opcode === CompAck, true.B))
+  rspIsDMTComp              := rxRsp.bits.TxnID(chiTxnIdBits - 1).asBool; HardwareAssertion(Mux(rxRsp.valid & rspIsDMTComp, rxRsp.bits.Opcode === CompAck, true.B))
   dmtCompVal                := rxRsp.valid & rspIsDMTComp
   rxRsp.ready               := Mux(rspIsDMTComp, io.resp2Exu.ready, true.B)
   rxDat.ready               := io.dbSigs.dataTDB.ready
@@ -694,9 +780,9 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    */
   val snpShouldSendOH     = entrys(entrySendSnpID).entryMes.snpTgtVec.asUInt
   val snpBeSendOH         = snpShouldSendOH ^ snpAlrSendOHReg
-  val snpTgtID            = getNodeIDByMetaID(PriorityEncoder(snpBeSendOH)); assert(PriorityEncoder(snpBeSendOH) < nrCcNode.U | !txSnp.valid)
+  val snpTgtID            = getNodeIDByMetaID(PriorityEncoder(snpBeSendOH)); HardwareAssertion(PriorityEncoder(snpBeSendOH) < nrCcNode.U | !txSnp.valid)
   snpIsLast               := PopCount(snpBeSendOH) === 1.U; dontTouch(snpIsLast)
-  snpAlrSendOHReg         := Mux(txSnp.fire, Mux(snpIsLast, 0.U, snpAlrSendOHReg | UIntToOH(getMetaIDByNodeID(snpTgtID))), snpAlrSendOHReg); assert(fromCcNode(snpTgtID) | !txSnp.valid)
+  snpAlrSendOHReg         := Mux(txSnp.fire, Mux(snpIsLast, 0.U, snpAlrSendOHReg | UIntToOH(getMetaIDByNodeID(snpTgtID))), snpAlrSendOHReg); HardwareAssertion(fromCcNode(snpTgtID) | !txSnp.valid)
 
   /*
    * Send Snp to Node
@@ -743,38 +829,51 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.resp2Exu.bits.pcuMes.isWriResp     := !dmtCompVal & entrys(entryResp2ExuID).chiMes.isRsp
   io.resp2Exu.bits.pcuMes.isCompAck     := dmtCompVal
 
-  assert(Mux(io.resp2Exu.fire & isSnpXFwd(entrys(entryResp2ExuID).chiMes.opcode) & entrys(entryResp2ExuID).chiMes.isSnp, entrys(entryResp2ExuID).entryMes.snpFwdSVal, true.B),
-    "RNSLV ENTRY[0x%x] STATE[0x%x] ADDR[0x%x] CHANNEL[%x] OP[0x%x] TIMEOUT", entryResp2ExuID, entrys(entryResp2ExuID).entryMes.state, entrys(entryResp2ExuID).fullAddr(io.pcuID), entrys(entryResp2ExuID).chiMes.channel, entrys(entryResp2ExuID).chiMes.opcode)
+  HardwareAssertion(Mux(io.resp2Exu.fire & isSnpXFwd(entrys(entryResp2ExuID).chiMes.opcode) & entrys(entryResp2ExuID).chiMes.isSnp, entrys(entryResp2ExuID).entryMes.snpFwdSVal, true.B),
+    cf"RNSLV ENTRY[0x${entryResp2ExuID}] STATE[0x${entrys(entryResp2ExuID).entryMes.state}] ADDR[0x${entrys(entryResp2ExuID).fullAddr(io.pcuID)}] CHANNEL[0x${entrys(entryResp2ExuID).chiMes.channel}] OP[0x${entrys(entryResp2ExuID).chiMes.opcode}] TIMEOUT", 
+    entryResp2ExuID, entrys(entryResp2ExuID).entryMes.state, entrys(entryResp2ExuID).fullAddr(io.pcuID), entrys(entryResp2ExuID).chiMes.channel, entrys(entryResp2ExuID).chiMes.opcode)
 
 
 // ---------------------------  Assertion  -------------------------------- //
   val cntReg = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U(64.W) }))
-  cntReg.zip(entrys).zipWithIndex.foreach { case((c, p), i) => c := Mux(p.isFree | (io.reqAck2Intf.fire & io.reqAck2Intf.bits.entryID === i.U) , 0.U, c + 1.U) }
-  cntReg.zipWithIndex.foreach { case(c, i) => assert(Mux(entrys(i).chiMes.isReq, c < TIMEOUT_RSINTF_REQ.U, Mux(entrys(i).chiMes.isSnp, c < TIMEOUT_RSINTF_SNP.U, c < TIMEOUT_RSINTF_RSP.U)),
-    "RNSLV ENTRY[0x%x] STATE[0x%x] ADDR[0x%x] CHANNEL[%x] OP[0x%x] TIMEOUT", i.U, entrys(i).entryMes.state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.channel, entrys(i).chiMes.opcode) }
+  // cntReg.zip(entrys).zipWithIndex.foreach { case((c, p), i) => c := Mux(p.isFree | (io.reqAck2Intf.fire & io.reqAck2Intf.bits.entryID === i.U) , 0.U, c + 1.U) }
+  // cntReg.zipWithIndex.foreach { case(c, i) => assert(Mux(entrys(i).chiMes.isReq, c < TIMEOUT_RSINTF_REQ.U, Mux(entrys(i).chiMes.isSnp, c < TIMEOUT_RSINTF_SNP.U, c < TIMEOUT_RSINTF_RSP.U)),
+  //   "RNSLV ENTRY[0x%x] STATE[0x%x] ADDR[0x%x] CHANNEL[%x] OP[0x%x] TIMEOUT", i.U, entrys(i).entryMes.state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.channel, entrys(i).chiMes.opcode) }
+  
+  cntReg.zip(entrys).zipWithIndex.foreach { case((c, p), i) =>
+  awhen(entrys(i).chiMes.isReq) {
+    HardwareAssertion.checkTimeout(p.isFree | (io.reqAck2Intf.fire & io.reqAck2Intf.bits.entryID === i.U), TIMEOUT_RSINTF_REQ, cf"RNSLV ENTRY[0x${i.U}] STATE[0x${entrys(i).entryMes.state}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] CHANNEL[0x${entrys(i).chiMes.channel}] OP[0x${entrys(i).chiMes.opcode}] TIMEOUT")
+  }
+  .elsewhen(entrys(i).chiMes.isSnp) {
+    HardwareAssertion.checkTimeout(p.isFree | (io.reqAck2Intf.fire & io.reqAck2Intf.bits.entryID === i.U), TIMEOUT_RSINTF_SNP, cf"RNSLV ENTRY[0x${i.U}] STATE[0x${entrys(i).entryMes.state}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] CHANNEL[0x${entrys(i).chiMes.channel}] OP[0x${entrys(i).chiMes.opcode}] TIMEOUT")
+  }
+  .otherwise {
+    HardwareAssertion.checkTimeout(p.isFree | (io.reqAck2Intf.fire & io.reqAck2Intf.bits.entryID === i.U), TIMEOUT_RSINTF_RSP, cf"RNSLV ENTRY[0x${i.U}] STATE[0x${entrys(i).entryMes.state}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] CHANNEL[0x${entrys(i).chiMes.channel}] OP[0x${entrys(i).chiMes.opcode}] TIMEOUT")
+  }
+}
 
-  when(rxReq.valid) {
+  awhen(rxReq.valid) {
     // [1:cacheable] [2:ccxChipID] [3:dcuBank] [4:pcuBank] [5:offset] [6:useAddr]
     // cacheable
-    assert(parseFullAddr(rxReq.bits.Addr)._1 === 0.U)
+    HardwareAssertion(parseFullAddr(rxReq.bits.Addr)._1 === 0.U)
     // ccxChipID
-    assert(parseFullAddr(rxReq.bits.Addr)._2 === 0.U)
+    HardwareAssertion(parseFullAddr(rxReq.bits.Addr)._2 === 0.U)
     // pcuBank
-    assert(parseFullAddr(rxReq.bits.Addr)._4 === io.pcuID)
+    HardwareAssertion(parseFullAddr(rxReq.bits.Addr)._4 === io.pcuID)
     // offset
-    assert(Mux(isAtomicX(rxReq.bits.Opcode), true.B, // Atomic
+    HardwareAssertion(Mux(isAtomicX(rxReq.bits.Opcode), true.B, // Atomic
            Mux(isWriUniX(rxReq.bits.Opcode) | rxReq.bits.Opcode === ReadOnce, parseFullAddr(rxReq.bits.Addr)._5 === 0.U | parseFullAddr(rxReq.bits.Addr)._5 === 0x20.U, // WriteUnique or ReadOnce
                parseFullAddr(rxReq.bits.Addr)._5 === 0.U))) // Other
     // TgtID
-    assert(rxReq.bits.TgtID === io.hnfID)
+    HardwareAssertion(rxReq.bits.TgtID === io.hnfID)
     // ExpCompAck
-    assert(Mux(isReadX(rxReq.bits.Opcode) | isWriUniX(rxReq.bits.Opcode), rxReq.bits.ExpCompAck, true.B))
+    HardwareAssertion(Mux(isReadX(rxReq.bits.Opcode) | isWriUniX(rxReq.bits.Opcode), rxReq.bits.ExpCompAck, true.B))
     // Order
-    assert(Mux(isWriUniX(rxReq.bits.Opcode),    rxReq.bits.Order === Order.OWO & rxReq.bits.ExpCompAck,
+    HardwareAssertion(Mux(isWriUniX(rxReq.bits.Opcode),    rxReq.bits.Order === Order.OWO & rxReq.bits.ExpCompAck,
            Mux(rxReq.bits.Opcode === ReadOnce,  rxReq.bits.Order === Order.EndpointOrder, rxReq.bits.Order === Order.None)))
     // Size
-    assert(Mux(isWriXFull(rxReq.bits.Opcode),   Mux(rxReq.bits.Opcode === WriteBackFull, rxReq.bits.Size === chiFullSize.U, true.B), true.B))
-    assert(Mux(isAtomicX(rxReq.bits.Opcode),    rxReq.bits.Size <= chiHalfSize.U, // Atomic
+    HardwareAssertion(Mux(isWriXFull(rxReq.bits.Opcode),   Mux(rxReq.bits.Opcode === WriteBackFull, rxReq.bits.Size === chiFullSize.U, true.B), true.B))
+    HardwareAssertion(Mux(isAtomicX(rxReq.bits.Opcode),    rxReq.bits.Size <= chiHalfSize.U, // Atomic
            Mux(rxReq.bits.Opcode === WriteBackPtl,    rxReq.bits.Size < chiFullSize.U, // WriteXPtl
            Mux(rxReq.bits.Opcode === ReadOnce,  rxReq.bits.Size <= chiFullSize.U, // ReadOnce
            Mux(rxReq.bits.Opcode === WriteUniquePtl, rxReq.bits.Size <= chiFullSize.U,
@@ -784,8 +883,8 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
 //    assert(rxReq.bits.Endian.asUInt === 0.U) // Must be Little Endian
   }
 
-  when(rxDat.valid) {
-    assert(
+  awhen(rxDat.valid) {
+    HardwareAssertion(
       Mux(
         rxDat.bits.Opcode === NonCopyBackWriteData,
         rxDat.bits.BE.asUInt > 0.U, // Atomic
@@ -811,4 +910,6 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   }
   XSPerfAccumulate("pcu_localRnSlave_req_cnt", reqFire)
   XSPerfAccumulate("pcu_localRnSlave_req_block_cnt", (rxReq.valid | io.req2Intf.valid | io.resp2Intf.valid) & entryFreeNum === 0.U)
+
+  HardwareAssertion.placePipe(3)
 }

@@ -452,4 +452,5 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   XSPerfAccumulate("dcu_wBuf_req_block_cnt", rxReq.valid & (isWriteX(rxReq.bits.Opcode) | isReplace(rxReq.bits.Opcode)) & PopCount(wBufFreeVec) === 0.U)
   // count replace cnt
   XSPerfAccumulate("dcu_wBuf_deal_replace_cnt", rxReq.fire & isReplace(rxReq.bits.Opcode))
+
 }

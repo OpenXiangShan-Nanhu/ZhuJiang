@@ -16,7 +16,7 @@ import xs.utils.ParallelLookUp
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 import xs.utils.perf.HasPerfLogging
 import dongjiang.utils.StepRREncoderOH
-
+import xs.utils.debug.{DomainInfo, HardwareAssertion,awhen}
 
 class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
 // --------------------- IO declaration ------------------------//
@@ -141,6 +141,11 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   if (p(DebugOptionsKey).EnableDebug) dontTouch(task_s4_dbg_addr)
 
 
+val hwaFlags = Array.fill(2)(Wire(Bool()))
+for (i <- 0 until 2) {
+  hwaFlags(i) := true.B
+}
+
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ----------------------------------------------- S2: Buffer input task/dirRes ----------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -152,7 +157,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   dirResQ.io.enq.valid  := io.dirResp.valid
   dirResQ.io.enq.bits   := io.dirResp.bits
   dirResQ.io.deq.ready  := canGo_s2_dir
-  assert(Mux(io.dirResp.valid, dirResQ.io.enq.ready, true.B))
+  HardwareAssertion(Mux(io.dirResp.valid, dirResQ.io.enq.ready, true.B))
 
   // Can Go Signals
   // TODO: consider readDir
@@ -192,7 +197,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
    */
   val srcCCMetaID_s3  = getMetaIDByNodeID(task_s3_g.bits.chiIndex.nodeID)
   srcMetaID_s3        := Mux(fromRniNode(task_s3_g.bits.chiIndex.nodeID), Fill(srcMetaID_s3.getWidth, 1.U(1.W)), srcCCMetaID_s3)
-  assert(fromCcNode(task_s3_g.bits.chiIndex.nodeID) | fromRniNode(task_s3_g.bits.chiIndex.nodeID) | !task_s3_g.valid | (task_s3_g.bits.chiMes.opcode === SnpUniqueEvict & task_s3_g.bits.chiMes.isSnp))
+  HardwareAssertion(fromCcNode(task_s3_g.bits.chiIndex.nodeID) | fromRniNode(task_s3_g.bits.chiIndex.nodeID) | !task_s3_g.valid | (task_s3_g.bits.chiMes.opcode === SnpUniqueEvict & task_s3_g.bits.chiMes.isSnp))
 
   val srcHit_s3       = dirRes_s3_g.bits.sf.hit & !dirRes_s3_g.bits.sf.metaVec(srcCCMetaID_s3).isInvalid & !fromRniNode(task_s3_g.bits.chiIndex.nodeID)
   val srcState_s3     = Mux(srcHit_s3, dirRes_s3_g.bits.sf.metaVec(srcCCMetaID_s3).state, ChiState.I)
@@ -214,10 +219,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val taskIsCB_s3     = isCBX(task_s3_g.bits.chiMes.opcode)     & task_s3_g.bits.chiMes.isReq
   val taskIsAtomic_s3 = isAtomicX(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq
 
-  assert(Mux(taskIsWriPtl_s3 & task_s3_g.valid, !task_s3_g.bits.respMes.slvResp.valid, true.B))
-  assert(Mux(taskIsWriPtl_s3 & task_s3_g.valid, task_s3_g.bits.respMes.slvDBID.valid, true.B))
-  assert(Mux(taskIsAtomic_s3 & task_s3_g.valid, hasData_s3, true.B))
-  assert(Mux(taskIsAtomic_s3 & task_s3_g.valid, !isAtomicStoreX(task_s3_g.bits.chiMes.opcode), true.B))
+  HardwareAssertion(Mux(taskIsWriPtl_s3 & task_s3_g.valid, !task_s3_g.bits.respMes.slvResp.valid, true.B))
+  HardwareAssertion(Mux(taskIsWriPtl_s3 & task_s3_g.valid, task_s3_g.bits.respMes.slvDBID.valid, true.B))
+  HardwareAssertion(Mux(taskIsAtomic_s3 & task_s3_g.valid, hasData_s3, true.B))
+  HardwareAssertion(Mux(taskIsAtomic_s3 & task_s3_g.valid, !isAtomicStoreX(task_s3_g.bits.chiMes.opcode), true.B))
 
 
   inst_s3.channel       := task_s3_g.bits.chiMes.channel
@@ -257,23 +262,45 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   table.zipWithIndex.foreach { case (t, i) =>
     val inst   = t._1.asTypeOf(new InstBundle())
     val decode = t._1.asTypeOf(new DecodeBundle())
-    assert(!(decode.cleanDB & decode.writeDCU), s"Index: $i")
+    HardwareAssertion(!(decode.cleanDB & decode.writeDCU), s"Index: $i")
   }
   // deocde
   decode_s3.decode(inst_s3, table)
   decode_req_s3.decode(inst_req_s3, table)
   // assert
-  when(valid_s3) { assert(decode_s3.asUInt =/= Code.ERROE,
-    "\n\nADDR[0x%x] DECODE ERROR: No inst match in decode table\n" +
-      "INST: CHNL[0x%x] OP[0x%x] SRC[0x%x] OTH[0x%x] HN[0x%x] REQDATA[0x%x] RESP[0x%x] RESPDATA[0x%x] SLV[0x%x] FWD[0x%x] MST[0x%x]\n", task_s3_g.bits.fullAddr(io.dcuID, io.pcuID),
-    inst_s3.channel, inst_s3.opcode, inst_s3.srcState, inst_s3.othState, inst_s3.hnState, inst_s3.reqWithData, inst_s3.respType, inst_s3.respWithData, inst_s3.slvResp, inst_s3.fwdState, inst_s3.mstResp) }
-  when(valid_s3) { when(decode_s3.wSDir)  { assert(decode_s3.commit | (inst_s3.opcode === SnpUniqueEvict & inst_s3.channel === CHIChannel.SNP) | (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ) | (isReadX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ & djparam.openDMT.asBool)) } }
-  when(valid_s3) { when(decode_s3.wSFDir) { assert(decode_s3.commit | (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ) | (isReadX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ & djparam.openDMT.asBool)) } }
-  when(valid_s3) { assert(decode_req_s3.asUInt =/= Code.ERROE,
-    "\n\nADDR[0x%x] DECODE ERROR: No inst match in decode table\n" +
-      "INST: CHNL[0x%x] OP[0x%x] SRC[0x%x] OTH[0x%x] HN[0x%x] REQDATA[0x%x] RESP[0x%x] RESPDATA[0x%x] SLV[0x%x] FWD[0x%x] MST[0x%x]\n", task_s3_g.bits.fullAddr(io.dcuID, io.pcuID),
-    inst_req_s3.channel, inst_req_s3.opcode, inst_req_s3.srcState, inst_req_s3.othState, inst_req_s3.hnState, inst_s3.reqWithData, inst_req_s3.respType, inst_req_s3.respWithData, inst_req_s3.slvResp, inst_req_s3.fwdState, inst_req_s3.mstResp) }
+  awhen(valid_s3) { 
+   HardwareAssertion(
+    decode_s3.asUInt =/= Code.ERROE,
+    cf"""
+    ADDR[0x${task_s3_g.bits.fullAddr(io.dcuID, io.pcuID)}] DECODE ERROR: No inst match in decode table
+    INST: CHNL[0x${inst_s3.channel}] OP[0x${inst_s3.opcode}] SRC[0x${inst_s3.srcState}] OTH[0x${inst_s3.othState}] HN[0x${inst_s3.hnState}] REQDATA[0x${inst_s3.reqWithData}] RESP[0x${inst_s3.respType}] RESPDATA[0x${inst_s3.respWithData}] SLV[0x${inst_s3.slvResp}] FWD[0x${inst_req_s3.fwdState}] MST[0x${inst_req_s3.mstResp}]
+    """) 
+  }
 
+  awhen(valid_s3&decode_s3.wSDir) { 
+      HardwareAssertion(
+        decode_s3.commit | 
+        (inst_s3.opcode === SnpUniqueEvict & inst_s3.channel === CHIChannel.SNP) | 
+        (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ) | 
+        (isReadX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ & djparam.openDMT.asBool))
+  }
+
+  awhen(valid_s3&decode_s3.wSFDir) { 
+      HardwareAssertion(
+        decode_s3.commit | 
+        (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ) | 
+        (isReadX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ & djparam.openDMT.asBool)) 
+  } 
+
+  awhen(valid_s3) { 
+    HardwareAssertion(
+      decode_req_s3.asUInt =/= Code.ERROE,
+      cf"""
+      ADDR[0x${task_s3_g.bits.fullAddr(io.dcuID, io.pcuID)}] DECODE ERROR: No inst match in decode table
+      INST: CHNL[0x${inst_req_s3.channel}] OP[0x${inst_req_s3.opcode}] SRC[0x${inst_req_s3.srcState}] OTH[0x${inst_req_s3.othState}] HN[0x${inst_req_s3.hnState}] REQDATA[0x${inst_s3.reqWithData}] RESP[0x${inst_req_s3.respType}] RESPDATA[0x${inst_req_s3.respWithData}] SLV[0x${inst_req_s3.slvResp}] FWD[0x${inst_req_s3.fwdState}] MST[0x${inst_req_s3.mstResp}]
+      """
+    ) 
+  }
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ------------------------------------------ S3_Req_Decode: Get Snp Target ----------------------------------------------//
@@ -299,9 +326,9 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   .elsewhen(decode_req_s3.snpTgt === SnpTgt.ONE)  { snpNodeVec_s3 := StepRREncoderOH(rnHitWithoutSrc, canGo_s3 & decode_req_s3.snpTgt === SnpTgt.ONE).asBools }
   .otherwise                                      { snpNodeVec_s3 := 0.U.asTypeOf(snpNodeVec_s3) }
   // assert
-  when(valid_s3 & decode_s3.snoop){
-    assert(dirRes_s3_g.bits.sf.hit)
-    assert(decode_s3.snpTgt =/= SnpTgt.NONE)
+  awhen(valid_s3 & decode_s3.snoop){
+    HardwareAssertion(dirRes_s3_g.bits.sf.hit)
+    HardwareAssertion(decode_s3.snpTgt =/= SnpTgt.NONE)
   }
 
 
@@ -311,14 +338,14 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
 // ---------------------------------------------------------------------------------------------------------------------- //
   // Send Retry to MSHR When need write Dir but cant do it
   todo_s3             := decode_s3
-  todo_s3_retry       := todo_s3.wSDir & dirRes_s3_g.bits.s.replRetry | todo_s3.wSFDir & dirRes_s3_g.bits.sf.replRetry; assert(Mux(valid_s3, !todo_s3_retry, true.B), "TODO")
+  todo_s3_retry       := todo_s3.wSDir & dirRes_s3_g.bits.s.replRetry | todo_s3.wSFDir & dirRes_s3_g.bits.sf.replRetry; HardwareAssertion(Mux(valid_s3, !todo_s3_retry, true.B), "TODO")
   todo_s3_replace     := todo_s3.wSDir & !hnHit_s3 & dirRes_s3_g.bits.s.metaVec(0).isDirty & !todo_s3_retry // Only need to replace when it is Dirty
   todo_s3_sfEvict     := todo_s3.wSFDir & !srcHit_s3 & !othHit_s3 & dirRes_s3_g.bits.sf.metaVec.map(!_.isInvalid).reduce(_ | _) & !todo_s3_retry
   todo_s3_updMSHR     := decode_s3.needWaitSlv | decode_s3.needWaitMst | todo_s3_replace | todo_s3_sfEvict
   todo_s3_cleanMSHR   := !(todo_s3_retry | todo_s3_updMSHR)
-  assert(Mux(valid_s3, PopCount(Seq(todo_s3_retry, todo_s3_updMSHR, todo_s3_cleanMSHR)) === 1.U, true.B))
-  assert(Mux(valid_s3, PopCount(Seq(todo_s3_replace, todo_s3_sfEvict)) <= 1.U, true.B))
-  assert(Mux(valid_s3 & todo_s3_replace, todo_s3.writeDCU, true.B))
+  HardwareAssertion(Mux(valid_s3, PopCount(Seq(todo_s3_retry, todo_s3_updMSHR, todo_s3_cleanMSHR)) === 1.U, true.B))
+  HardwareAssertion(Mux(valid_s3, PopCount(Seq(todo_s3_replace, todo_s3_sfEvict)) <= 1.U, true.B))
+  HardwareAssertion(Mux(valid_s3 & todo_s3_replace, todo_s3.writeDCU, true.B))
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -361,10 +388,8 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
       valid_s4_temp_g := s3Fire | !s4Fire;    s4_temp_g := Mux(s3Fire, s3, s4_temp_g)
       valid_s4_g      := true.B;              s4_g      := Mux(s4Fire, s4_temp_g, s4_g)
     }
-    is("b10".U) {
-      assert(false.B, "Illegitimate State")
-    }
   }
+  HardwareAssertion(!(Cat(valid_s4_temp_g, valid_s4_g)==="b10".U),"Illegitimate")
 
   
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -382,7 +407,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   // get dbid
   dbid_s4.valid       := valid_s4_g & (s4_g.task.respMes.slvDBID.valid | s4_g.task.respMes.mstDBID.valid)
   dbid_s4.bits        := Mux(s4_g.task.respMes.slvDBID.valid, s4_g.task.respMes.slvDBID.bits, s4_g.task.respMes.mstDBID.bits)
-  assert(Mux(valid_s4_g, !(s4_g.task.respMes.slvDBID.valid & s4_g.task.respMes.mstDBID.valid), true.B))
+  HardwareAssertion(Mux(valid_s4_g, !(s4_g.task.respMes.slvDBID.valid & s4_g.task.respMes.mstDBID.valid), true.B))
 
 
   // taskSnp_s4
@@ -408,7 +433,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskSnp_s4.pcuMes.selfWay       := DontCare
   taskSnp_s4.pcuMes.toDCU         := DontCare
   taskSnp_s4.pcuMes.snpTgtVec     := s4_g.snpNodeVec
-  taskSnp_s4.pcuMes.hasPcuDBID    := dbid_s4.valid; assert(Mux(s4_g.decode.snoop & dbid_s4.valid & valid_s4_g, taskIsWriPtl_s4 | taskIsAtomic_s4, true.B))
+  taskSnp_s4.pcuMes.hasPcuDBID    := dbid_s4.valid; HardwareAssertion(Mux(s4_g.decode.snoop & dbid_s4.valid & valid_s4_g, taskIsWriPtl_s4 | taskIsAtomic_s4, true.B))
   taskSnp_s4.pcuMes.snpNeedDB     := s4_g.decode.snpNeedDB
 
 
@@ -431,7 +456,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskRD_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
   taskRD_s4.pcuMes.doDMT          := djparam.openDMT.asBool & !(taskIsAtomic_s4)
   taskRD_s4.pcuMes.toDCU          := false.B
-  taskRD_s4.pcuMes.hasPcuDBID     := dbid_s4.valid; assert(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
+  taskRD_s4.pcuMes.hasPcuDBID     := dbid_s4.valid; HardwareAssertion(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
 
 
   /*
@@ -447,7 +472,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskWD_s4.from                  := io.dcuID
   taskWD_s4.to                    := IncoID.LOCALMST.U
   taskWD_s4.pcuIndex.mshrWay      := s4_g.task.taskMes.mshrWay
-  taskWD_s4.pcuIndex.dbID         := dbid_s4.bits; assert(Mux(valid_s4_g & s4_g.decode.writeDown, dbid_s4.valid, true.B))
+  taskWD_s4.pcuIndex.dbID         := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.decode.writeDown, dbid_s4.valid, true.B))
   taskWD_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
   taskWD_s4.pcuMes.selfWay        := DontCare
   taskWD_s4.pcuMes.toDCU          := false.B
@@ -459,7 +484,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   rcDBReq_s4.to         := IncoID.LOCALSLV.U
   rcDBReq_s4.isRead     := s4_g.decode.rDB2Src
   rcDBReq_s4.isClean    := s4_g.decode.cleanDB
-  rcDBReq_s4.dbID       := dbid_s4.bits; assert(Mux(valid_s4_g & s4_g.decode.rDB2Src, dbid_s4.valid, true.B))
+  rcDBReq_s4.dbID       := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.decode.rDB2Src, dbid_s4.valid, true.B))
   rcDBReq_s4.rBeatOH    := s4_g.task.chiIndex.beatOH
   rcDBReq_s4.exAtomic   := taskIsAtomic_s4
 
@@ -484,7 +509,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   readDCU_s4.pcuMes.doDMT           := djparam.openDMT.asBool & !(taskIsAtomic_s4)
   readDCU_s4.pcuMes.selfWay         := OHToUInt(s4_g.dirRes.s.wayOH)
   readDCU_s4.pcuMes.toDCU           := true.B
-  readDCU_s4.pcuMes.hasPcuDBID      := dbid_s4.valid; assert(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
+  readDCU_s4.pcuMes.hasPcuDBID      := dbid_s4.valid; HardwareAssertion(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
 
 
   /*
@@ -501,7 +526,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   writeDCU_s4.from                  := io.dcuID
   writeDCU_s4.to                    := IncoID.LOCALMST.U
   writeDCU_s4.pcuIndex.mshrWay      := s4_g.task.taskMes.mshrWay
-  writeDCU_s4.pcuIndex.dbID         := dbid_s4.bits; assert(Mux(valid_s4_g & s4_g.decode.writeDCU, dbid_s4.valid, true.B))
+  writeDCU_s4.pcuIndex.dbID         := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.decode.writeDCU, dbid_s4.valid, true.B))
   writeDCU_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
   writeDCU_s4.pcuMes.selfWay        := OHToUInt(s4_g.dirRes.s.wayOH)
   writeDCU_s4.pcuMes.toDCU          := true.B
@@ -512,7 +537,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
    */
   taskRepl_s4                       := DontCare
   taskRepl_s4.chiIndex              := s4_g.task.chiIndex
-  taskRepl_s4.chiIndex.size         := chiFullSize.U; assert(Mux(valid_s4_g & s4_g.todo_replace, s4_g.task.chiIndex.fullSize | snpRespHasData, true.B))
+  taskRepl_s4.chiIndex.size         := chiFullSize.U; HardwareAssertion(Mux(valid_s4_g & s4_g.todo_replace, s4_g.task.chiIndex.fullSize | snpRespHasData, true.B))
   taskRepl_s4.chiIndex.offset       := 0.U
   taskRepl_s4.chiMes.channel        := CHIChannel.REQ
   taskRepl_s4.chiMes.expCompAck     := false.B
@@ -520,7 +545,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskRepl_s4.from                  := io.dcuID
   taskRepl_s4.to                    := IncoID.LOCALMST.U
   taskRepl_s4.pcuIndex.mshrWay      := s4_g.task.taskMes.mshrWay
-  taskRepl_s4.pcuIndex.dbID         := dbid_s4.bits; assert(Mux(valid_s4_g & s4_g.todo_replace, dbid_s4.valid, true.B))
+  taskRepl_s4.pcuIndex.dbID         := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.todo_replace, dbid_s4.valid, true.B))
   taskRepl_s4.pcuMes.useAddr        := s4_g.dirRes.s.useAddr
   taskRepl_s4.pcuMes.selfWay        := OHToUInt(s4_g.dirRes.s.wayOH)
   taskRepl_s4.pcuMes.toDCU          := false.B
@@ -553,7 +578,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   commit_s4.chiMes.resp           := s4_g.decode.resp
   commit_s4.from                  := io.dcuID
   commit_s4.to                    := IncoID.LOCALSLV.U
-  commit_s4.pcuIndex.dbID         := dbid_s4.bits; assert(Mux(valid_s4_g & s4_g.decode.commit & s4_g.decode.respChnl === CHIChannel.DAT, dbid_s4.valid, true.B))
+  commit_s4.pcuIndex.dbID         := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.decode.commit & s4_g.decode.respChnl === CHIChannel.DAT, dbid_s4.valid, true.B))
   commit_s4.pcuIndex.mshrSet      := s4_g.task.taskMes.mSet
   commit_s4.pcuIndex.mshrWay      := s4_g.task.taskMes.mshrWay
   commit_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
@@ -598,11 +623,18 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
         when(s4_g.snpNodeVec(i))          { a.state := s4_g.decode.othState }
         .elsewhen(i.U === s4_g.srcMetaID) { a.state := s4_g.decode.srcState }
         .otherwise                        { a.state := s4_g.dirRes.sf.metaVec(i).state }
-        assert(Mux(valid_s4_g & s4_g.decode.wSFDir, RespType.isSnpX(s4_g.respType) | RespType.isCB(s4_g.respType), true.B))
+        // HardwareAssertion(Mux(valid_s4_g & s4_g.decode.wSFDir, RespType.isSnpX(s4_g.respType) | RespType.isCB(s4_g.respType), true.B))
+        hwaFlags(0) := Mux(valid_s4_g & s4_g.decode.wSFDir, RespType.isSnpX(s4_g.respType) | RespType.isCB(s4_g.respType), true.B)
       }.otherwise {
         when(i.U === s4_g.srcMetaID)      { a.state := s4_g.decode.srcState }
-        .otherwise                        { a.state := s4_g.dirRes.sf.metaVec(i).state; assert(Mux(valid_s4_g & s4_g.decode.wSFDir, a.state === s4_g.decode.othState | a.state === ChiState.I, true.B)) }
+        .otherwise                        { a.state := s4_g.dirRes.sf.metaVec(i).state; }
       }
+      when((!RespType.isSnpX(s4_g.respType))&(!(i.U === s4_g.srcMetaID))){
+        // HardwareAssertion(Mux(valid_s4_g & s4_g.decode.wSFDir, a.state === s4_g.decode.othState | a.state === ChiState.I, true.B))
+        hwaFlags(1) := Mux(valid_s4_g & s4_g.decode.wSFDir, a.state === s4_g.decode.othState | a.state === ChiState.I, true.B)
+      }
+      HardwareAssertion(hwaFlags(0))
+      HardwareAssertion(hwaFlags(1))
   }
 
 
@@ -618,7 +650,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   io.updMSHR.bits.waitIntfVec := (Mux(s4_g.decode.needWaitSlv | s4_g.todo_sfEvict, UIntToOH(IncoID.LOCALSLV.U), (s4_g.decode.readDown | s4_g.decode.readDCU) & s4_g.task.chiMes.expCompAck & djparam.openDMT.asBool) |
                                   Mux(s4_g.decode.needWaitMst | s4_g.todo_replace, UIntToOH(IncoID.LOCALMST.U), 0.U)).asBools
   io.updMSHR.bits.mTag        := Mux(s4_g.todo_replace, s4_g.dirRes.s.mTag, Mux(s4_g.todo_sfEvict, s4_g.dirRes.sf.mTag, s4_g.task.taskMes.mTag))
-  assert(!((s4_g.decode.needWaitSlv | s4_g.todo_sfEvict) & ((s4_g.decode.readDown | s4_g.decode.readDCU) & s4_g.task.chiMes.expCompAck & djparam.openDMT.B)))
+  HardwareAssertion(!((s4_g.decode.needWaitSlv | s4_g.todo_sfEvict) & ((s4_g.decode.readDown | s4_g.decode.readDCU) & s4_g.task.chiMes.expCompAck & djparam.openDMT.B)))
   // Only Use In New Req
   io.updMSHR.bits.hasNewReq   := s4_g.todo_replace | s4_g.todo_sfEvict
   io.updMSHR.bits.opcode      := Mux(s4_g.todo_replace, Replace, SnpUniqueEvict)
@@ -626,7 +658,8 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   // Unlock MSHR
   io.updMSHR.bits.unlock      := s4_g.task.taskMes.readDir & !s4_g.todo_replace
   // Common
-  io.updMSHR.valid            := valid_s4_g & !done_s4_g_updMSHR & dirDone; assert(Mux(valid_s4_g, s4_g.todo_retry | s4_g.todo_updMSHR | s4_g.todo_cleanMSHR, true.B))
+  io.updMSHR.valid            := valid_s4_g & !done_s4_g_updMSHR & dirDone
+  HardwareAssertion(Mux(valid_s4_g, s4_g.todo_retry | s4_g.todo_updMSHR | s4_g.todo_cleanMSHR, true.B))
   done_s4_g_updMSHR           := Mux(s4Fire, false.B, done_s4_g_updMSHR | io.updMSHR.fire)
   // updata mshr
   comUpdMSHR                  := done_s4_g_updMSHR | io.updMSHR.fire
@@ -709,10 +742,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   // S4
   val cnt_s4_g  = RegInit(0.U(64.W))
   cnt_s4_g      := Mux(!valid_s4_g | canGo_s4, 0.U, cnt_s4_g + 1.U)
-  assert(cnt_s4_g < TIMEOUT_PIPEEXU.U, "ProcessPipe[0x%x] EXECUTE ADDR[0x%x] OP[0x%x] TIMEOUT", s4_g.task.taskMes.pipeID, s4_g.task.fullAddr(io.dcuID, io.pcuID), s4_g.task.chiMes.opcode)
+  HardwareAssertion.checkTimeout(!valid_s4_g | canGo_s4, TIMEOUT_PIPEEXU, cf"ProcessPipe[0x${s4_g.task.taskMes.pipeID}] EXECUTE ADDR[0x${s4_g.task.fullAddr(io.dcuID, io.pcuID)}] OP[0x${s4_g.task.chiMes.opcode}] TIMEOUT", s4_g.task.taskMes.pipeID, s4_g.task.fullAddr(io.dcuID, io.pcuID), s4_g.task.chiMes.opcode)
 
   // Other
-  assert(!valid_s4_g | !todo_s4.asUInt.asBools.zip(done_s4_g.asUInt.asBools).map { case(todo, done) => !todo & done }.reduce(_ | _))
+  HardwareAssertion(!valid_s4_g | !todo_s4.asUInt.asBools.zip(done_s4_g.asUInt.asBools).map { case(todo, done) => !todo & done }.reduce(_ | _))
 
 
 
@@ -740,4 +773,5 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   XSPerfAccumulate("pcu_pipe_retry_total_cnt",    valid_s3 & canGo_s3 & todo_s3_retry)
 
 
+  HardwareAssertion.placePipe(2)
 }

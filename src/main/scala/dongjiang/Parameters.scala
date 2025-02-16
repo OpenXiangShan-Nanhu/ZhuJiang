@@ -8,6 +8,7 @@ import org.chipsalliance.cde.config._
 import xijiang.NodeType
 import zhujiang.{HasZJParams, ZJParametersKey}
 import scala.math.{max, min}
+import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
 
 // Node Interface Params, used for generation
@@ -199,7 +200,7 @@ trait HasParseZJParam extends HasZJParams {
     friendsVec.zipWithIndex.foreach {
       case(f, i) =>
         directVec(i) := f.map { case id => id === x | (id + 1.U) === x }.reduce(_ | _)
-        assert(PopCount(f.map(_ === x)) <= 1.U)
+        HardwareAssertion(PopCount(f.map(_ === x)) <= 1.U)
     }
     directVec
   }
@@ -392,7 +393,7 @@ trait HasDJParam extends HasParseZJParam {
     else if (nrBeat == 2) { assert(x === "b00".U | x === "b10".U); Mux(x === "b00".U, 0.U, 1.U) }
     else if (nrBeat == 4) { x }
     else { 0.U }
-    }
+  }
 }
 
 

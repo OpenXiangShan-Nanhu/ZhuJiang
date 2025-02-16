@@ -6,6 +6,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import dongjiang.utils.fastArb
+import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
 class ExecuteUnit(implicit p: Parameters) extends DJModule {
 // --------------------- IO declaration ------------------------//
@@ -42,8 +43,8 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   mshrCtl.io.req2Exu                  <> io.req2Exu
   mshrCtl.io.reqAck2Intf              <> io.reqAck2Intf
   mshrCtl.io.resp2Exu                 <> io.resp2Exu
-  mshrCtl.io.pipeTask(PipeID.RESP)    <> respPipe.io.task;  assert(!mshrCtl.io.pipeTask(PipeID.RESP).valid | mshrCtl.io.pipeTask(PipeID.RESP).bits.taskMes.pipeID === PipeID.RESP)
-  mshrCtl.io.pipeTask(PipeID.REQ)     <> reqPipe.io.task;   assert(!mshrCtl.io.pipeTask(PipeID.REQ).valid  | mshrCtl.io.pipeTask(PipeID.REQ).bits.taskMes.pipeID === PipeID.REQ)
+  mshrCtl.io.pipeTask(PipeID.RESP)    <> respPipe.io.task;  HardwareAssertion(!mshrCtl.io.pipeTask(PipeID.RESP).valid | mshrCtl.io.pipeTask(PipeID.RESP).bits.taskMes.pipeID === PipeID.RESP)
+  mshrCtl.io.pipeTask(PipeID.REQ)     <> reqPipe.io.task;   HardwareAssertion(!mshrCtl.io.pipeTask(PipeID.REQ).valid  | mshrCtl.io.pipeTask(PipeID.REQ).bits.taskMes.pipeID === PipeID.REQ)
   mshrCtl.io.updMSHRVec(PipeID.RESP)  <> respPipe.io.updMSHR
   mshrCtl.io.updMSHRVec(PipeID.REQ)   <> reqPipe.io.updMSHR
 
@@ -61,16 +62,17 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   io.dbRCReq                <> fastArb(Seq(respPipe.io.dbRCReq, reqPipe.io.dbRCReq))
 
 // --------------------------- Assertion ---------------------------//
-  assert(io.req2Exu.bits.from       <= IncoID.max.U | !io.req2Exu.valid)
-  assert(io.resp2Intf.bits.from     === io.dcuID    | !io.resp2Intf.valid)
-  assert(io.req2Intf.bits.from      === io.dcuID    | !io.req2Intf.valid)
-  assert(io.resp2Exu.bits.from      <= IncoID.max.U | !io.resp2Exu.valid)
+  HardwareAssertion(io.req2Exu.bits.from       <= IncoID.max.U | !io.req2Exu.valid)
+  HardwareAssertion(io.resp2Intf.bits.from     === io.dcuID    | !io.resp2Intf.valid)
+  HardwareAssertion(io.req2Intf.bits.from      === io.dcuID    | !io.req2Intf.valid)
+  HardwareAssertion(io.resp2Exu.bits.from      <= IncoID.max.U | !io.resp2Exu.valid)
 
-  assert(io.req2Exu.bits.to         === io.dcuID    | !io.req2Exu.valid)
-  assert(io.reqAck2Intf.bits.to     <= IncoID.max.U | !io.reqAck2Intf.valid)
-  assert(io.resp2Intf.bits.to       <= IncoID.max.U | !io.resp2Intf.valid)
-  assert(io.req2Intf.bits.to        <= IncoID.max.U | !io.req2Intf.valid)
-  assert(io.resp2Exu.bits.to        === io.dcuID    | !io.resp2Exu.valid)
-  assert(io.dbRCReq.bits.to         <= IncoID.max.U | !io.resp2Exu.valid)
+  HardwareAssertion(io.req2Exu.bits.to         === io.dcuID    | !io.req2Exu.valid)
+  HardwareAssertion(io.reqAck2Intf.bits.to     <= IncoID.max.U | !io.reqAck2Intf.valid)
+  HardwareAssertion(io.resp2Intf.bits.to       <= IncoID.max.U | !io.resp2Intf.valid)
+  HardwareAssertion(io.req2Intf.bits.to        <= IncoID.max.U | !io.req2Intf.valid)
+  HardwareAssertion(io.resp2Exu.bits.to        === io.dcuID    | !io.resp2Exu.valid)
+  HardwareAssertion(io.dbRCReq.bits.to         <= IncoID.max.U | !io.resp2Exu.valid)
 
+  HardwareAssertion.placePipe(3)
 }
