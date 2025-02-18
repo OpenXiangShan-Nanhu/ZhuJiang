@@ -10,6 +10,7 @@ import zhujiang.axi._
 import xs.utils.sram._
 import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
+import freechips.rocketchip.diplomacy.BufferParams.flow
 class AxiSpilt(implicit p : Parameters) extends ZJModule with HasCircularQueuePtrHelper{
   private val dmaParams = zjParams.dmaParams
   private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = dmaParams.idBits)
@@ -66,6 +67,8 @@ class AxiSpilt(implicit p : Parameters) extends ZJModule with HasCircularQueuePt
   private val dAwTailPtr    = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val wDataPtr      = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val bIdQueue      = Module(new Queue(gen = UInt(axiParams.idBits.W), entries = 2, pipe = false, flow = false))
+  private val dataFull      = RegInit(false.B)
+  private val dataFullLast  = RegInit(false.B)
 
   private val txAwBdl     = WireInit(0.U.asTypeOf(new AWFlit(axiParams)))
   private val wrDataReg   = RegInit(0.U(dw.W))
@@ -170,7 +173,7 @@ class AxiSpilt(implicit p : Parameters) extends ZJModule with HasCircularQueuePt
   }
 // Write SpiltAwEntrys shift
   when(rxAxi.w.fire){
-    wDataPtr := Mux(rxAxi.w.bits.last | ((spiltAwEntrys(wDataPtr.value).shift + spiltAwEntrys(wDataPtr.value).size) === 0.U | spiltAwEntrys(wDataPtr.value).burst =/= BurstMode.Incr), wDataPtr + 1.U, wDataPtr)
+    wDataPtr := Mux(rxAxi.w.bits.last | (spiltAwEntrys(wDataPtr.value).shift + spiltAwEntrys(wDataPtr.value).size) === 0.U | spiltAwEntrys(wDataPtr.value).burst =/= BurstMode.Incr, wDataPtr + 1.U, wDataPtr)
     spiltAwEntrys(wDataPtr.value).shift := spiltAwEntrys(wDataPtr.value).shift + spiltAwEntrys(wDataPtr.value).size
   }
 
@@ -192,8 +195,11 @@ class AxiSpilt(implicit p : Parameters) extends ZJModule with HasCircularQueuePt
   bIdQueue.io.enq.bits     := spiltAwEntrys(dAwTailPtr.value).id
 
 // Merge logic for writing data
-    wrMaskReg := Mux(txAxi.w.fire, Mux(rxAxi.w.fire, rxAxi.w.bits.strb, 0.U), Mux(rxAxi.w.fire, rxAxi.w.bits.strb | wrMaskReg, wrMaskReg))
-    wrDataReg := Mux(txAxi.w.fire, Mux(rxAxi.w.fire, maskData.asUInt & rxAxi.w.bits.data, 0.U), Mux(rxAxi.w.fire, wrDataReg | maskData.asUInt & rxAxi.w.bits.data, wrDataReg))
+  wrMaskReg := Mux(txAxi.w.fire, Mux(rxAxi.w.fire, rxAxi.w.bits.strb, 0.U), Mux(rxAxi.w.fire, rxAxi.w.bits.strb | wrMaskReg, wrMaskReg))
+  wrDataReg := Mux(txAxi.w.fire, Mux(rxAxi.w.fire, maskData.asUInt & rxAxi.w.bits.data, 0.U), Mux(rxAxi.w.fire, wrDataReg | maskData.asUInt & rxAxi.w.bits.data, wrDataReg))
+
+  dataFull  := Mux((!(spiltAwEntrys(wDataPtr.value).shift + spiltAwEntrys(wDataPtr.value).size)(4, 0).orR | rxAxi.w.bits.last | spiltAwEntrys(wDataPtr.value).burst =/= BurstMode.Incr) & rxAxi.w.fire, true.B, Mux(txAxi.w.fire, false.B, dataFull))
+  dataFullLast := Mux(!(spiltAwEntrys(wDataPtr.value).shift + spiltAwEntrys(wDataPtr.value).size(5, 0).orR) | rxAxi.w.bits.last, true.B, Mux(txAxi.w.fire, false.B, dataFullLast))
 
 /* 
  * IO Interface Connection
@@ -210,14 +216,14 @@ class AxiSpilt(implicit p : Parameters) extends ZJModule with HasCircularQueuePt
   rxAxi.r.valid     := datQueue.io.deq.valid
 // Write interface
   rxAxi.aw.ready    := !isFull(uAwHeadPtr, uAwTailPtr)
-  rxAxi.w.ready     := dAwHeadPtr =/= dAwTailPtr & wDataPtr =/= dAwHeadPtr
+  rxAxi.w.ready     := wDataPtr =/= dAwHeadPtr & txAxi.w.ready
   txAxi.aw.valid    := uAwHeadPtr =/= uAwTailPtr & !isFull(dAwHeadPtr, dAwTailPtr)
   txAxi.aw.bits     := txAwBdl
-  txAxi.w.valid     := (RegNext(!(spiltAwEntrys(wDataPtr.value).shift + spiltAwEntrys(wDataPtr.value).size)(4, 0).orR) | RegNext(rxAxi.w.bits.last) | RegNext(spiltAwEntrys(wDataPtr.value).burst =/= BurstMode.Incr)) & RegNext(rxAxi.w.fire)
+  txAxi.w.valid     := dataFull
   txAxi.w.bits      := 0.U.asTypeOf(txAxi.w.bits)
   txAxi.w.bits.data := wrDataReg
   txAxi.w.bits.strb := wrMaskReg
-  txAxi.w.bits.last := RegNext(!(spiltAwEntrys(wDataPtr.value).shift + spiltAwEntrys(wDataPtr.value).size)(5, 0).orR) | RegNext(rxAxi.w.bits.last)
+  txAxi.w.bits.last := dataFullLast
   txAxi.b.ready     := bIdQueue.io.enq.ready
   rxAxi.b.bits      := 0.U.asTypeOf(rxAxi.b.bits)
   rxAxi.b.bits.id   := bIdQueue.io.deq.bits

@@ -83,6 +83,7 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
       val writeDataReq = Flipped(Decoupled(new writeRdDataBuffer(bufferSize)))
       val readDataReq  = Flipped(Decoupled(new readRdDataBuffer(bufferSize)))
       val readDataResp = Decoupled(new RFlit(axiParams))
+      val relSet       = Valid(UInt(log2Ceil(bufferSize).W))
   })
 
   private val dataRam = Module(new DualPortSramTemplate(
@@ -131,6 +132,8 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   io.readDataReq.ready   := readRamStage1Pipe.io.enq.ready
   io.readDataResp.valid  := readRamStage2Pipe.io.deq.valid
   io.readDataResp.bits   := rFlitBdl
+  io.relSet.valid        := readRamStage1Pipe.io.deq.fire
+  io.relSet.bits         := readRamStage1Pipe.io.deq.bits.set
 }
 
 
@@ -148,8 +151,8 @@ class DataBufferForRead(axiParams: AxiParams, bufferSize: Int, ctrlSize: Int)(im
 
   freelist.io.req.valid     := io.alloc.valid
   freelist.io.req.bits      := io.alloc.bits
-  freelist.io.release.valid := dataBuffer.io.readDataReq.fire
-  freelist.io.release.bits  := dataBuffer.io.readDataReq.bits.set
+  freelist.io.release.valid := dataBuffer.io.relSet.valid
+  freelist.io.release.bits  := dataBuffer.io.relSet.bits
 
   dataBuffer.io.readDataReq  <> io.rdDB
   dataBuffer.io.writeDataReq <> io.wrDB
@@ -165,6 +168,7 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
     val writeDataReq = Flipped(Decoupled(new writeWrDataBuffer(bufferSize)))
     val readDataReq  = Flipped(Decoupled(new readWrDataBuffer(bufferSize)))
     val readDataResp = Decoupled(new DataFlit)
+    val relSet       = Valid(UInt(log2Ceil(bufferSize).W))
   })
 
   private val dataRam = Module(new DualPortSramTemplate(
@@ -215,7 +219,9 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
   readRamStage2Pipe.io.enq.bits.TgtID  := readRamState1Pipe.io.deq.bits.tgtId
 
   io.readDataResp <> readRamStage2Pipe.io.deq
-  when(io.readDataResp.fire){
+  io.relSet.valid   := readRamState1Pipe.io.deq.fire
+  io.relSet.bits    := readRamState1Pipe.io.deq.bits.set
+  when(RegNext(readRamState1Pipe.io.deq.fire)){
     maskRam(releaseSet) := 0.U
   }
   
@@ -236,8 +242,8 @@ class DataBufferForWrite(bufferSize: Int, ctrlSize: Int)(implicit p: Parameters)
 
   freelist.io.req.valid     := io.alloc.valid
   freelist.io.req.bits      := io.alloc.bits
-  freelist.io.release.valid    := dataBuffer.io.readDataReq.fire
-  freelist.io.release.bits     := dataBuffer.io.readDataReq.bits.set
+  freelist.io.release.valid    := dataBuffer.io.relSet.valid
+  freelist.io.release.bits     := dataBuffer.io.relSet.bits
 
   dataBuffer.io.readDataReq <> io.rdDB
   dataBuffer.io.writeDataReq <> io.wrDB
