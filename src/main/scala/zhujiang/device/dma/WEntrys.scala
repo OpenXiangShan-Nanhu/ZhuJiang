@@ -125,7 +125,7 @@ class ChiWEntrys(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   io.chiTxRsp.valid  := dEntrys(dTailPtr.value).haveRcvComp & dEntrys(dTailPtr.value).haveRdData & dTailPtr =/= dHeadPtr
   io.chiTxRsp.bits   := chiRspBdl
   io.chiRxRsp.ready  := true.B
-  io.wrDB.valid      := io.axiW.valid
+  io.wrDB.valid      := io.axiW.fire
   io.rdDB.valid      := !(sendDatPtr.set === uWPtr.set & sendDatPtr.flag === uWPtr.flag) & dEntrys(sendDatPtr.set).haveRcvDBID
   io.rdDB.bits       := rdDBBdl
   io.axiB.valid      := !(sendBPtr.value === uWPtr.set & sendBPtr.flag === uWPtr.flag)
