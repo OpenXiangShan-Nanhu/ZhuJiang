@@ -118,8 +118,9 @@ class ChiDBPtr(chiEntrySize: Int) extends Bundle {
   val poi    = UInt(1.W)
   val flag   = Bool()
   def PtrRdAdd[T <: CHIREntry](c: T): ChiDBPtr = {
-    this.poi := Mux(c.double & this.poi === 0.U, 1.U, 0.U)
-    this.set := Mux(!c.double | c.double & this.poi === 1.U, this.set + 1.U, this.set)
+    this.poi  := Mux(c.double & this.poi === 0.U, 1.U, 0.U)
+    this.flag := Mux((this.set + 1.U)(log2Ceil(chiEntrySize) - 1, 0) === 0.U & (this.poi === 1.U | this.poi === 0.U & !c.double), !this.flag, this.flag)
+    this.set  := Mux(!c.double | c.double & this.poi === 1.U, this.set + 1.U, this.set)
     this
   }
   def PtrWrAdd[T <: CHIWEntry](c: T): ChiDBPtr = {
@@ -136,7 +137,7 @@ class readRdDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle
   val resp     = UInt(2.W)
   val last     = Bool()
 
-  def setBdl[T <: CHIREntry, R <: ChiDBPtr](c: T, i: R): readRdDataBuffer = {
+  def SetBdl[T <: CHIREntry, R <: ChiDBPtr](c: T, i: R): readRdDataBuffer = {
     this.id       := c.arId
     this.resp     := 0.U
     this.set      := Mux(i.poi === 1.U, c.dbSite2, c.dbSite1)
@@ -146,10 +147,11 @@ class readRdDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle
 }
 
 class readWrDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val set    = UInt(log2Ceil(bufferSize).W)
-  val tgtId  = UInt(niw.W)
-  val txnID  = UInt(12.W)
-  val dataID = UInt(2.W)
+  val set     = UInt(log2Ceil(bufferSize).W)
+  val tgtId   = UInt(niw.W)
+  val txnID   = UInt(12.W)
+  val dataID  = UInt(2.W)
+  val withAck = Bool()
 }
 
 class respDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
@@ -166,8 +168,6 @@ class CHIREntry(implicit p : Parameters) extends ZJBundle {
   val size           = UInt(3.W)
   val dbSite1        = UInt(log2Ceil(zjParams.dmaParams.bufferSize).W)
   val dbSite2        = UInt(log2Ceil(zjParams.dmaParams.bufferSize).W)
-  val haveAllocDB    = Bool()
-  val haveSendReq    = Bool()
   val haveWrDB1      = Bool()
   val haveWrDB2      = Bool()
 
@@ -177,12 +177,6 @@ class CHIREntry(implicit p : Parameters) extends ZJBundle {
     this.arId      := b.id
     this.addr      := b.addr
     this.size      := b.size
-    this
-  }
-  def chiRAllocDB[T <: ChiDataBufferCtrlEntry](b: T): CHIREntry = {
-    this.haveAllocDB := true.B
-    this.dbSite1     := b.buf(0)
-    this.dbSite2     := b.buf(1)
     this
   }
 }
@@ -220,11 +214,7 @@ class CHIWEntry(implicit p: Parameters) extends ZJBundle {
   val dbid           = UInt(12.W)
   val dbSite1        = UInt(log2Ceil(zjParams.dmaParams.bufferSize).W)
   val dbSite2        = UInt(log2Ceil(zjParams.dmaParams.bufferSize).W)
-  val haveAllocDB    = Bool()
-  val haveSendReq    = Bool()
   val haveRcvComp    = Bool()
-  val haveRdData     = Bool()
-  val haveRcvDBID    = Bool()
 
   def AWMesInit[T <: AWFlit](aw : T): CHIWEntry = {
     this           := 0.U.asTypeOf(this)

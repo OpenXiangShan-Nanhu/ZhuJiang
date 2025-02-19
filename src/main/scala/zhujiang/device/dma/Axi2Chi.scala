@@ -36,10 +36,10 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
   // //SubModule
   private val axiSpilt    = Module(new AxiSpilt)
-  private val chiRdE      = Module(new ChiREntrys)
+  private val chiRdE      = Module(new ChiRdCtrl)
   private val rdDB        = Module(new DataBufferForRead(axiParams, dmaParams.bufferSize, dmaParams.chiEntrySize))
 //Write Submodule 
-  private val chiWrE      = Module(new ChiWEntrys)
+  private val chiWrE      = Module(new ChiWrCtrl)
   private val wrDB        = Module(new DataBufferForWrite(dmaParams.bufferSize, dmaParams.chiEntrySize))
 
   axiSpilt.txAxi.ar <> chiRdE.io.axiAr
