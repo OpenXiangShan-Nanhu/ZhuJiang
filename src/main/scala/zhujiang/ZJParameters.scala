@@ -57,7 +57,7 @@ object ZhujiangGlobal {
     require(nodeParams.size >= 3)
     var ccId: Long = 0
     val rnfs = nodeParams.filter(_.nodeType == NodeType.RF)
-    val sns = nodeParams.filter(n => n.nodeType == NodeType.S && !n.mainMemory)
+    val sns = nodeParams.filter(n => n.nodeType == NodeType.S)
     val hnfs = nodeParams.filter(_.nodeType == NodeType.HF)
 
     val rnfBankBits = if(csn && rnfs.length > 1) getBankBits(rnfs) else 0
@@ -103,8 +103,8 @@ object ZhujiangGlobal {
         globalId = idx,
         splitFlit = np.splitFlit,
         domainId = getDomainId(np.nodeType),
-        bankId = if(np.nodeType == NodeType.S || np.nodeType == NodeType.HF || np.nodeType == NodeType.RF && csn) np.bankId else 0,
-        dpId = if(np.nodeType == NodeType.S) np.dpId else 0,
+        bankId = if(np.nodeType == NodeType.HF) np.bankId else 0,
+        hfpId = if(np.nodeType == NodeType.HF) np.hfpId else 0,
         bankBits = if(np.nodeType == NodeType.RF) {
           rnfBankBits
         } else if(np.nodeType == NodeType.HF) {
@@ -114,7 +114,6 @@ object ZhujiangGlobal {
         } else {
           0
         },
-        mainMemory = if(np.nodeType == NodeType.S) np.mainMemory else false,
         cpuNum = if(np.nodeType == NodeType.CC) np.cpuNum else 0,
         clusterId = if(np.nodeType == NodeType.CC) ccId.toInt else 0,
         addressRange = if(np.nodeType == NodeType.CC) {
@@ -141,50 +140,31 @@ object ZhujiangGlobal {
     }
 
     if(!csn) {
-      val dcuNodes = nodes.filter(n => n.nodeType == NodeType.S && !n.mainMemory)
-      val dcuGroupsMaps = dcuNodes.groupBy(_.bankId)
-      for((_, dcus) <- dcuGroupsMaps) {
-        require(dcus.length <= 2)
-        require(dcus.map(_.dpId).distinct.length == dcus.length)
-        if(dcus.length == 1) {
-          dcus.head.friends = nodes.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory)
+      val hfNodes = nodes.filter(n => n.nodeType == NodeType.HF)
+      val hfGroupsMaps = hfNodes.groupBy(_.bankId)
+      for((_, hfs) <- hfGroupsMaps) {
+        require(hfs.length <= 2)
+        require(hfs.map(_.hfpId).distinct.length == hfs.length)
+        if(hfs.length == 1) {
+          hfs.head.friends = nodes.filterNot(n => n.nodeType == NodeType.HF || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
         } else {
-          val dcusPos = dcus.map(d => nodes.indexOf(d))
-          val idxMin = dcusPos.min
-          val idxMax = dcusPos.max
+          val hfsPos = hfs.map(d => nodes.indexOf(d))
+          val idxMin = hfsPos.min
+          val idxMax = hfsPos.max
           val segment0 = nodes.slice(idxMin + 1, idxMax)
           val segment1 = nodes.slice(idxMax + 1, nodes.length) ++ nodes.slice(0, idxMin)
           val half0 = segment0.length / 2
           val half1 = segment1.length / 2
           val friendsOfIdxMin = segment0.slice(0, half0) ++ segment1.slice(half1, segment1.length)
           val friendsOfIdxMax = segment1.slice(0, half1) ++ segment0.slice(half0, segment0.length)
-          if(idxMin == dcusPos.head) {
-            dcus.head.friends = friendsOfIdxMin.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
-            dcus.last.friends = friendsOfIdxMax.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
+          if(idxMin == hfsPos.head) {
+            hfs.head.friends = friendsOfIdxMin.filterNot(n => n.nodeType == NodeType.HF || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
+            hfs.last.friends = friendsOfIdxMax.filterNot(n => n.nodeType == NodeType.HF || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
           } else {
-            dcus.head.friends = friendsOfIdxMax.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
-            dcus.last.friends = friendsOfIdxMin.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
+            hfs.head.friends = friendsOfIdxMax.filterNot(n => n.nodeType == NodeType.HF || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
+            hfs.last.friends = friendsOfIdxMin.filterNot(n => n.nodeType == NodeType.HF || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
           }
         }
-      }
-
-      val pcuNodes = nodes.filter(n => n.nodeType == NodeType.HF)
-      require(pcuNodes.nonEmpty)
-      val nto1 = pcuNodes.length > dcuNodes.length
-      val dcuOfPcu = pcuNodes.map({ p =>
-        if(pcuNodes.length == 1) dcuNodes
-        else if(nto1) dcuNodes.filter(d => (p.bankId & ((1 << d.bankBits) - 1)) == d.bankId)
-        else dcuNodes.filter(d => (d.bankId & ((1 << p.bankBits) - 1)) == p.bankId)
-      })
-      for((p, ds) <- pcuNodes.zip(dcuOfPcu)) {
-        val bankDcuMap = ds.groupBy(_.bankId)
-        val pcuPos = nodes.indexOf(p)
-        p.friends = bankDcuMap.map({ case (_, n) =>
-          require(n.nonEmpty)
-          val disSeq = n.map(d => abs(nodes.indexOf(d) - pcuPos))
-          val pos = disSeq.indexOf(disSeq.min)
-          n(pos)
-        }).toSeq.filter(n => n.nodeType == NodeType.S && !n.mainMemory).sortBy(_.bankId)
       }
     }
     nodes
@@ -243,13 +223,13 @@ case class ZJParameters(
   ZhujiangGlobal.initialize(nodeNidBits, nodeAidBits, localNodeParams, csnNodeParams, requestAddrBits, cpuSpaceBits)
   val localRing = ZhujiangGlobal.localRing
   val csnRing = ZhujiangGlobal.csnRing
-  private lazy val bank = localNodeParams.filter(_.nodeType == NodeType.S).map(_.bankId).max + 1
+  private lazy val bank = localNodeParams.count(_.nodeType == NodeType.HF)
   private lazy val clusterTotalCacheSizeInKiB = localRing.count(_.nodeType == NodeType.CC) * clusterCacheSizeInKiB
   lazy val djParams = DJParam(
-    selfWays = cacheWays,
-    selfSets = cacheSizeInMiB * 1024 * 1024 / cacheWays / bank / cachelineBytes,
-    sfDirWays = snoopFilterWays,
-    sfDirSets = clusterTotalCacheSizeInKiB * 1024 * 2 / snoopFilterWays / bank / cachelineBytes,
+    llcSizeInKiB = cacheSizeInMiB * 1024 / bank,
+    sfSizeInKiB = clusterTotalCacheSizeInKiB * 2 / bank,
+    llcWays = cacheWays,
+    sfWays = snoopFilterWays,
     nrDirBank = 2,
   )
 }

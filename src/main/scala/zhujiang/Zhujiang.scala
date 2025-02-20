@@ -5,8 +5,7 @@ import chisel3.experimental.hierarchy.{Definition, Instance}
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{NodeType, Ring}
-import dongjiang.pcu._
-import dongjiang.dcu._
+import dongjiang._
 import xijiang.router.base.IcnBundle
 import xs.utils.debug.{DomainInfo, HardwareAssertion}
 import xs.utils.sram.SramBroadcastBundle
@@ -114,43 +113,28 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
   private val ccnSocketSeq = ccnIcnSeq.map(icn => placeSocket("cc", icn, Some(icn.node.domainId)))
 
   require(localRing.icnHfs.get.nonEmpty)
-  private val pcuIcnSeq = localRing.icnHfs.get
-  private val pcuDef = Definition(new ProtocolCtrlUnit(pcuIcnSeq.head.node)) // TODO: There's a risk here
-  private val pcuDevSeq = pcuIcnSeq.map(icn => Instance(pcuDef))
-  for(i <- pcuIcnSeq.indices) {
-    val bankId = pcuIcnSeq(i).node.bankId
-    pcuDevSeq(i).io.hnfID := pcuIcnSeq(i).node.nodeId.U
-    pcuDevSeq(i).io.pcuID := bankId.U
-    pcuDevSeq(i).io.dcuNodeIDVec.zipWithIndex.foreach { case(n, j) => n := pcuIcnSeq(i).node.friends(j).nodeId.U }
-    pcuDevSeq(i).io.toLocal <> pcuIcnSeq(i)
-    pcuDevSeq(i).reset := placeResetGen(s"pcu_$bankId", pcuIcnSeq(i))
-    pcuDevSeq(i).clock := clock
-    pcuDevSeq(i).suggestName(s"pcu_$bankId")
-    HardwareAssertion.fromDomain(pcuDevSeq(i).assertionOut, pcuDevSeq(i).assertionInfo, level = 0, s"pcu $bankId")
-    HardwareAssertion.placePipe(Int.MaxValue-1)
-  }
-
-  require(!localRing.icnSns.get.forall(_.node.mainMemory))
-  private val dcuIcnSeq = localRing.icnSns.get.filterNot(_.node.mainMemory).sortBy(_.node.dpId).groupBy(_.node.bankId).toSeq
-  private val dcuDef = Definition(new DataCtrlUnit(dcuIcnSeq.head._2.map(_.node).sortBy(_.dpId))) // TODO: There's a risk here.
-  private val dcuDevSeq = dcuIcnSeq.map(is => Instance(dcuDef))
-  for(i <- dcuIcnSeq.indices) {
-    val bankId = dcuIcnSeq(i)._1
-    for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.icns(j) <> dcuIcnSeq(i)._2(j)
-    for(j <- dcuIcnSeq(i)._2.indices) {
-      dcuDevSeq(i).io.friendsNodeIDVec(j).zipWithIndex.foreach {
+  private val hfIcnSeq = localRing.icnHfs.get.sortBy(_.node.hfpId).groupBy(_.node.bankId).toSeq
+  private val hfDef = Definition(new DongJiang(hfIcnSeq.head._2.map(_.node).sortBy(_.hfpId))) // TODO: There's a risk here.
+  private val hfDevSeq = hfIcnSeq.map(is => Instance(hfDef))
+  hfDevSeq.foreach(_.io <> DontCare) // DontCare Configuration Signals
+  for(i <- hfIcnSeq.indices) {
+    for(j <- hfIcnSeq(i)._2.indices) hfDevSeq(i).io.localIcnVec(j) <> hfIcnSeq(i)._2(j)
+    for(j <- hfIcnSeq(i)._2.indices) hfDevSeq(i).io.hnfIdVec(j) := hfIcnSeq(i)._2(j).node.nodeId.U
+    for(j <- hfIcnSeq(i)._2.indices) {
+      hfDevSeq(i).io.frinedsVec(j).zipWithIndex.foreach {
         case (v, k) =>
-          if (k < dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j).length) {
-            v := dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j)(k)
+          if (k < hfIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j).length) {
+            v := hfIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j)(k)
           } else {
             v := (pow(2, niw).toInt - 1).U
           }
       }
     }
-    dcuDevSeq(i).reset := placeResetGen(s"dcu_$bankId", dcuIcnSeq(i)._2.head)
-    dcuDevSeq(i).clock := clock
-    dcuDevSeq(i).suggestName(s"dcu_$bankId")
-    HardwareAssertion.fromDomain(dcuDevSeq(i).assertionOut, dcuDevSeq(i).assertionInfo, level = 0, s"dcu $bankId")
+    val bankId = hfIcnSeq(i)._1
+    hfDevSeq(i).reset := placeResetGen(s"dcu_$bankId", hfIcnSeq(i)._2.head)
+    hfDevSeq(i).clock := clock
+    hfDevSeq(i).suggestName(s"dcu_$bankId")
+    HardwareAssertion.fromDomain(hfDevSeq(i).assertionOut, hfDevSeq(i).assertionInfo, level = 0, s"dcu $bankId")
     HardwareAssertion.placePipe(Int.MaxValue-1)
   }
 

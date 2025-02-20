@@ -17,7 +17,7 @@ sealed class MemoryComplexCrossBar(mstParams: Seq[AxiParams]) extends BaseAxiXba
 
 class MemoryComplex(cfgNode: Node, memNode: Node)(implicit p: Parameters) extends ZJModule {
   require(cfgNode.nodeType == NodeType.HI)
-  require(memNode.nodeType == NodeType.S && memNode.mainMemory)
+  require(memNode.nodeType == NodeType.S)
   private val chiCfgBridge = Module(new AxiLiteBridge(cfgNode, dw, 3))
   private val chiMemBridge = Module(new AxiBridge(memNode))
   private val memXBar = Module(new MemoryComplexCrossBar(Seq(chiCfgBridge.axi.params, chiMemBridge.axi.params)))

@@ -17,6 +17,8 @@ object NodeType {
   val C: Int = 5
   val S: Int = 6
   val P: Int = 7
+  def HX: Int = HF
+  def C2C: Int = CC
   def width: Int = log2Ceil(P)
   def min: Int = 0
   def max: Int = P
@@ -26,9 +28,8 @@ case class NodeParam(
   attr: String = "",
   nodeType: Int = NodeType.P,
   splitFlit: Boolean = false,
-  bankId: Int = 0, // Only applied in SN and HNF
-  dpId: Int = 0, // Only applied in SN
-  mainMemory: Boolean = false, // Only applied in SN
+  bankId: Int = 0, // Only applied in HNF
+  hfpId: Int = 0, // HNF port id // Only applied in HNF)
   cpuNum: Int = 1, // Only applied in CC
   addressRange: (Long, Long) = (0L, 0L), // Only applied in HNI
   defaultHni: Boolean = false, // Only applied in HNI
@@ -46,10 +47,9 @@ case class Node(
   globalId: Int = 0,
   splitFlit: Boolean = false,
   domainId:Int = 0,
-  bankId: Int = 0, // Only applied in SN, HNF and CRF
-  dpId: Int = 0, // Only applied in SN, HNF and CRF
-  bankBits: Int = 1, // Only applied in SN, HNF and CRF
-  mainMemory: Boolean = false, // Only applied in SN
+  bankId: Int = 0, // Only applied in HNF
+  hfpId: Int = 0, // Only applied in HNF
+  bankBits: Int = 1, // Only applied in HNF
   cpuNum: Int = 1, // Only applied in CCN
   clusterId: Int = 0, //Only applied in CCN
   addressRange: (Long, Long) = (0L, 0L), // Only applied in HNI
@@ -98,7 +98,6 @@ case class Node(
 
   private lazy val routerPrefixStr: String = if(csnNode) "Csn" else ""
   private lazy val icnPrefixStr: String = if(csnNode) "csn_" else ""
-  private lazy val snAttrStr: String = if(mainMemory) "mem_" else "dcu_"
   private def icnStrGen(pfx: String, body: String) = s"$icnPrefixStr$pfx${body}_id_${nodeId.toHexString}"
   private def routerStrGen(body: String) = s"Router$routerPrefixStr${body}_0x${nodeId.toHexString}"
   lazy val (routerStr, icnStr, nodeStr): (String, String, String) = nodeType match {
@@ -108,7 +107,7 @@ case class Node(
     case NodeType.HF => (routerStrGen("HomeFull"), icnStrGen("", s"hnf_bank_$bankId"), "HNF")
     case NodeType.HI => (routerStrGen("HomeIo"), icnStrGen("", "hni"), "HNI")
     case NodeType.C => (routerStrGen("ChipToChip"), icnStrGen("", "c2c"), "C2C")
-    case NodeType.S => (routerStrGen("Subordinate"), icnStrGen(snAttrStr, s"sn_bank_$bankId"), "SN")
+    case NodeType.S => (routerStrGen("Subordinate"), icnStrGen("", s"sn"), "SN")
     case _ => (routerStrGen("Pipeline"), icnStrGen("", "pip"), "PIP")
   }
 
@@ -180,11 +179,7 @@ case class Node(
     }
     require(legalTgtTypeSeq.nonEmpty, s"node 0x${nodeId.toHexString} has no inject channel $chn")
     val res = ring.filter(n => legalTgtTypeSeq.contains(n.nodeType)).map(_.nodeId).filterNot(_ == nodeId)
-    if(nodeType == NodeType.S && !mainMemory) {
-      res ++ ring.filter(n => n.nodeType == NodeType.S && n.mainMemory).map(_.nodeId)
-    } else {
-      res
-    }
+    res
   }
 
   def checkLegalInjectTarget(ring: Seq[Node], chn: String, tgt: NodeIdBundle, valid: Bool, nid: UInt): Unit = {
@@ -254,16 +249,9 @@ case class Node(
          |    routerName: $routerName
          |""".stripMargin
 
-    val frdsStr = if((nodeType == NodeType.HF || nodeType == NodeType.S && !mainMemory) && !csnNode) {
+    val frdsStr = if(nodeType == NodeType.HF) {
       s"""    friends: $friendsStr
          |    bank: $bankId
-         |""".stripMargin
-    } else {
-      ""
-    }
-
-    val snDevStr = if(nodeType == NodeType.S) {
-      s"""    device: ${if(mainMemory) "mem" else "dcu"}
          |""".stripMargin
     } else {
       ""
@@ -290,6 +278,6 @@ case class Node(
       ""
     }
 
-    head + frdsStr + snDevStr + ccAttrStr + hdAttrStr + addrStr + "  }\n"
+    head + frdsStr + ccAttrStr + hdAttrStr + addrStr + "  }\n"
   }
 }

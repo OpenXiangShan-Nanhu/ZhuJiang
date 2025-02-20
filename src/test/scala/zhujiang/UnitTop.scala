@@ -75,7 +75,7 @@ object DmaTop extends App {
 object MemCxTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   val cfgNode = Node(nodeType = NodeType.HI)
-  val memNode = Node(nodeType = NodeType.S, mainMemory = true)
+  val memNode = Node(nodeType = NodeType.S)
   (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
     ChiselGeneratorAnnotation(() => new MemoryComplex(cfgNode, memNode)(config))
   ))

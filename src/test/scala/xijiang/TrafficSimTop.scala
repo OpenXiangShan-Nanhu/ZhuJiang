@@ -16,19 +16,17 @@ class TfsTopConfig extends Config((site, here, up) => {
   case ZJParametersKey => ZJParameters(
     localNodeParams = Seq(
       NodeParam(nodeType = NodeType.CC, cpuNum = 2),
-      NodeParam(nodeType = NodeType.S, bankId = 0, dpId = 0),
-      NodeParam(nodeType = NodeType.HF, bankId = 0),
-      NodeParam(nodeType = NodeType.S, bankId = 1, dpId = 0),
+      NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 0),
+      NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 0),
       NodeParam(nodeType = NodeType.CC, cpuNum = 2),
       NodeParam(nodeType = NodeType.RI),
       NodeParam(nodeType = NodeType.HI, defaultHni = true),
       NodeParam(nodeType = NodeType.CC, cpuNum = 2),
-      NodeParam(nodeType = NodeType.S, bankId = 1, dpId = 1),
-      NodeParam(nodeType = NodeType.HF, bankId = 1),
-      NodeParam(nodeType = NodeType.S, bankId = 0, dpId = 1),
+      NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 1),
+      NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 1),
       NodeParam(nodeType = NodeType.CC, cpuNum = 2),
       NodeParam(nodeType = NodeType.HI, addressRange = (0x1000000, 0x10010000)),
-      NodeParam(nodeType = NodeType.S, mainMemory = true)
+      NodeParam(nodeType = NodeType.S)
     ),
     tfsParams = Some(TrafficSimParams())
   )
