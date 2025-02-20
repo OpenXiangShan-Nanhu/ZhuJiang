@@ -1,12 +1,6 @@
-package dongjiang.chi
+package dongjiang.bundle
 
 import chisel3._
-import chisel3.util._
-import org.chipsalliance.cde.config._
-import scala.collection.immutable.ListMap
-import zhujiang._
-import zhujiang.chi._
-
 
 object ChiResp {
   val width = 3
@@ -37,10 +31,10 @@ trait HasChiResp { this: Bundle =>
   val baseWidth = ChiResp.width-2
 
   def isInvalid = state(baseWidth, 0) === ChiResp.I(baseWidth, 0)
-  def isShared = state(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | state(baseWidth, 0) === ChiResp.SD(baseWidth, 0)
-  def isUnique = state(baseWidth, 0) === ChiResp.UC(baseWidth, 0) | state(baseWidth, 0) === ChiResp.UD(baseWidth, 0)
-  def isClean = state(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | state(baseWidth, 0) === ChiResp.UC(baseWidth, 0)
-  def isDirty = state(baseWidth, 0) === ChiResp.UD(baseWidth, 0) | state(baseWidth, 0) === ChiResp.SD(baseWidth, 0)
+  def isShared  = state(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | state(baseWidth, 0) === ChiResp.SD(baseWidth, 0)
+  def isUnique  = state(baseWidth, 0) === ChiResp.UC(baseWidth, 0) | state(baseWidth, 0) === ChiResp.UD(baseWidth, 0)
+  def isClean   = state(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | state(baseWidth, 0) === ChiResp.UC(baseWidth, 0)
+  def isDirty   = state(baseWidth, 0) === ChiResp.UD(baseWidth, 0) | state(baseWidth, 0) === ChiResp.SD(baseWidth, 0)
   def passDirty = state(ChiResp.width-1)
 }
 
@@ -61,14 +55,10 @@ trait HasChiStates { this: Bundle =>
   val state = UInt(ChiState.width.W)
 
   /*
-    * Coherence State
+    * Exclusive Coherence State
     * RN(isInvalid) -> HN(isInvalid / isShared / isUnique)
-    * RN(isShared)  -> HN(isInvalid / isShared)
+    * RN(isShared)  -> HN(isInvalid)
     * RN(isUnique)  -> HN(isInvalid)
-    *
-    * Dirty / Clean State
-    * RN(isClean)   -> HN(isInvalid / isClean)
-    * RN(isDirty)   -> HN(isInvalid / isDirty)
     */
   def isInvalid   = state(0) === ChiState.I(0)
   def isisShared  = state(ChiState.width-1) === 0.U & !isInvalid
