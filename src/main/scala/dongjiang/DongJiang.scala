@@ -27,7 +27,6 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
     val localIcnVec   = MixedVec(localHnf.map(n => new DeviceIcnBundle(n)))
     // CSN ICN
     val hnsId         = if(csnHnx.nonEmpty) Some(Input(UInt(nodeIdBits.W))) else None
-    val c2cChipVec    = if(csnHnx.nonEmpty) Some(Input(Vec(nrCcNode, Vec(nrChip, Bool())))) else None
     val csnIcn        = if(csnHnx.nonEmpty) Some(new DeviceIcnBundle(csnHnx.get)) else None
   })
   @public val reset   = IO(Input(AsyncReset()))
@@ -39,7 +38,30 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
     require(csnHnx.nonEmpty)
   }
 
+  // TODO:
+  print(
+    s"""
+       |DongJiang Info: {
+       |  Support Protocol: CHI-G
+       |  llcSizeInKiB: ${djparam.llcSizeInKiB}
+       |  sfSizeInKiB: ${djparam.sfSizeInKiB}
+       |  llcWays: ${djparam.llcWays}
+       |  sfWays: ${djparam.sfWays}
+       |  openDCT: ${djparam.openDCT}
+       |  nrPoS: ${djparam.nrPoS}
+       |  dataBufSizeInByte: ${djparam.dataBufSizeInByte}
+       |  dataSetup: ${djparam.dataSetup}
+       |  dataLatency: ${djparam.dataSetup}
+       |  dataExtraHold: ${djparam.dataExtraHold}
+       |  dirSetup: ${djparam.dirSetup}
+       |  dirLatency: ${djparam.dirLatency}
+       |  dirExtraHold: ${djparam.dirExtraHold}
+       |}
+       |""".stripMargin)
+
   io <> DontCare
+
+  io.localIcnVec.foreach { case icn => HardwareAssertion(!icn.rx.req.get.valid) }
 
   /*
    * Hardware Assertion Node And IO

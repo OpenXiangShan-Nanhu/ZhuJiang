@@ -29,7 +29,7 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
 
   print(
     s"""
-       |ZhuJiang Message: {
+       |ZhuJiang Info: {
        |  Support Protocol: CHI-G
        |  nodeIdBits: ${niw}
        |  requestAddrBits: ${raw}

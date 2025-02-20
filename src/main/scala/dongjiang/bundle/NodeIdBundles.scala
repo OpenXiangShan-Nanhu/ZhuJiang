@@ -44,7 +44,7 @@ class NodeIdBundle(implicit p: Parameters) extends DJBundle {
   }
 
 
-  def setByMetaId(metaId: UInt, c2cChipVec: Vec[Vec[Bool]], enAst: Bool = true.B): Unit = {
+  def setByMetaId(metaId: UInt, enAst: Bool = true.B): Unit = {
     require(metaId.getWidth == metaIdBits)
     // Net
     val _net = metaId >= nrCcNode.U
@@ -59,24 +59,15 @@ class NodeIdBundle(implicit p: Parameters) extends DJBundle {
     val _aid_local = 1.U
     // CSN
     val chipId = metaId - nrCcNode.U
-    val c2cMatchVec = c2cChipVec.map(_(chipId))
-    val _nid_csn = UInt(nodeNidBits.W)
-    c2cNodeIdSeq.zip(c2cMatchVec).foreach {
-      case (c2cNodeId, c2cMatch) =>
-        when(c2cMatch) {
-          _nid_csn := getNID(c2cNodeId.U)
-        }
-    }
     val _aid_csn = chipId
-    HardwareAssertion.withEn(Mux(_net === Net.CSN, PopCount(c2cMatchVec) === 1.U, PopCount(c2cMatchVec) === 0.U), enAst)
     // Set value
     this.net := _net
-    this.nid := Mux(_net === Net.LOCAL, _nid_local, _nid_csn)
+    this.nid := Mux(_net === Net.LOCAL, _nid_local, DontCare) // nid will be remap in CSN ICN
     this.aid := Mux(_net === Net.LOCAL, _aid_local, _aid_csn)
   }
 
 
-  def getLocalDirect(friendsVec: Seq[Seq[UInt]], enAst: Bool = true.B) = {
+  def getLocalDirect(friendsVec: Seq[Seq[UInt]], enAst: Bool = true.B): UInt = {
     val directVec = Wire(Vec(friendsVec.length, Bool()))
     friendsVec.zip(directVec).foreach {
       case(f, d) =>

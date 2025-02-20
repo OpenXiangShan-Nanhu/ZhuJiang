@@ -14,7 +14,7 @@ case class DJParam(
                   // -------------------------- Size and DCT ---------------------------- //
                   addressBits:        Int = 48,
                   llcSizeInKiB:       Int = 16 * 1024,
-                  sfSizeInKiB         :        Int = 8 * 1024,
+                  sfSizeInKiB:        Int = 8 * 1024,
                   openDCT:            Boolean = true,
                   // ------------------------ Frontend -------------------------- //
                   nrTaskBuf:          Int = 64,
