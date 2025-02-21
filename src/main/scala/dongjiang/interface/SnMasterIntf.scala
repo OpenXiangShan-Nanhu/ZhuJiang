@@ -13,7 +13,7 @@ import dongjiang.utils.StepRREncoder
 import org.chipsalliance.cde.config._
 import xijiang.Node
 import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
-import xs.utils.debug.{DomainInfo, HardwareAssertion, awhen}
+import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
 
 
