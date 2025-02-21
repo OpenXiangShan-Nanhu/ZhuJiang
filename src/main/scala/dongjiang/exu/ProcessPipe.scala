@@ -264,6 +264,7 @@ for (i <- 0 until 2) {
     val decode = t._1.asTypeOf(new DecodeBundle())
     HardwareAssertion(!(decode.cleanDB & decode.writeDCU), s"Index: $i")
   }
+  HardwareAssertion.placePipe(1)
   // deocde
   decode_s3.decode(inst_s3, table)
   decode_req_s3.decode(inst_req_s3, table)
@@ -433,7 +434,8 @@ for (i <- 0 until 2) {
   taskSnp_s4.pcuMes.selfWay       := DontCare
   taskSnp_s4.pcuMes.toDCU         := DontCare
   taskSnp_s4.pcuMes.snpTgtVec     := s4_g.snpNodeVec
-  taskSnp_s4.pcuMes.hasPcuDBID    := dbid_s4.valid; HardwareAssertion(Mux(s4_g.decode.snoop & dbid_s4.valid & valid_s4_g, taskIsWriPtl_s4 | taskIsAtomic_s4, true.B))
+  taskSnp_s4.pcuMes.hasPcuDBID    := dbid_s4.valid
+  HardwareAssertion(Mux(s4_g.decode.snoop & dbid_s4.valid & valid_s4_g, taskIsWriPtl_s4 | taskIsAtomic_s4, true.B))
   taskSnp_s4.pcuMes.snpNeedDB     := s4_g.decode.snpNeedDB
 
 
@@ -456,7 +458,8 @@ for (i <- 0 until 2) {
   taskRD_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
   taskRD_s4.pcuMes.doDMT          := djparam.openDMT.asBool & !(taskIsAtomic_s4)
   taskRD_s4.pcuMes.toDCU          := false.B
-  taskRD_s4.pcuMes.hasPcuDBID     := dbid_s4.valid; HardwareAssertion(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
+  taskRD_s4.pcuMes.hasPcuDBID     := dbid_s4.valid
+  HardwareAssertion(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
 
 
   /*
@@ -472,7 +475,8 @@ for (i <- 0 until 2) {
   taskWD_s4.from                  := io.dcuID
   taskWD_s4.to                    := IncoID.LOCALMST.U
   taskWD_s4.pcuIndex.mshrWay      := s4_g.task.taskMes.mshrWay
-  taskWD_s4.pcuIndex.dbID         := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.decode.writeDown, dbid_s4.valid, true.B))
+  taskWD_s4.pcuIndex.dbID         := dbid_s4.bits
+  HardwareAssertion(Mux(valid_s4_g & s4_g.decode.writeDown, dbid_s4.valid, true.B))
   taskWD_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
   taskWD_s4.pcuMes.selfWay        := DontCare
   taskWD_s4.pcuMes.toDCU          := false.B
@@ -484,7 +488,8 @@ for (i <- 0 until 2) {
   rcDBReq_s4.to         := IncoID.LOCALSLV.U
   rcDBReq_s4.isRead     := s4_g.decode.rDB2Src
   rcDBReq_s4.isClean    := s4_g.decode.cleanDB
-  rcDBReq_s4.dbID       := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.decode.rDB2Src, dbid_s4.valid, true.B))
+  rcDBReq_s4.dbID       := dbid_s4.bits
+  HardwareAssertion(Mux(valid_s4_g & s4_g.decode.rDB2Src, dbid_s4.valid, true.B))
   rcDBReq_s4.rBeatOH    := s4_g.task.chiIndex.beatOH
   rcDBReq_s4.exAtomic   := taskIsAtomic_s4
 
@@ -509,7 +514,8 @@ for (i <- 0 until 2) {
   readDCU_s4.pcuMes.doDMT           := djparam.openDMT.asBool & !(taskIsAtomic_s4)
   readDCU_s4.pcuMes.selfWay         := OHToUInt(s4_g.dirRes.s.wayOH)
   readDCU_s4.pcuMes.toDCU           := true.B
-  readDCU_s4.pcuMes.hasPcuDBID      := dbid_s4.valid; HardwareAssertion(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
+  readDCU_s4.pcuMes.hasPcuDBID      := dbid_s4.valid
+  HardwareAssertion(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
 
 
   /*
@@ -526,7 +532,8 @@ for (i <- 0 until 2) {
   writeDCU_s4.from                  := io.dcuID
   writeDCU_s4.to                    := IncoID.LOCALMST.U
   writeDCU_s4.pcuIndex.mshrWay      := s4_g.task.taskMes.mshrWay
-  writeDCU_s4.pcuIndex.dbID         := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.decode.writeDCU, dbid_s4.valid, true.B))
+  writeDCU_s4.pcuIndex.dbID         := dbid_s4.bits
+  HardwareAssertion(Mux(valid_s4_g & s4_g.decode.writeDCU, dbid_s4.valid, true.B))
   writeDCU_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
   writeDCU_s4.pcuMes.selfWay        := OHToUInt(s4_g.dirRes.s.wayOH)
   writeDCU_s4.pcuMes.toDCU          := true.B
@@ -537,7 +544,8 @@ for (i <- 0 until 2) {
    */
   taskRepl_s4                       := DontCare
   taskRepl_s4.chiIndex              := s4_g.task.chiIndex
-  taskRepl_s4.chiIndex.size         := chiFullSize.U; HardwareAssertion(Mux(valid_s4_g & s4_g.todo_replace, s4_g.task.chiIndex.fullSize | snpRespHasData, true.B))
+  taskRepl_s4.chiIndex.size         := chiFullSize.U
+  HardwareAssertion(Mux(valid_s4_g & s4_g.todo_replace, s4_g.task.chiIndex.fullSize | snpRespHasData, true.B))
   taskRepl_s4.chiIndex.offset       := 0.U
   taskRepl_s4.chiMes.channel        := CHIChannel.REQ
   taskRepl_s4.chiMes.expCompAck     := false.B
@@ -545,7 +553,8 @@ for (i <- 0 until 2) {
   taskRepl_s4.from                  := io.dcuID
   taskRepl_s4.to                    := IncoID.LOCALMST.U
   taskRepl_s4.pcuIndex.mshrWay      := s4_g.task.taskMes.mshrWay
-  taskRepl_s4.pcuIndex.dbID         := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.todo_replace, dbid_s4.valid, true.B))
+  taskRepl_s4.pcuIndex.dbID         := dbid_s4.bits
+  HardwareAssertion(Mux(valid_s4_g & s4_g.todo_replace, dbid_s4.valid, true.B))
   taskRepl_s4.pcuMes.useAddr        := s4_g.dirRes.s.useAddr
   taskRepl_s4.pcuMes.selfWay        := OHToUInt(s4_g.dirRes.s.wayOH)
   taskRepl_s4.pcuMes.toDCU          := false.B
@@ -578,7 +587,8 @@ for (i <- 0 until 2) {
   commit_s4.chiMes.resp           := s4_g.decode.resp
   commit_s4.from                  := io.dcuID
   commit_s4.to                    := IncoID.LOCALSLV.U
-  commit_s4.pcuIndex.dbID         := dbid_s4.bits; HardwareAssertion(Mux(valid_s4_g & s4_g.decode.commit & s4_g.decode.respChnl === CHIChannel.DAT, dbid_s4.valid, true.B))
+  commit_s4.pcuIndex.dbID         := dbid_s4.bits
+  HardwareAssertion(Mux(valid_s4_g & s4_g.decode.commit & s4_g.decode.respChnl === CHIChannel.DAT, dbid_s4.valid, true.B))
   commit_s4.pcuIndex.mshrSet      := s4_g.task.taskMes.mSet
   commit_s4.pcuIndex.mshrWay      := s4_g.task.taskMes.mshrWay
   commit_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
@@ -623,19 +633,18 @@ for (i <- 0 until 2) {
         when(s4_g.snpNodeVec(i))          { a.state := s4_g.decode.othState }
         .elsewhen(i.U === s4_g.srcMetaID) { a.state := s4_g.decode.srcState }
         .otherwise                        { a.state := s4_g.dirRes.sf.metaVec(i).state }
-        // HardwareAssertion(Mux(valid_s4_g & s4_g.decode.wSFDir, RespType.isSnpX(s4_g.respType) | RespType.isCB(s4_g.respType), true.B))
         hwaFlags(0) := Mux(valid_s4_g & s4_g.decode.wSFDir, RespType.isSnpX(s4_g.respType) | RespType.isCB(s4_g.respType), true.B)
       }.otherwise {
         when(i.U === s4_g.srcMetaID)      { a.state := s4_g.decode.srcState }
         .otherwise                        { a.state := s4_g.dirRes.sf.metaVec(i).state; }
       }
       when((!RespType.isSnpX(s4_g.respType))&(!(i.U === s4_g.srcMetaID))){
-        // HardwareAssertion(Mux(valid_s4_g & s4_g.decode.wSFDir, a.state === s4_g.decode.othState | a.state === ChiState.I, true.B))
         hwaFlags(1) := Mux(valid_s4_g & s4_g.decode.wSFDir, a.state === s4_g.decode.othState | a.state === ChiState.I, true.B)
       }
       HardwareAssertion(hwaFlags(0))
       HardwareAssertion(hwaFlags(1))
   }
+  HardwareAssertion.placePipe(1)
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //

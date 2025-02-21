@@ -117,7 +117,6 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
    * Atomic Data
    */
   when(io.dataTDB.valid & io.dataTDB.bits.atomicVal) {
-    // HardwareAssertion(io.dataTDB.bits.dbID >= nrDBWithoutAPUs.U)
     hwaFlags(0) := io.dataTDB.bits.dbID >= nrDBWithoutAPUs.U
     apuEntrys(io.dataTDB.bits.apuEID).atomic.data := io.dataTDB.bits.data
     apuEntrys(io.dataTDB.bits.apuEID).atomic.mask := io.dataTDB.bits.mask
@@ -157,8 +156,6 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
     ctrlEntrys(io.dbRCReqOpt.get.bits.dbID).to        := io.dbRCReqOpt.get.bits.to
     ctrlEntrys(io.dbRCReqOpt.get.bits.dbID).rBeatOH   := io.dbRCReqOpt.get.bits.rBeatOH
     ctrlEntrys(io.dbRCReqOpt.get.bits.dbID).exAtomic  := io.dbRCReqOpt.get.bits.exAtomic
-    // HardwareAssertion(Mux(io.dbRCReqOpt.get.bits.isRead, io.dbRCReqOpt.get.bits.rBeatOH =/= 0.U, true.B))
-    // HardwareAssertion(Mux(io.dbRCReqOpt.get.bits.exAtomic, !ctrlEntrys(io.dbRCReqOpt.get.bits.dbID).doneAtomic, true.B))
     hwaFlags(1) := Mux(io.dbRCReqOpt.get.bits.isRead, io.dbRCReqOpt.get.bits.rBeatOH =/= 0.U, true.B)
     hwaFlags(2) := Mux(io.dbRCReqOpt.get.bits.exAtomic, !ctrlEntrys(io.dbRCReqOpt.get.bits.dbID).doneAtomic, true.B)
   }
@@ -305,8 +302,6 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
   awhen(io.dataTDB.valid){ HardwareAssertion(ctrlEntrys(io.dataTDB.bits.dbID).isAlloc) }
 
   val cntReg = RegInit(VecInit(Seq.fill(djparam.nrDatBuf) { 0.U(64.W) }))
-  // cntReg.zip(ctrlEntrys).foreach { case (c, e) => c := Mux(e.isFree, 0.U, c + 1.U) }
-  // cntReg.zipWithIndex.foreach { case (c, i) => assert(c < TIMEOUT_DB.U, "DataBuffer ENTRY[0x%x] STATE[0x%x] TIMEOUT", i.U, ctrlEntrys(i).state) }
 
   cntReg.zip(ctrlEntrys).zipWithIndex.foreach {case ((c, e),i) => HardwareAssertion.checkTimeout(e.isFree, TIMEOUT_DB, cf"DataBuffer ENTRY[0x${i.U}] STATE[0x${ctrlEntrys(i).state}] TIMEOUT", i.U, ctrlEntrys(i).state)}
 

@@ -97,6 +97,7 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       HardwareAssertion(Mux(s.io.dirRead.valid,  s.io.dirRead.ready,  true.B))
       HardwareAssertion(Mux(sf.io.dirRead.valid, sf.io.dirRead.ready, true.B))
   }
+  HardwareAssertion.placePipe(1)
 
 
   /*
@@ -115,8 +116,9 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       val wSFire1 = io.dirWrite(1).s.fire & io.dirWrite(1).s.bits.dirBank === i.U
       HardwareAssertion(!(wSFire0 & wSFire1))
   }
-  io.dirWrite.map(_.s.ready).zip(selfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); HardwareAssertion(PopCount(b) <= 1.U) }
-
+  io.dirWrite.map(_.s.ready).zip(selfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _)
+  HardwareAssertion(PopCount(b) <= 1.U) }
+  HardwareAssertion.placePipe(1)
 
 
   /*
@@ -135,7 +137,11 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       val wSfFire1 = io.dirWrite(1).sf.fire & io.dirWrite(1).sf.bits.dirBank === i.U
       HardwareAssertion(!(wSfFire0 & wSfFire1))
   }
-  io.dirWrite.map(_.sf.ready).zip(sfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); HardwareAssertion(PopCount(b) <= 1.U) }
+  HardwareAssertion.placePipe(1)
+  io.dirWrite.map(_.sf.ready).zip(sfWReadyVec).foreach { 
+    case(a, b) => a := b.reduce(_ | _)
+    HardwareAssertion(PopCount(b) <= 1.U) 
+  }
 
 
 
@@ -176,6 +182,7 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       // Assert
       HardwareAssertion(PopCount(hitVec) <= 1.U)
   }
+  HardwareAssertion.placePipe(1)
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //

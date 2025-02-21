@@ -96,7 +96,6 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
     hwa_flag := true.B
     when(entryMes.toDCU) { 
       nodeID := getFriendDcuIDByDcuBankID(entryMes.dcuID, fIDSeq)
-      // HardwareAssertion(entryMes.dcuID <= nrBankPerPCU.U)
       hwa_flag := entryMes.dcuID <= nrBankPerPCU.U
     }
     .otherwise           { nodeID := ddrcNodeId.U }
@@ -180,7 +179,6 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
        */
       when(io.req2Intf.fire & entryGetReqID === i.U) {
         entry                       := entrySave
-        // HardwareAssertion(entry.state === SMState.Free, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
         hwaFlags(0) := entry.state === SMState.Free
       /*
        * Receive DBID From DataBuffer
@@ -188,7 +186,6 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
       }.elsewhen(io.dbSigs.dbidResp.fire & io.dbSigs.dbidResp.bits.receive & entryRecDBID === i.U) {
         entry.entryMes.hasData      := true.B
         entry.pcuIndex.dbID         := io.dbSigs.dbidResp.bits.dbID
-        // HardwareAssertion(entry.state === SMState.WaitDBID, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
         hwaFlags(1) := entry.state === SMState.WaitDBID
       /*
        * Receive Data And Resp From CHI RxDat
@@ -196,9 +193,6 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
       }.elsewhen(rxDat.fire & rxDat.bits.TxnID === i.U) {
         entry.entryMes.getBeatNum   := entry.entryMes.getBeatNum + 1.U
         entry.chiMes.resp           := rxDat.bits.Resp
-        // HardwareAssertion(rxDat.bits.Opcode === CompData, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-        // HardwareAssertion(entry.isReadReq, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-        // HardwareAssertion(entry.state === SMState.WaitNodeData, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
         hwaFlags(2) := rxDat.bits.Opcode === CompData
         hwaFlags(3) := entry.isReadReq
         hwaFlags(4) := entry.state === SMState.WaitNodeData
@@ -210,16 +204,11 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
           entry.chiIndex.txnID          := rxRsp.bits.DBID
           entry.entryMes.toDCU          := Mux(entry.isReplReq, true.B, entry.entryMes.toDCU) 
           entry.entryMes.alrGetCompNum  := entry.entryMes.alrGetCompNum + (rxRsp.bits.Opcode === CompDBIDResp).asUInt
-          // HardwareAssertion(entry.state === SMState.WaitReplDBID | entry.state === SMState.WaitNodeDBID, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-          // HardwareAssertion(Mux(entry.isReplReq, Mux(entry.state === SMState.WaitReplDBID, entry.entryMes.toDCU, !entry.entryMes.toDCU), true.B), "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
           hwaFlags(5) := entry.state === SMState.WaitReplDBID | entry.state === SMState.WaitNodeDBID
           hwaFlags(6) := Mux(entry.isReplReq, Mux(entry.state === SMState.WaitReplDBID, entry.entryMes.toDCU, !entry.entryMes.toDCU), true.B)
         }
         when(rxRsp.bits.Opcode === Comp | rxRsp.bits.Opcode === CompCMO) {
           entry.entryMes.alrGetCompNum := entry.entryMes.alrGetCompNum + 1.U
-          // HardwareAssertion(Mux(!entry.isReplReq | entry.entryMes.alrGetCompNum === 1.U, entry.state === SMState.WaitNodeComp,
-          // entry.state === SMState.WaitReplDBID | entry.state === SMState.RCDB | entry.state === SMState.WriteData2Node |  entry.state === SMState.WaitNodeComp),
-          // "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
           hwaFlags(7) := Mux(!entry.isReplReq | entry.entryMes.alrGetCompNum === 1.U, entry.state === SMState.WaitNodeComp, entry.state === SMState.WaitReplDBID | entry.state === SMState.RCDB | entry.state === SMState.WriteData2Node |  entry.state === SMState.WaitNodeComp)
         }
       /*
@@ -227,7 +216,6 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
        */
       }.elsewhen(io.dbSigs.dataFDB.fire & entry.isWaitDBData & io.dbSigs.dataFDB.bits.dbID === entry.pcuIndex.dbID) {
         entry.entryMes.getBeatNum   := entry.entryMes.getBeatNum + 1.U
-        // HardwareAssertion(entry.state === SMState.WriteData2Node, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
         hwaFlags(8) := entry.state === SMState.WriteData2Node
       /*
        * Clean Intf Entry When Its Free
@@ -243,8 +231,9 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
       HardwareAssertion(hwaFlags(5), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
       HardwareAssertion(hwaFlags(7), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
       HardwareAssertion(hwaFlags(8), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-
+      HardwareAssertion.placePipe(1)
   }
+  HardwareAssertion.placePipe(2)
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // -------------------------------------------------- Entry State Transfer ---------------------------------------------- //
@@ -343,7 +332,9 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
       HardwareAssertion(hwaFlags(12))
       HardwareAssertion(hwaFlags(13), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
       HardwareAssertion(hwaFlags(14), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
+      HardwareAssertion.placePipe(1)
   }
+  HardwareAssertion.placePipe(2)
 
 
   // -------------------------------------------------------------------------------------------------------------------- //
@@ -510,10 +501,9 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
 // -------------------------------------------------  Assertion  -------------------------------------------------------- //
   val cntReg = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U(64.W) }))
   cntReg.zip(entrys).foreach { case (c, p) => c := Mux(p.isFree, 0.U, c + 1.U) }
-  // cntReg.zipWithIndex.foreach { case (c, i) => assert(c < TIMEOUT_SMINTF.U, cf"SNMAS Intf[0x${i.U}] STATE[0x${entrys(i).state}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] OP[0x${entrys(i).chiMes.opcode}] TIMEOUT", i.U, entrys(i).state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.opcode) }
 
   cntReg.zip(entrys).zipWithIndex.foreach { case ((c, p), i) => HardwareAssertion.checkTimeout(p.isFree, TIMEOUT_SMINTF, cf"SNMAS Intf[0x${i.U}] STATE[0x${entrys(i).state}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] OP[0x${entrys(i).chiMes.opcode}] TIMEOUT", i.U, entrys(i).state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.opcode) }
-
+  HardwareAssertion.placePipe(2)
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
   require(param.nrEntry >= 4 & param.nrEntry % 4 == 0)
   for (i <- 0 until (param.nrEntry / 4)) {

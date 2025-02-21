@@ -178,8 +178,8 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
   HardwareAssertion(Mux(io.resp2Exu.valid, mshrTableReg(io.resp2Exu.bits.pcuIndex.mshrSet)(io.resp2Exu.bits.pcuIndex.mshrWay).isWaitResp, true.B))
 
 
-val hwaFlags = Array.fill(17)(Wire(Bool()))
-for (i <- 0 until 17) {
+val hwaFlags = Array.fill(16)(Wire(Bool()))
+for (i <- 0 until 16) {
   hwaFlags(i) := true.B
 }
 
@@ -215,8 +215,6 @@ for (i <- 0 until 17) {
             // req or update
             m.respMes               := 0.U.asTypeOf(m.respMes)
             m.mshrMes.waitIntfVec   := updMSHRBits.waitIntfVec
-            // HardwareAssertion(PopCount(m.mshrMes.waitIntfVec) === 0.U, cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-            // HardwareAssertion(m.isAlreadySend, cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             hwaFlags(0) := PopCount(m.mshrMes.waitIntfVec) === 0.U
             hwaFlags(1) := m.isAlreadySend
 
@@ -230,8 +228,6 @@ for (i <- 0 until 17) {
             when(io.resp2Exu.bits.pcuMes.isCompAck) {
               // Only use in DMT
               // Nothing to do and it has been receive master resp
-              // HardwareAssertion(PopCount(m.mshrMes.waitIntfVec) === 1.U, cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-              // HardwareAssertion(m.respMes.mstResp.valid, cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
               hwaFlags(2) := PopCount(m.mshrMes.waitIntfVec) === 1.U
               hwaFlags(3) := m.respMes.mstResp.valid
             }
@@ -252,29 +248,20 @@ for (i <- 0 until 17) {
                 m.respMes.slvResp.valid := true.B
                 m.respMes.slvResp.bits  := io.resp2Exu.bits.chiMes.resp
                 m.respMes.slvDBID.valid := true.B
-                // HardwareAssertion(io.resp2Exu.bits.pcuMes.hasData)
                 hwaFlags(4) := io.resp2Exu.bits.pcuMes.hasData
                 m.respMes.slvDBID.bits  := io.resp2Exu.bits.pcuIndex.dbID
               }.elsewhen(io.resp2Exu.bits.from === IncoID.LOCALMST.U) {
                 // Nothing to do and State Will be Free
-                // HardwareAssertion(m.respMes.noRespValid, cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-                hwaFlags(5) := m.respMes.noRespValid
               }.otherwise {
-                // HardwareAssertion(false.B)
                 hwaFlags(6) := false.B
               }
             }
-            // HardwareAssertion(m.mshrMes.waitIntfVec(io.resp2Exu.bits.from), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-            // HardwareAssertion(m.isWaitResp, cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-            hwaFlags(7) := m.mshrMes.waitIntfVec(io.resp2Exu.bits.from)
-            hwaFlags(8) := m.isWaitResp
             /*
              * Receive Node Req
              */
           }.elsewhen(req2ExuHit) {
             m := 0.U.asTypeOf(m)
             m := mshrAlloc_s0
-            // HardwareAssertion(m.isFree, cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             hwaFlags(9) := m.isFree
             /*
              * Clean MSHR Entry When Its Free
@@ -292,9 +279,11 @@ for (i <- 0 until 17) {
           HardwareAssertion(hwaFlags(7), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
           HardwareAssertion(hwaFlags(8), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
           HardwareAssertion(hwaFlags(9), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-      }
+        }
+        HardwareAssertion.placePipe(1)
       
   }
+  HardwareAssertion.placePipe(2)
 
   /*
    * Set ready value
@@ -317,13 +306,11 @@ for (i <- 0 until 17) {
           // Free ---> BeSend
           when(m.isFree & ns(BeSend)) {
             val lockSrcVec      = mVec.map { case a => a.mshrMes.selfLock & a.minDirSet(i.U) === mshrAlloc_s0.minDirSet(i.U) }
-            // HardwareAssertion(PopCount(lockSrcVec) <= 1.U, s"MSHR[${i}][${j}]")
             hwaFlags(10) := PopCount(lockSrcVec) <= 1.U
             m.mshrMes.othLock   := lockSrcVec.reduce(_ | _)
           // BeSend/WaitResp ---> BeSend
           }.elsewhen((m.isBeSend | m.isWaitResp) & ns(BeSend)) {
             val lockSrcVec      = mVec.map { case a => a.mshrMes.selfLock & a.minDirSet(i.U) === m.minDirSet(i.U) }
-            // HardwareAssertion(PopCount(lockSrcVec) <= 1.U, s"MSHR[${i}][${j}]")
             hwaFlags(11) := PopCount(lockSrcVec) <= 1.U
             m.mshrMes.othLock   := lockSrcVec.reduce(_ | _)
           }.otherwise {
@@ -334,36 +321,29 @@ for (i <- 0 until 17) {
            */
           // BeSend ---> AlreadySend
           when(m.isBeSend & ns(AlreadySend)) {
-            // m.mshrMes.selfLock  := true.B
-            // HardwareAssertion(!m.mshrMes.selfLock, cf"MSHR[${i}][${j}]")
+            m.mshrMes.selfLock  := true.B
             hwaFlags(12) := !m.mshrMes.selfLock
           // WaitResp/AlreadySend ---> Free
           }.elsewhen((m.isAlreadySend | m.isWaitResp) & ns(Free)) {
-            // m.mshrMes.selfLock  := false.B
-            // HardwareAssertion(Mux(m.isAlreadySend, m.mshrMes.selfLock, m.mshrMes.selfLock | m.chiMes.opcode =/= Replace), cf"MSHR[${i}][${j}]")
+            m.mshrMes.selfLock  := false.B
             hwaFlags(13) := Mux(m.isAlreadySend, m.mshrMes.selfLock, m.mshrMes.selfLock | m.chiMes.opcode =/= Replace)
           // Set by ProcessPipe
           }.elsewhen((io.updMSHRVec(PipeID.RESP).fire & io.updMSHRVec(PipeID.RESP).bits.unlock & io.updMSHRVec(PipeID.RESP).bits.mshrMatch(i, j)) |
                      (io.updMSHRVec(PipeID.REQ).fire  & io.updMSHRVec(PipeID.REQ).bits.unlock  & io.updMSHRVec(PipeID.REQ).bits.mshrMatch(i, j))) {
-            // m.mshrMes.selfLock  := false.B
-            // HardwareAssertion(m.mshrMes.selfLock, cf"MSHR[${i}][${j}]")
+            m.mshrMes.selfLock  := false.B
             hwaFlags(14) := m.mshrMes.selfLock
           }.otherwise {
-            // m.mshrMes.selfLock  := m.mshrMes.selfLock
-            // HardwareAssertion(true.B)
-            hwaFlags(15) := true.B
+            m.mshrMes.selfLock  := m.mshrMes.selfLock
           }
 
           HardwareAssertion(hwaFlags(10), cf"MSHR[${i}][${j}]")
           HardwareAssertion(hwaFlags(11), cf"MSHR[${i}][${j}]")
           HardwareAssertion(hwaFlags(12), cf"MSHR[${i}][${j}]")
           HardwareAssertion(hwaFlags(13), cf"MSHR[${i}][${j}]")
-          HardwareAssertion(hwaFlags(14), cf"MSHR[${i}][${j}]")
-          HardwareAssertion(hwaFlags(15))
 
-
-
+          HardwareAssertion.placePipe(1)
       }
+      HardwareAssertion.placePipe(2)
   }
 
 
@@ -405,14 +385,17 @@ for (i <- 0 until 17) {
             val noResp      = m.respMes.noRespValid
             nextState       := Mux(hit, Mux(noResp, FREE, BESEND), WAITRESP)
             // assert(Mux(m.respMes.fwdState.valid, m.respMes.slvResp.valid, true.B), cf"MSHR[${i}][${j}]")
-            hwaFlags(16) := Mux(m.respMes.fwdState.valid, m.respMes.slvResp.valid, true.B)
+            hwaFlags(15) := Mux(m.respMes.fwdState.valid, m.respMes.slvResp.valid, true.B)
           }.otherwise {
             nextState       := m.mshrMes.state
           }
           m.mshrMes.state   := nextState
+          HardwareAssertion(hwaFlags(15), cf"MSHR[${i}][${j}]")
           HardwareAssertion(PopCount(m.mshrMes.state) === 1.U, cf"MSHR[${i}][${j}]")
           HardwareAssertion(PopCount(nextState) === 1.U, cf"MSHR[${i}][${j}]")
+          HardwareAssertion.placePipe(1)
       }
+      HardwareAssertion.placePipe(2)
   }
 
   // ---------------------------------------------------------------------------------------------------------------------- //
@@ -540,11 +523,9 @@ for (i <- 0 until 17) {
 // -------------------------------------------------- Assertion ------------------------------------------------------ //
   // MSHR Timeout Check
   val cntMSHRReg = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { VecInit(Seq.fill(djparam.nrMSHRWays) { 0.U(64.W) }) }))
-  // cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => c1 := Mux(mshrTableReg(i)(j).isFree, 0.U, c1 + 1.U)  } }
-  // cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => assert(c1 < TIMEOUT_MSHR.U, "MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x] TIMEOUT", i.U, j.U, mshrTableReg(i)(j).fullAddr(i.U, io.dcuID, io.pcuID), mshrTableReg(i)(j).chiMes.channel, mshrTableReg(i)(j).chiMes.opcode, mshrTableReg(i)(j).mshrMes.state) } }
 
   cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => HardwareAssertion.checkTimeout(mshrTableReg(i)(j).isFree, TIMEOUT_MSHR,cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${mshrTableReg(i)(j).fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${mshrTableReg(i)(j).chiMes.channel}] OP[0x${mshrTableReg(i)(j).chiMes.opcode}] STATE[0x${mshrTableReg(i)(j).mshrMes.state}] TIMEOUT", i.U, j.U, mshrTableReg(i)(j).fullAddr(i.U, io.dcuID, io.pcuID), mshrTableReg(i)(j).chiMes.channel, mshrTableReg(i)(j).chiMes.opcode, mshrTableReg(i)(j).mshrMes.state)  } }
-
+  HardwareAssertion.placePipe(2)
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
   require(djparam.nrMSHRWays >= 4 & djparam.nrMSHRWays % 4 == 0)
   for (i <- 0 until djparam.nrMSHRSets) {
@@ -555,5 +536,5 @@ for (i <- 0 until 17) {
     }
   }
 
-  HardwareAssertion.placePipe(2)
+  HardwareAssertion.placePipe(3)
 }

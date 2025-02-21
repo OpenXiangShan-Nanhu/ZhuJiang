@@ -245,7 +245,9 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
           d.io.write.bits.mask  := wBufRegVec(sramWID).beats(j).bits.mask
           HardwareAssertion.withEn(wBufRegVec(sramWID).beats(j).valid, d.io.write.valid, cf"WriteBuffer[${sramWID}] write DataStorage[${i}][${j}] with valid beats")
     }
+    HardwareAssertion.placePipe(1)
   }
+  HardwareAssertion.placePipe(2)
   dsRespIdPipe.io.enq.valid       := sramRFire
   dsRespIdPipe.io.enq.bits.id     := Mux(sramRead, rBufRegVec(sramRID).dsBank, wBufRegVec(sramReplID).dsBank)
   dsRespIdPipe.io.enq.bits.beatOH := Mux(sramRead, rBufRegVec(sramRID).beatOH, wBufRegVec(sramReplID).beatOH)
@@ -421,10 +423,10 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 
   // Read Buffer Timeout Check
   rBufRegVec.zipWithIndex.foreach { { case (r, i) => HardwareAssertion.checkTimeout(r.state === DCURState.Free, TIMEOUT_DCU_R, cf"DCU ReadBuffer[${i}] STATE[${r.state}] TIMEOUT", r.state) } }
-
+  HardwareAssertion.placePipe(2)
   // Write Buffer Timeout Check
   wBufRegVec.zipWithIndex.foreach { { case (w, i) => HardwareAssertion.checkTimeout(w.state === DCUWState.Free, TIMEOUT_DCU_W, cf"DCU ReadBuffer[${i}] STATE[${w.state}] TIMEOUT", w.state) } }
-
+  HardwareAssertion.placePipe(2)
   /*
    * Hardware Assertion Node And IO
    */

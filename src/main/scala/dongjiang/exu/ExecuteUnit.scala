@@ -43,8 +43,10 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   mshrCtl.io.req2Exu                  <> io.req2Exu
   mshrCtl.io.reqAck2Intf              <> io.reqAck2Intf
   mshrCtl.io.resp2Exu                 <> io.resp2Exu
-  mshrCtl.io.pipeTask(PipeID.RESP)    <> respPipe.io.task;  HardwareAssertion(!mshrCtl.io.pipeTask(PipeID.RESP).valid | mshrCtl.io.pipeTask(PipeID.RESP).bits.taskMes.pipeID === PipeID.RESP)
-  mshrCtl.io.pipeTask(PipeID.REQ)     <> reqPipe.io.task;   HardwareAssertion(!mshrCtl.io.pipeTask(PipeID.REQ).valid  | mshrCtl.io.pipeTask(PipeID.REQ).bits.taskMes.pipeID === PipeID.REQ)
+  mshrCtl.io.pipeTask(PipeID.RESP)    <> respPipe.io.task
+  HardwareAssertion(!mshrCtl.io.pipeTask(PipeID.RESP).valid | mshrCtl.io.pipeTask(PipeID.RESP).bits.taskMes.pipeID === PipeID.RESP)
+  mshrCtl.io.pipeTask(PipeID.REQ)     <> reqPipe.io.task
+  HardwareAssertion(!mshrCtl.io.pipeTask(PipeID.REQ).valid  | mshrCtl.io.pipeTask(PipeID.REQ).bits.taskMes.pipeID === PipeID.REQ)
   mshrCtl.io.updMSHRVec(PipeID.RESP)  <> respPipe.io.updMSHR
   mshrCtl.io.updMSHRVec(PipeID.REQ)   <> reqPipe.io.updMSHR
 
