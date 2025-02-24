@@ -144,8 +144,6 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   }
   txDat.ready     := txDatVec(OHToUInt(txDatDirVec)).ready
 
-
-
   HardwareAssertion.withEn(PopCount(txDatDirVec) === 1.U, txDat.valid, cf"Illegal TxDat TgtID[${txDat.bits.TgtID}]", txDat.bits.TgtID)
 
   // txRsp
