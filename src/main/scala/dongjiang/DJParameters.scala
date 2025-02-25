@@ -99,10 +99,16 @@ trait HasParseZJParam extends HasZJParams {
   lazy val nodeIdBits       = zjParams.nodeIdBits
 
   // Bank and Node Number
-  lazy val nrBank           = localHnfNodes.length
+  lazy val nrHnfPort        = localHnfNodes.map(_.hfpId).distinct.length
+  lazy val nrBank           = localHnfNodes.length / nrHnfPort
   lazy val nrCcNode         = localCcNodes.length
   lazy val nrChip           = 8 // TODO: parameterize
   lazy val metaIdBits       = log2Ceil(nrCcNode + nrChip)
+
+  // ICN Number Per Bank
+  lazy val nrLocalIcn       = nrHnfPort
+  lazy val nrCsnIcn         = if(hasCSN) 1 else 0
+  lazy val nrIcn            = nrLocalIcn + nrCsnIcn
 
   /*
    * Check from X node
@@ -231,7 +237,7 @@ trait HasDJParam extends HasParseZJParam {
 
 
   // Frontend(Per dirBank) Parameters
-  lazy val nrTaskBuf        = djparam.nrTaskBuf / nrBank
+  lazy val nrTaskBuf        = djparam.nrTaskBuf / djparam.nrDirBank
 
   // Memblock Parameters
   lazy val dbIdBits         = log2Ceil(djparam.nrDataBuf)

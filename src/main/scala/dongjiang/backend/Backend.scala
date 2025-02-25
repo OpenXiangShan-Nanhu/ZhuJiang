@@ -10,7 +10,7 @@ import dongjiang.bundle._
 import xijiang.Node
 import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
-class Backend(nrIcn: Int)(implicit p: Parameters) extends DJModule {
+class Backend(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */

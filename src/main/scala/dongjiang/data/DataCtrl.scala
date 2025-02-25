@@ -9,7 +9,7 @@ import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
-class DataCtrl(nrIcn: Int)(implicit p: Parameters) extends DJModule {
+class DataCtrl(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */

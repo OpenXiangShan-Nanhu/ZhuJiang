@@ -7,7 +7,7 @@ import zhujiang.chi._
 import dongjiang.bundle._
 import dongjiang.utils._
 
-class ChiXbar(nrIcn: Int, nrLocalIcn: Int)(implicit p: Parameters) extends DJModule {
+class ChiXbar(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */

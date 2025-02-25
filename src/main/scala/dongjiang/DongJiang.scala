@@ -24,7 +24,6 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
   /*
    * IO declaration
    */
-  val nrLocalIcn  = localHnf.length
   @public val io  = IO(new Bundle {
     // Configuration Signals
     val flushCacheReq = Input(Valid(UInt(nrCcNode.W)))
@@ -44,6 +43,9 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
   val implicitReset   = reset
 
   io.flushCacheAck    := DontCare
+
+  require(localHnf.length == nrLocalIcn)
+  require(csnHnx.nonEmpty | !hasCSN)
 
   /*
    * Print message
@@ -74,10 +76,8 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
    */
   var hnNodeSeq = localHnf
   if(hasCSN) {
-    require(csnHnx.nonEmpty)
     hnNodeSeq = hnNodeSeq ++ Seq(csnHnx.get)
   }
-  val nrIcn   = hnNodeSeq.length
   val icnVec  = Wire(MixedVec(hnNodeSeq.map(n => new DeviceIcnBundle(n))))
   val hnIdVec = Wire(Vec(nrIcn, UInt(nodeIdBits.W)))
   icnVec.zip(hnIdVec).zipWithIndex.foreach {
@@ -95,10 +95,10 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
    * Module declaration
    */
   val frontends = Seq.fill(djparam.nrDirBank) { Module(new Frontend()) }
-  val backend   = Module(new Backend(nrIcn))
+  val backend   = Module(new Backend())
   val directory = Module(new Directory())
-  val dataCtrl  = Module(new DataCtrl(nrIcn))
-  val chiXbar   = Module(new ChiXbar(nrIcn, nrLocalIcn))
+  val dataCtrl  = Module(new DataCtrl())
+  val chiXbar   = Module(new ChiXbar())
 
 
   /*
