@@ -2,8 +2,8 @@ package dongjiang.bundle
 
 import chisel3._
 import chisel3.util._
-import dongjiang._
 import org.chipsalliance.cde.config._
+import dongjiang._
 import xs.utils.debug.HardwareAssertion
 
 object Net {

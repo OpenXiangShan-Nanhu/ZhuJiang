@@ -2,7 +2,6 @@ package dongjiang.utils
 
 import chisel3._
 import chisel3.util._
-import org.chipsalliance.cde.config._
 
 class ArbiterWithReset[T <: Data](gen:T, size:Int, rr:Boolean) extends Module {
   val io = IO(new Bundle {
@@ -27,19 +26,19 @@ class ArbiterWithReset[T <: Data](gen:T, size:Int, rr:Boolean) extends Module {
 
 
 object fastRRArb {
-  def apply[T <: Bundle](in: Seq[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
+  def apply[T <: Data](in: Seq[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in(0).bits), in.size, true))
     arb.io.in.zip(in).foreach { case(a, b) => a <> b }
     out <> arb.io.out
   }
 
-  def apply[T <: Bundle](in: Seq[DecoupledIO[T]]): DecoupledIO[T] = {
+  def apply[T <: Data](in: Seq[DecoupledIO[T]]): DecoupledIO[T] = {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in(0).bits), in.size, true))
     arb.io.in.zip(in).foreach { case (a, b) => a <> b }
     arb.io.out
   }
 
-  def apply[T <: Bundle](in: Seq[DecoupledIO[T]], out: ValidIO[T]): Unit = {
+  def apply[T <: Data](in: Seq[DecoupledIO[T]], out: ValidIO[T]): Unit = {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, true))
     arb.io.in.zip(in).foreach { case (a, b) => a <> b }
     arb.io.out.ready := true.B
@@ -47,7 +46,7 @@ object fastRRArb {
     out.bits := arb.io.out.bits
   }
 
-  def validOut[T <: Bundle](in: Seq[DecoupledIO[T]]): ValidIO[T] = {
+  def validOut[T <: Data](in: Seq[DecoupledIO[T]]): ValidIO[T] = {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, true))
     val out = Wire(Valid(chiselTypeOf(in.head.bits)))
     arb.io.in.zip(in).foreach { case (a, b) => a <> b }
@@ -59,19 +58,19 @@ object fastRRArb {
 }
 
 object fastArb {
-  def apply[T <: Bundle](in: Seq[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
+  def apply[T <: Data](in: Seq[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
     arb.io.in.zip(in).foreach { case(a, b) => a <> b }
     out <> arb.io.out
   }
 
-  def apply[T <: Bundle](in: Seq[DecoupledIO[T]]): DecoupledIO[T] = {
+  def apply[T <: Data](in: Seq[DecoupledIO[T]]): DecoupledIO[T] = {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
     arb.io.in.zip(in).foreach { case (a, b) => a <> b }
     arb.io.out
   }
 
-  def apply[T <: Bundle](in: Seq[DecoupledIO[T]], out: ValidIO[T]): Unit = {
+  def apply[T <: Data](in: Seq[DecoupledIO[T]], out: ValidIO[T]): Unit = {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
     arb.io.in.zip(in).foreach { case (a, b) => a <> b }
     arb.io.out.ready := true.B
@@ -79,7 +78,7 @@ object fastArb {
     out.bits := arb.io.out.bits
   }
 
-  def validOut[T <: Bundle](in: Seq[DecoupledIO[T]]): ValidIO[T] = {
+  def validOut[T <: Data](in: Seq[DecoupledIO[T]]): ValidIO[T] = {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
     val out = Wire(Valid(chiselTypeOf(in.head.bits)))
     arb.io.in.zip(in).foreach { case (a, b) => a <> b }

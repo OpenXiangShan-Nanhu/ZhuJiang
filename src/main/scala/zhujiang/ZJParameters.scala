@@ -223,7 +223,7 @@ case class ZJParameters(
   ZhujiangGlobal.initialize(nodeNidBits, nodeAidBits, localNodeParams, csnNodeParams, requestAddrBits, cpuSpaceBits)
   val localRing = ZhujiangGlobal.localRing
   val csnRing = ZhujiangGlobal.csnRing
-  private lazy val bank = localNodeParams.count(_.nodeType == NodeType.HF)
+  private lazy val bank = localNodeParams.filter(_.hfpId == 0).count(_.nodeType == NodeType.HF)
   private lazy val clusterTotalCacheSizeInKiB = localRing.count(_.nodeType == NodeType.CC) * clusterCacheSizeInKiB
   lazy val djParams = DJParam(
     llcSizeInKiB = cacheSizeInMiB * 1024 / bank,

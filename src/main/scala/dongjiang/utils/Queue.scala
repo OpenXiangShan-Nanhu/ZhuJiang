@@ -2,7 +2,6 @@ package dongjiang.utils
 
 import chisel3._
 import chisel3.util._
-import org.chipsalliance.cde.config._
 
 class DecoupledQueue[T <: Data](gen:T) extends Module {
   val io = IO(new Bundle {

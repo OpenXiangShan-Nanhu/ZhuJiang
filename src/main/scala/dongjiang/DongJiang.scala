@@ -1,20 +1,29 @@
 package dongjiang
 
-import xijiang.Node
+
 import chisel3._
 import chisel3.experimental.hierarchy.{instantiable, public}
 import chisel3.util._
 import org.chipsalliance.cde.config._
-import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+import zhujiang.chi._
+import dongjiang.utils._
+import dongjiang.bundle._
+import dongjiang.frontend._
+import dongjiang.backend._
+import dongjiang.directory._
+import dongjiang.data._
 import xijiang.router.base.DeviceIcnBundle
+import xijiang.Node
+import xs.utils.ResetRRArbiter
 import xs.utils.debug.{DomainInfo, HardwareAssertion}
-
 
 
 @instantiable
 class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Parameters) extends DJRawModule
   with ImplicitClock with ImplicitReset {
-  // ------------------------------------------ IO declaration ----------------------------------------------//
+  /*
+   * IO declaration
+   */
   val nrLocalIcn  = localHnf.length
   @public val io  = IO(new Bundle {
     // Configuration Signals
@@ -26,30 +35,30 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
     val frinedsVec    = Input(Vec(nrLocalIcn, Vec(nrFriendsNodeMax, UInt(nodeIdBits.W))))
     val localIcnVec   = MixedVec(localHnf.map(n => new DeviceIcnBundle(n)))
     // CSN ICN
-    val hnsId         = if(csnHnx.nonEmpty) Some(Input(UInt(nodeIdBits.W))) else None
-    val csnIcn        = if(csnHnx.nonEmpty) Some(new DeviceIcnBundle(csnHnx.get)) else None
+    val hnxId         = if(hasCSN) Some(Input(UInt(nodeIdBits.W))) else None
+    val csnIcn        = if(hasCSN) Some(new DeviceIcnBundle(csnHnx.get)) else None
   })
   @public val reset   = IO(Input(AsyncReset()))
   @public val clock   = IO(Input(Clock()))
   val implicitClock   = clock
   val implicitReset   = reset
 
-  if(hasCSN) {
-    require(csnHnx.nonEmpty)
-  }
+  io.flushCacheAck    := DontCare
 
-  // TODO:
+  /*
+   * Print message
+   */
   print(
     s"""
        |DongJiang Info: {
        |  Support Protocol: CHI-G
-       |  llcSizeInKiB: ${djparam.llcSizeInKiB}
-       |  sfSizeInKiB: ${djparam.sfSizeInKiB}
+       |  llcSize: ${djparam.llcSizeInKiB} KiB
+       |  sfSize: ${djparam.sfSizeInKiB} KiB
        |  llcWays: ${djparam.llcWays}
        |  sfWays: ${djparam.sfWays}
        |  openDCT: ${djparam.openDCT}
        |  nrPoS: ${djparam.nrPoS}
-       |  dataBufSizeInByte: ${djparam.dataBufSizeInByte}
+       |  dataBufSize: ${djparam.dataBufSizeInByte} Byte
        |  dataSetup: ${djparam.dataSetup}
        |  dataLatency: ${djparam.dataSetup}
        |  dataExtraHold: ${djparam.dataExtraHold}
@@ -59,15 +68,86 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
        |}
        |""".stripMargin)
 
-  io <> DontCare
 
-  io.localIcnVec.foreach { case icn => HardwareAssertion(!icn.rx.req.get.valid) }
+  /*
+   * IO ICN pre-processing(Merger of ICN)
+   */
+  var hnNodeSeq = localHnf
+  if(hasCSN) {
+    require(csnHnx.nonEmpty)
+    hnNodeSeq = hnNodeSeq ++ Seq(csnHnx.get)
+  }
+  val nrIcn   = hnNodeSeq.length
+  val icnVec  = Wire(MixedVec(hnNodeSeq.map(n => new DeviceIcnBundle(n))))
+  val hnIdVec = Wire(Vec(nrIcn, UInt(nodeIdBits.W)))
+  icnVec.zip(hnIdVec).zipWithIndex.foreach {
+    case((icn, hnId), i) =>
+      if(hasCSN & i == nrIcn-1) {
+        icn   <> io.csnIcn.get
+        hnId  := io.hnxId.get
+      } else {
+        icn   <> io.localIcnVec(i)
+        hnId  := io.hnfIdVec(i)
+      }
+  }
+
+  /*
+   * Module declaration
+   */
+  val frontends = Seq.fill(djparam.nrDirBank) { Module(new Frontend()) }
+  val backend   = Module(new Backend(nrIcn))
+  val directory = Module(new Directory())
+  val dataCtrl  = Module(new DataCtrl(nrIcn))
+  val chiXbar   = Module(new ChiXbar(nrIcn, nrLocalIcn))
+
+
+  /*
+   * Connect IO CHI
+   */
+  // [frontends].rxReq <-> [ChiXbar] <-> io.chi.rxReq
+  chiXbar.io.rxReq.inVec.zip(icnVec.map(_.rx.req.get)).foreach { case(a, b) => a <> b }
+  chiXbar.io.rxReq.outVec.zip(frontends.map(_.io.rxReq)).foreach { case(a, b) => a <> b }
+
+  // [frontends].rxSnp <-> [ChiXbar] <-> io.chi.rxSnp
+  if(hasCSN) {
+    chiXbar.io.rxSnp.in <> icnVec.last.rx.snoop.get
+  } else {
+    chiXbar.io.rxSnp.in <> DontCare
+  }
+  chiXbar.io.rxSnp.outVec.zip(frontends.map(_.io.rxSnp)).foreach { case(a, b) => a <> b }
+
+  // [backend].rxRsp <-> io.chi.rxRsp
+  backend.io.rxRspVec.zip(icnVec.map(_.rx.resp.get)).foreach { case(a, b) => a <> b }
+
+  // [dataCtrl].rxDat <-> io.chi.rxDat
+  // [backend].rxDat  <-- io.chi.rxDat
+  val rxDat = fastArb(icnVec.map(_.rx.data.get))
+  dataCtrl.io.rxDat      <> rxDat
+  backend.io.rxDat.valid := rxDat.fire
+  backend.io.rxDat.bits  := rxDat.bits
+
+  // [backend].txReq <-> [ChiXbar] <-> io.chi.txReq
+  chiXbar.io.txReq.inVec.zip(backend.io.txReqVec).foreach { case (a, b) => a <> b }
+  chiXbar.io.txReq.outVec.zip(icnVec.map(_.tx.req.get)).foreach { case (a, b) => a <> b }
+
+  // [backend].txSnp <-> [ChiXbar] <-> io.chi.txSnp
+  chiXbar.io.txSnp.inVec.zip(backend.io.txSnpVec).foreach { case (a, b) => a <> b }
+  chiXbar.io.txSnp.outVec.zip(icnVec.map(_.tx.snoop.get)).foreach { case (a, b) => a <> b }
+
+  // [backend].txRsp <-> [ChiXbar] <-> io.chi.txRsp
+  chiXbar.io.txRsp.inVec.zip(backend.io.txRspVec).foreach { case (a, b) => a <> b }
+  chiXbar.io.txRsp.outVec.zip(icnVec.map(_.tx.resp.get)).foreach { case (a, b) => a <> b }
+
+  // [dataCtrl].txDat <-> [ChiXbar] <-> io.chi.txDat
+  chiXbar.io.txDat.inVec.zip(dataCtrl.io.txDatVec).foreach { case (a, b) => a <> b }
+  chiXbar.io.txDat.outVec.zip(icnVec.map(_.tx.data.get)).foreach { case (a, b) => a <> b }
+
 
   /*
    * Hardware Assertion Node And IO
    */
   HardwareAssertion(true.B)
-  private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue - 1, true)
+  private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, true)
   @public
   val assertionOut = IO(assertionNode.assertion.cloneType)
   @public

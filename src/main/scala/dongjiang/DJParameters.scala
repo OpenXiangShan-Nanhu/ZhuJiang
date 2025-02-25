@@ -1,14 +1,12 @@
 package dongjiang
 
 import chisel3._
-import chisel3.experimental.{SourceInfo, SourceLine}
 import chisel3.util._
 import org.chipsalliance.cde.config._
-import xijiang.NodeType
-import zhujiang.{HasZJParams, ZJParametersKey}
-
 import scala.math.{log, max, min}
-import xs.utils.debug.HardwareAssertion
+import zhujiang.{HasZJParams, ZJParametersKey}
+import xijiang.NodeType
+
 
 case class DJParam(
                   // -------------------------- Size and DCT ---------------------------- //
@@ -193,8 +191,8 @@ trait HasDJParam extends HasParseZJParam {
   lazy val offset_hi        = offsetBits - 1
   lazy val offset_lo        = 0
   // dirBank
-  lazy val dirBank_hi       = useAddr_lo + dirBankBits - 1
-  lazy val dirBank_lo       = useAddr_lo
+  lazy val dirBank_ua_hi    = useAddr_lo + dirBankBits - 1
+  lazy val dirBank_ua_lo    = useAddr_lo
   // llcTag(per dirBank)
   lazy val llcTag_ua_hi     = useAddrBits - 1
   lazy val llcTag_ua_lo     = useAddrBits - llcTagBits
@@ -213,6 +211,23 @@ trait HasDJParam extends HasParseZJParam {
   // posSet(per dirBank)
   lazy val posSet_ua_hi     = posTag_ua_lo - 1
   lazy val posSet_ua_lo     = dirBankBits
+
+  // base
+  def cacheable(addr: UInt) = addr(cacheable_hi, cacheable_lo)
+  def ccxChipId(addr: UInt) = addr(ccxChipId_hi, ccxChipId_lo)
+  def useAddr  (addr: UInt) = Cat(addr(useAddr_hi, bankId_hi + 1), addr(bankId_lo - 1, useAddr_lo))
+  def bankId   (addr: UInt) = addr(bankId_hi, bankId_lo)
+  def offset   (addr: UInt) = addr(offset_hi, offset_lo)
+  // llc
+  def dirBank  (addr: UInt) = useAddr(addr)(dirBank_ua_hi, dirBank_ua_lo)
+  def llcTag   (addr: UInt) = useAddr(addr)(llcTag_ua_hi, llcTag_ua_lo)
+  def llcSet   (addr: UInt) = useAddr(addr)(llcSet_ua_hi, llcSet_ua_lo)
+  // sf
+  def sfTag    (addr: UInt) = useAddr(addr)(sfTag_ua_hi, sfTag_ua_lo)
+  def sfSet    (addr: UInt) = useAddr(addr)(sfSet_ua_hi, sfSet_ua_lo)
+  // pos
+  def posTag   (addr: UInt) = useAddr(addr)(posTag_ua_hi, posTag_ua_lo)
+  def posSet   (addr: UInt) = useAddr(addr)(posSet_ua_hi, posSet_ua_lo)
 
 
   // Frontend(Per dirBank) Parameters

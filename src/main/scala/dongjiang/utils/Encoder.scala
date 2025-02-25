@@ -2,7 +2,6 @@ package dongjiang.utils
 
 import chisel3._
 import chisel3.util._
-import chisel3.util.RRArbiter
 import xs.utils.ResetRRArbiter
 
 class StepRREncoder(size: Int) extends Module {
