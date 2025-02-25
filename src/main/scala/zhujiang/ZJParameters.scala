@@ -140,6 +140,7 @@ object ZhujiangGlobal {
     }
 
     if(!csn) {
+      // Select hnf to cc friends
       val hfNodes = nodes.filter(n => n.nodeType == NodeType.HF)
       val hfGroupsMaps = hfNodes.groupBy(_.bankId)
       for((_, hfs) <- hfGroupsMaps) {
@@ -165,6 +166,24 @@ object ZhujiangGlobal {
             hfs.last.friends = friendsOfIdxMin.filterNot(n => n.nodeType == NodeType.HF || n.nodeType == NodeType.HI || n.nodeType == NodeType.P)
           }
         }
+      }
+      // Select cc/rni to hnf friends
+      val rnNodes = nodes.filter(n => n.nodeType == NodeType.CC | n.nodeType == NodeType.RI)
+      require(hnfs.nonEmpty)
+      val hfOnePort = hnfs.map(_.hfpId).distinct.length == 1
+      rnNodes.foreach { rn =>
+        if (hfOnePort) {
+          rn.friends = nodes.filter(n => n.nodeType == NodeType.HF)
+        } else {
+          val rnPos = nodes.indexOf(rn)
+          hfGroupsMaps.values.foreach { hfGroup =>
+            val hfGroupPos = hfGroup.map(d => nodes.indexOf(d))
+            val hfDistance = hfGroupPos.map(d => math.abs(d - rnPos))
+            val hfMinIndex = hfDistance.indexOf(hfDistance.min)
+            rn.friends = rn.friends ++ Seq(hfGroup(hfMinIndex))
+          }
+        }
+        require(rn.friends.length == hfGroupsMaps.toSeq.length)
       }
     }
     nodes

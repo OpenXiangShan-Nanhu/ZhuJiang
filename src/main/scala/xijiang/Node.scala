@@ -249,9 +249,15 @@ case class Node(
          |    routerName: $routerName
          |""".stripMargin
 
-    val frdsStr = if(nodeType == NodeType.HF) {
+    val frdsStr = if(friends.nonEmpty) {
       s"""    friends: $friendsStr
-         |    bank: $bankId
+         |""".stripMargin
+    } else {
+      ""
+    }
+
+    val bankStr = if (nodeType == NodeType.HF) {
+      s"""    bank: $bankId
          |""".stripMargin
     } else {
       ""
@@ -278,6 +284,6 @@ case class Node(
       ""
     }
 
-    head + frdsStr + ccAttrStr + hdAttrStr + addrStr + "  }\n"
+    head + frdsStr + bankStr + ccAttrStr + hdAttrStr + addrStr + "  }\n"
   }
 }

@@ -19,11 +19,12 @@ package object router {
       csnReqTarget.asUInt
     } else {
       val defaultHni = p(ZJParametersKey).localRing.filter(r => NodeType.HI == r.nodeType && r.defaultHni).head
-      val possibleCompleterTypes = Seq(NodeType.CC, NodeType.HF, NodeType.HI)
-      val possibleCompleters = p(ZJParametersKey).localRing.filter(r => possibleCompleterTypes.contains(r.nodeType) && !r.defaultHni)
+      val possibleCompleterTypes = Seq(NodeType.CC, NodeType.HI)
+      val possibleCompleters = p(ZJParametersKey).localRing.filter(r => possibleCompleterTypes.contains(r.nodeType) && !r.defaultHni) ++ node.friends // friends is HF Nodes
       val completerSelOH = possibleCompleters.map(_.isReqCompleter(injectAddr, router.chip))
       val completerId = possibleCompleters.map(_.nodeId.U(niw.W))
       val localReqTarget = Mux(Cat(completerSelOH).orR, Mux1H(completerSelOH, completerId), defaultHni.nodeId.U)
+      assert(PopCount(completerSelOH) <= 1.U)
       localReqTarget
     }
     if(p(ZJParametersKey).tfsParams.isEmpty) {
