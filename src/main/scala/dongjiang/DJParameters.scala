@@ -6,6 +6,7 @@ import org.chipsalliance.cde.config._
 import scala.math.{log, max, min}
 import zhujiang.{HasZJParams, ZJParametersKey}
 import xijiang.NodeType
+import xs.utils.debug._
 
 
 case class DJParam(
@@ -70,62 +71,57 @@ case class DJParam(
 
 
 trait HasParseZJParam extends HasZJParams {
-  // Get Local Nodes
-  lazy val localCcNodes     = zjParams.localRing.filter(_.nodeType == NodeType.CC)
-  lazy val localRniNodes    = zjParams.localRing.filter(_.nodeType == NodeType.RI)
-  lazy val localHnfNodes    = zjParams.localRing.filter(_.nodeType == NodeType.HF)
-  lazy val localSnNodes     = zjParams.localRing.filter(_.nodeType == NodeType.S)
-  lazy val ccNodeIdSeq      = localCcNodes.map(_.nodeId)
-  lazy val rniNodeIdSeq     = localRniNodes.map(_.nodeId)
-  lazy val snNodeIdSeq      = localSnNodes.map(_.nodeId)
-  require(localCcNodes.nonEmpty)
-  require(localHnfNodes.nonEmpty)
-  require(localSnNodes.nonEmpty)
+  // Get LAN Nodes
+  lazy val lanCcNodes       = zjParams.localRing.filter(_.nodeType == NodeType.CC)
+  lazy val lanRniNodes      = zjParams.localRing.filter(_.nodeType == NodeType.RI)
+  lazy val lanHnfNodes      = zjParams.localRing.filter(_.nodeType == NodeType.HF)
+  lazy val lanSnNodes       = zjParams.localRing.filter(_.nodeType == NodeType.S)
+  lazy val ccNodeIdSeq      = lanCcNodes.map(_.nodeId)
+  lazy val rniNodeIdSeq     = lanRniNodes.map(_.nodeId)
+  lazy val snNodeIdSeq      = lanSnNodes.map(_.nodeId)
+  require(lanCcNodes.nonEmpty)
+  require(lanHnfNodes.nonEmpty)
+  require(lanSnNodes.nonEmpty)
 
-  // Get CSN Nodes
-  lazy val csnC2CNodes      = zjParams.csnRing.filter(_.nodeType == NodeType.C2C)
-  lazy val csnHnxNodes      = zjParams.csnRing.filter(_.nodeType == NodeType.HX)
-  lazy val c2cNodeIdSeq     = csnC2CNodes.map(_.nodeId)
-  lazy val hnxNodeIdSeq     = csnHnxNodes.map(_.nodeId)
-  lazy val hasCSN           = zjParams.csnRing.nonEmpty
-  lazy val ccxChipBits      = 3
-  if(hasCSN) {
-    require(csnC2CNodes.nonEmpty)
-    require(csnHnxNodes.length == localHnfNodes.length)
+  // Get BBN Nodes
+  lazy val bbnC2CNodes      = zjParams.csnRing.filter(_.nodeType == NodeType.C2C)
+  lazy val bbnHnxNodes      = zjParams.csnRing.filter(_.nodeType == NodeType.HX)
+  lazy val hasHnx           = zjParams.csnRing.nonEmpty
+  if(hasHnx) {
+    require(bbnC2CNodes.nonEmpty)
+    require(bbnHnxNodes.length == lanHnfNodes.length)
   }
 
   // Node ID
-  lazy val nrFriendsNodeMax = localHnfNodes.map(_.friends.length).max
+  lazy val nrFriendsNodeMax = lanHnfNodes.map(_.friends.length).max
   lazy val nodeIdBits       = zjParams.nodeIdBits
 
   // Bank and Node Number
-  lazy val nrHnfPort        = localHnfNodes.map(_.hfpId).distinct.length
-  lazy val nrBank           = localHnfNodes.length / nrHnfPort
-  lazy val nrCcNode         = localCcNodes.length
+  lazy val nrHnfPort        = lanHnfNodes.map(_.hfpId).distinct.length
+  lazy val nrBank           = lanHnfNodes.length / nrHnfPort
+  lazy val nrCcNode         = lanCcNodes.length
   lazy val nrChip           = 8 // TODO: parameterize
   lazy val metaIdBits       = log2Ceil(nrCcNode + nrChip)
 
   // ICN Number Per Bank
-  lazy val nrLocalIcn       = nrHnfPort
-  lazy val nrCsnIcn         = if(hasCSN) 1 else 0
-  lazy val nrIcn            = nrLocalIcn + nrCsnIcn
+  lazy val nrLanIcn       = nrHnfPort
+  lazy val nrBbnIcn         = if(hasHnx) 1 else 0
+  lazy val nrIcn            = nrLanIcn + nrBbnIcn
+
+  // temp node id bits
+  val lanNBits = 5
+  val lanABits = 3
+  val bbnIBits = 4
+  val bbnBBits = 4
 
   /*
    * Check from X node
    */
-  def fromXNode(nodeId: UInt, nodeIdSeq: Seq[Int]): Bool = {
-    require(nodeId.getWidth == nodeNidBits)
-    val fromX = WireInit(false.B)
-    fromX := nodeIdSeq.map(_.asUInt >> nodeAidBits === nodeId).reduce(_ | _)
-    fromX
-  }
-
-  /*
-   * Get nid from NodeId
-   */
-  def getNID(nodeId: UInt): UInt = {
+  def fromLanXNode(nodeId: UInt, nodeIdSeq: Seq[Int]): Bool = {
     require(nodeId.getWidth == nodeIdBits)
-    nodeId(nodeIdBits-nodeNetBits-1, nodeAidBits)
+    val fromXSeq = nodeIdSeq.map(_.asUInt >> lanABits === nodeId >> lanABits)
+    HardwareAssertion(PopCount(fromXSeq) <= 1.U)
+    fromXSeq.reduce(_ | _)
   }
 }
 
@@ -160,8 +156,7 @@ trait HasDJParam extends HasParseZJParam {
   //            = [unUse]     + [dsBank]
   // full
   lazy val addrBits         = djparam.addressBits
-  lazy val cacheableBits    = 1
-  lazy val ccxChipIdBits    = 3
+  lazy val islandIdBits     = 1
   lazy val bankBits         = log2Ceil(nrBank)
   lazy val offsetBits       = log2Ceil(djparam.cacheLine)
   lazy val dirBankBits      = log2Ceil(djparam.nrDirBank)
@@ -179,14 +174,11 @@ trait HasDJParam extends HasParseZJParam {
   lazy val posSetBits       = log2Ceil(posSets)
   lazy val posTagBits       = addrBits - posSetBits - dirBankBits - offsetBits
   // require [ccxChipId] > [bankId] > [offset]
-  require(bankOff + bankBits - 1 < addrBits - (cacheableBits + ccxChipBits))
+  require(bankOff + bankBits - 1 < addrBits - islandIdBits)
   require(bankOff > offsetBits)
-  // cacheable
-  lazy val cacheable_hi     = addrBits - 1
-  lazy val cacheable_lo     = addrBits - cacheableBits
-  // ccxChipId
-  lazy val ccxChipId_hi     = cacheable_lo - 1
-  lazy val ccxChipId_lo     = cacheable_lo - ccxChipBits
+  // islandId
+  lazy val islandId_hi      = addrBits - 1
+  lazy val islandId_lo      = addrBits - islandIdBits
   // useAddr
   lazy val useAddr_hi       = addrBits - 1
   lazy val useAddr_lo       = offsetBits
@@ -219,21 +211,20 @@ trait HasDJParam extends HasParseZJParam {
   lazy val posSet_ua_lo     = dirBankBits
 
   // base
-  def cacheable(addr: UInt) = addr(cacheable_hi, cacheable_lo)
-  def ccxChipId(addr: UInt) = addr(ccxChipId_hi, ccxChipId_lo)
-  def useAddr  (addr: UInt) = Cat(addr(useAddr_hi, bankId_hi + 1), addr(bankId_lo - 1, useAddr_lo))
-  def bankId   (addr: UInt) = addr(bankId_hi, bankId_lo)
-  def offset   (addr: UInt) = addr(offset_hi, offset_lo)
+  def getIslandId (a: UInt) = a(islandId_hi, islandId_lo)
+  def getUseAddr  (a: UInt) = Cat(a(useAddr_hi, bankId_hi + 1), a(bankId_lo - 1, useAddr_lo))
+  def getBankId   (a: UInt) = a(bankId_hi, bankId_lo)
+  def getOffset   (a: UInt) = a(offset_hi, offset_lo)
   // llc
-  def dirBank  (addr: UInt) = useAddr(addr)(dirBank_ua_hi, dirBank_ua_lo)
-  def llcTag   (addr: UInt) = useAddr(addr)(llcTag_ua_hi, llcTag_ua_lo)
-  def llcSet   (addr: UInt) = useAddr(addr)(llcSet_ua_hi, llcSet_ua_lo)
+  def getDirBank  (a: UInt) = getUseAddr(a)(dirBank_ua_hi, dirBank_ua_lo)
+  def getLlcTag   (a: UInt) = getUseAddr(a)(llcTag_ua_hi, llcTag_ua_lo)
+  def getLlcSet   (a: UInt) = getUseAddr(a)(llcSet_ua_hi, llcSet_ua_lo)
   // sf
-  def sfTag    (addr: UInt) = useAddr(addr)(sfTag_ua_hi, sfTag_ua_lo)
-  def sfSet    (addr: UInt) = useAddr(addr)(sfSet_ua_hi, sfSet_ua_lo)
+  def getSfTag    (a: UInt) = getUseAddr(a)(sfTag_ua_hi, sfTag_ua_lo)
+  def getSfSet    (a: UInt) = getUseAddr(a)(sfSet_ua_hi, sfSet_ua_lo)
   // pos
-  def posTag   (addr: UInt) = useAddr(addr)(posTag_ua_hi, posTag_ua_lo)
-  def posSet   (addr: UInt) = useAddr(addr)(posSet_ua_hi, posSet_ua_lo)
+  def getPosTag   (a: UInt) = getUseAddr(a)(posTag_ua_hi, posTag_ua_lo)
+  def getPosSet   (a: UInt) = getUseAddr(a)(posSet_ua_hi, posSet_ua_lo)
 
 
   // Frontend(Per dirBank) Parameters

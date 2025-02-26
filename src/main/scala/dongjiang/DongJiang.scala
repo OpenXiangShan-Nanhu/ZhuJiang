@@ -19,7 +19,7 @@ import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
 
 @instantiable
-class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Parameters) extends DJRawModule
+class DongJiang(lanHnf: Seq[Node], bbnHnx: Option[Node] = None)(implicit p: Parameters) extends DJRawModule
   with ImplicitClock with ImplicitReset {
   /*
    * IO declaration
@@ -29,13 +29,14 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
     val flushCacheReq = Input(Valid(UInt(nrCcNode.W)))
     val flushCacheAck = Output(UInt(nrBank.W))
     val closeLLC      = Input(Bool())
-    // Local ICN
-    val hnfIdVec      = Input(Vec(nrLocalIcn, UInt(nodeIdBits.W)))
-    val frinedsVec    = Input(Vec(nrLocalIcn, Vec(nrFriendsNodeMax, UInt(nodeIdBits.W))))
-    val localIcnVec   = MixedVec(localHnf.map(n => new DeviceIcnBundle(n)))
-    // CSN ICN
-    val hnxId         = if(hasCSN) Some(Input(UInt(nodeIdBits.W))) else None
-    val csnIcn        = if(hasCSN) Some(new DeviceIcnBundle(csnHnx.get)) else None
+
+    // LAN ICN
+    val hnfIdVec      = Input(Vec(nrLanIcn, UInt(nodeIdBits.W)))
+    val frinedsVec    = Input(Vec(nrLanIcn, Vec(nrFriendsNodeMax, UInt(nodeIdBits.W))))
+    val lanIcnVec     = MixedVec(lanHnf.map(n => new DeviceIcnBundle(n)))
+    // BBN ICN
+    val hnxId         = if(hasHnx) Some(Input(UInt(nodeIdBits.W))) else None
+    val bbnIcn        = if(hasHnx) Some(new DeviceIcnBundle(bbnHnx.get)) else None
   })
   @public val reset   = IO(Input(AsyncReset()))
   @public val clock   = IO(Input(Clock()))
@@ -44,8 +45,8 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
 
   io.flushCacheAck    := DontCare
 
-  require(localHnf.length == nrLocalIcn)
-  require(csnHnx.nonEmpty | !hasCSN)
+  require(lanHnf.length == nrLanIcn)
+  require(bbnHnx.nonEmpty | !hasHnx)
 
   /*
    * Print message
@@ -74,19 +75,19 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
   /*
    * IO ICN pre-processing(Merger of ICN)
    */
-  var hnNodeSeq = localHnf
-  if(hasCSN) {
-    hnNodeSeq = hnNodeSeq ++ Seq(csnHnx.get)
+  var hnNodeSeq = lanHnf
+  if(hasHnx) {
+    hnNodeSeq = hnNodeSeq ++ Seq(bbnHnx.get)
   }
   val icnVec  = Wire(MixedVec(hnNodeSeq.map(n => new DeviceIcnBundle(n))))
   val hnIdVec = Wire(Vec(nrIcn, UInt(nodeIdBits.W)))
   icnVec.zip(hnIdVec).zipWithIndex.foreach {
     case((icn, hnId), i) =>
-      if(hasCSN & i == nrIcn-1) {
-        icn   <> io.csnIcn.get
+      if(hasHnx & i == nrIcn-1) {
+        icn   <> io.bbnIcn.get
         hnId  := io.hnxId.get
       } else {
-        icn   <> io.localIcnVec(i)
+        icn   <> io.lanIcnVec(i)
         hnId  := io.hnfIdVec(i)
       }
   }
@@ -109,7 +110,7 @@ class DongJiang(localHnf: Seq[Node], csnHnx: Option[Node] = None)(implicit p: Pa
   chiXbar.io.rxReq.outVec.zip(frontends.map(_.io.rxReq)).foreach { case(a, b) => a <> b }
 
   // [frontends].rxSnp <-> [ChiXbar] <-> io.chi.rxSnp
-  if(hasCSN) {
+  if(hasHnx) {
     chiXbar.io.rxSnp.in <> icnVec.last.rx.snoop.get
   } else {
     chiXbar.io.rxSnp.in <> DontCare

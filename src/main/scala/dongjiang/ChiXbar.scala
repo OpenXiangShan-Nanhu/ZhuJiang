@@ -44,10 +44,7 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     }
   })
   require(nrIcn <= 3)
-  require(nrLocalIcn <= 2)
-  if(hasCSN) {
-    require(nrIcn - nrLocalIcn == 1)
-  }
+  require(nrLanIcn <= 2)
 
   /*
    * Connect rxReq and rxSnp
@@ -87,10 +84,10 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
   }
 
   // rxReq
-  rxRedir(io.rxReq.inVec, io.rxReq.outVec, io.rxReq.inVec.map(in => dirBank(in.bits.Addr)))
+  rxRedir(io.rxReq.inVec, io.rxReq.outVec, io.rxReq.inVec.map(in => getDirBank(in.bits.Addr)))
 
   // rxSnp
-  rxRedir(Seq(io.rxSnp.in), io.rxSnp.outVec, Seq(dirBank(Cat(io.rxSnp.in.bits.Addr, 0.U(3.W)))))
+  rxRedir(Seq(io.rxSnp.in), io.rxSnp.outVec, Seq(getDirBank(Cat(io.rxSnp.in.bits.Addr, 0.U(3.W)))))
 
   /*
    * Connect txReq, txSnp, txRsp and txDat
@@ -153,8 +150,8 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     }
   }
 
-  // Local 2to2 select network
-  if(nrLocalIcn == 2) {
+  // LAN 2to2 select network
+  if(nrLanIcn == 2) {
     // tx req
     selectNetwork(io.txReq.inVec.take(2), io.txReq.outVec.take(2))
     // tx snp

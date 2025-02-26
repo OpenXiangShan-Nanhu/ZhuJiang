@@ -118,7 +118,7 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
   private val hfDevSeq = hfIcnSeq.map(is => Instance(hfDef))
   hfDevSeq.foreach(_.io <> DontCare) // DontCare Configuration Signals
   for(i <- hfIcnSeq.indices) {
-    for(j <- hfIcnSeq(i)._2.indices) hfDevSeq(i).io.localIcnVec(j) <> hfIcnSeq(i)._2(j)
+    for(j <- hfIcnSeq(i)._2.indices) hfDevSeq(i).io.lanIcnVec(j) <> hfIcnSeq(i)._2(j)
     for(j <- hfIcnSeq(i)._2.indices) hfDevSeq(i).io.hnfIdVec(j) := hfIcnSeq(i)._2(j).node.nodeId.U
     for(j <- hfIcnSeq(i)._2.indices) {
       hfDevSeq(i).io.frinedsVec(j).zipWithIndex.foreach {

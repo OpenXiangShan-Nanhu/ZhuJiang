@@ -7,7 +7,7 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
-import xs.utils.debug.{DomainInfo, HardwareAssertion}
+import xs.utils.debug._
 
 class Frontend(implicit p: Parameters) extends DJModule {
   /*
@@ -21,4 +21,12 @@ class Frontend(implicit p: Parameters) extends DJModule {
 
   HardwareAssertion(!io.rxReq.valid)
   HardwareAssertion.placePipe(Int.MaxValue-1)
+  /*
+   * Check Req
+   */
+  awhen(io.rxReq.valid) {
+    // TODO
+  }
+
+
 }

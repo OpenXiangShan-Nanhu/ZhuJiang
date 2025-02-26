@@ -6,75 +6,73 @@ import org.chipsalliance.cde.config._
 import dongjiang._
 import xs.utils.debug.HardwareAssertion
 
-object Net {
-  val LOCAL = 0.U
-  val CSN = 1.U
-}
+trait HasNodeId extends DJBundle { this: Bundle =>
+  val fromLAN   = Bool()
+  val nodeId    = UInt(nodeIdBits.W)
 
-class NodeIdBundle(implicit p: Parameters) extends DJBundle {
-  val net = UInt(nodeNetBits.W)
-  val nid = UInt(nodeNidBits.W)
-  val aid = UInt(nodeAidBits.W)
-  def chip = aid
+  def fromBBN   = !fromLAN
 
-  def isLocal : Bool = net === Net.LOCAL
-  def isCSN   : Bool = net === Net.CSN
+  // LAN
+  def lanNId    = nodeId(nodeIdBits-1, nodeIdBits-lanNBits)
+  def lanAId    = nodeId(lanABits-1 , 0)
+  // BBN
+  def bbnIId    = nodeId(nodeIdBits - 1, nodeIdBits - bbnIBits)
+  def bbnBId    = nodeId(bbnBBits - 1, 0)
 
-  def isCc    : Bool = isLocal & fromXNode(nid, ccNodeIdSeq)
-  def isRni   : Bool = isLocal & fromXNode(nid, rniNodeIdSeq)
-  def isSn    : Bool = isLocal & fromXNode(nid, snNodeIdSeq)
-  def isC2C   : Bool = isCSN   & fromXNode(nid, c2cNodeIdSeq)
-  def isHnx   : Bool = isCSN   & fromXNode(nid, hnxNodeIdSeq)
-  def isRn    : Bool = isCc    | isRni
+  // LAN
+  def isCc :Bool = fromLAN & fromLanXNode(nodeId, ccNodeIdSeq)
+  def isRni:Bool = fromLAN & fromLanXNode(nodeId, rniNodeIdSeq)
+  def isSn :Bool = fromLAN & fromLanXNode(nodeId, snNodeIdSeq)
+  def isRn :Bool = isCc    | isRni
 
-  def getMetaId(enAst: Bool = true.B): UInt = {
-    HardwareAssertion.withEn(isCc | isC2C, enAst)
+  // metaId
+  def metaId: UInt = {
     val metaId = WireInit(0.U(metaIdBits.W))
-    when(isLocal) {
+    when(fromLAN) {
       ccNodeIdSeq.zipWithIndex.foreach {
         case (ccId, i) =>
-          when(getNID(ccId.U) === nid) {
+          when(ccId.U >> lanABits === lanNId) {
             metaId := i.U
           }
       }
     }.otherwise {
-      metaId := chip
+      metaId := bbnIId
     }
     metaId
   }
 
-
-  def setByMetaId(metaId: UInt, enAst: Bool = true.B): Unit = {
+  // setNodeId
+  def setNodeId(metaId: UInt): Unit = {
     require(metaId.getWidth == metaIdBits)
-    // Net
-    val _net = metaId >= nrCcNode.U
-    // Local
-    val _nid_local = UInt(nodeNidBits.W)
+    // fromLAN
+    val _fromLAN = metaId < nrCcNode.U
+    // LAN
+    val _lan_nodeId = WireInit(0.U(nodeIdBits.W))
     ccNodeIdSeq.zipWithIndex.foreach {
       case(ccNodeId, i) =>
         when(i.U === metaId) {
-          _nid_local := getNID(ccNodeId.U)
+          _lan_nodeId := ccNodeId.U | 1.U // RNF agentId always be 1
         }
     }
-    val _aid_local = 1.U
-    // CSN
-    val chipId = metaId - nrCcNode.U
-    val _aid_csn = chipId
+    // BBN
+    val _bbn_nodeId = WireInit(0.U(nodeIdBits.W))
+    _bbn_nodeId := (metaId - nrCcNode.U) << bbnBBits  // bbNBId will be remap in BBN Router
     // Set value
-    this.net := _net
-    this.nid := Mux(_net === Net.LOCAL, _nid_local, DontCare) // nid will be remap in CSN ICN
-    this.aid := Mux(_net === Net.LOCAL, _aid_local, _aid_csn)
+    this.fromLAN := _fromLAN
+    this.nodeId  := Mux(_fromLAN, _lan_nodeId, _bbn_nodeId)
   }
 
-
-  def getLocalDirect(friendsVec: Seq[Seq[UInt]], enAst: Bool = true.B): UInt = {
+  // getLanDirect
+  def getLanDirect(friendsVec: Seq[Seq[UInt]], enAst: Bool = true.B): UInt = {
     val directVec = Wire(Vec(friendsVec.length, Bool()))
     friendsVec.zip(directVec).foreach {
       case(f, d) =>
-        d := f.map { case fid => getNID(fid) === nid }.reduce(_ | _)
-        HardwareAssertion.withEn(PopCount(f.map(_ === nid)) <= 1.U, enAst)
+        d := f.map { case fid => fid >> lanABits === lanNId }.reduce(_ | _)
+        HardwareAssertion.withEn(PopCount(f.map(_ >> lanABits === lanNId)) <= 1.U, enAst)
     }
     HardwareAssertion.withEn(PopCount(directVec) === 1.U, enAst)
     PriorityEncoder(directVec)
   }
 }
+
+class NodeId(implicit p: Parameters) extends DJBundle with HasNodeId
