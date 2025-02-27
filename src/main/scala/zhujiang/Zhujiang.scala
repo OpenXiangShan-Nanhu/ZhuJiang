@@ -116,12 +116,11 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
   private val hfIcnSeq = localRing.icnHfs.get.sortBy(_.node.hfpId).groupBy(_.node.bankId).toSeq
   private val hfDef = Definition(new DongJiang(hfIcnSeq.head._2.map(_.node).sortBy(_.hfpId))) // TODO: There's a risk here.
   private val hfDevSeq = hfIcnSeq.map(is => Instance(hfDef))
-  hfDevSeq.foreach(_.io <> DontCare) // DontCare Configuration Signals
   for(i <- hfIcnSeq.indices) {
-    for(j <- hfIcnSeq(i)._2.indices) hfDevSeq(i).io.lanIcnVec(j) <> hfIcnSeq(i)._2(j)
-    for(j <- hfIcnSeq(i)._2.indices) hfDevSeq(i).io.hnfIdVec(j) := hfIcnSeq(i)._2(j).node.nodeId.U
+    for(j <- hfIcnSeq(i)._2.indices) hfDevSeq(i).io.icnVec(j) <> hfIcnSeq(i)._2(j)
+    for(j <- hfIcnSeq(i)._2.indices) hfDevSeq(i).io.config.hnIdVec(j) := hfIcnSeq(i)._2(j).node.nodeId.U
     for(j <- hfIcnSeq(i)._2.indices) {
-      hfDevSeq(i).io.frinedsVec(j).zipWithIndex.foreach {
+      hfDevSeq(i).io.config.lanFrinedsVec(j).zipWithIndex.foreach {
         case (v, k) =>
           if (k < hfIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j).length) {
             v := hfIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j)(k)
@@ -131,6 +130,10 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
       }
     }
     val bankId = hfIcnSeq(i)._1
+    hfDevSeq(i).io.flushCache.req <> DontCare
+    hfDevSeq(i).io.config.closeLLC := false.B
+    hfDevSeq(i).io.config.ci := localRing.io_chip
+    hfDevSeq(i).io.config.bankId := bankId.U
     hfDevSeq(i).reset := placeResetGen(s"dcu_$bankId", hfIcnSeq(i)._2.head)
     hfDevSeq(i).clock := clock
     hfDevSeq(i).suggestName(s"dcu_$bankId")

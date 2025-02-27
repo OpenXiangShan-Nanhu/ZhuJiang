@@ -33,7 +33,7 @@ class ReqFlit(dmt:Boolean = false)(implicit p: Parameters) extends Flit {
 //  val TraceTag = UInt(1.W)
 //  val TagOp = UInt(2.W)
   val ExpCompAck = Bool()
-//  val Excl = Bool()
+  val Excl = Bool()
 //  val PGroupID = UInt(8.W)
   val SnpAttr = Bool()
   val MemAttr = UInt(4.W)
@@ -55,7 +55,7 @@ class ReqFlit(dmt:Boolean = false)(implicit p: Parameters) extends Flit {
 //  val QoS = UInt(4.W)
 
   def StreamID = MECID
-//  def SnoopMe = Excl
+  def SnoopMe = Excl
 //  def CAH = Excl
 //  def StashGroupID = PGroupID
 //  def TagGroupID = PGroupID

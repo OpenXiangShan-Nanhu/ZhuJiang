@@ -1,6 +1,8 @@
 package dongjiang.bundle
 
 import chisel3._
+import dongjiang.DJBundle
+import zhujiang.chi._
 
 object ChiResp {
   val width = 3
@@ -69,7 +71,7 @@ trait HasChiStates { this: Bundle =>
 
 class CHIStateBundle extends Bundle with HasChiStates
 
-object CHIChannel {
+object ChiChannel {
   val width = 2
 
   val REQ = "b00".U
@@ -79,12 +81,41 @@ object CHIChannel {
 
 }
 
-trait HasCHIChannel {
-  this: Bundle =>
-  val channel = UInt(CHIChannel.width.W)
+trait HasChiChannel { this: Bundle =>
+  val channel = UInt(ChiChannel.width.W)
 
-  def isReq = channel === CHIChannel.REQ
-  def isDat = channel === CHIChannel.DAT
-  def isRsp = channel === CHIChannel.RSP
-  def isSnp = channel === CHIChannel.SNP
+  def isReq = channel === ChiChannel.REQ
+  def isDat = channel === ChiChannel.DAT
+  def isRsp = channel === ChiChannel.RSP
+  def isSnp = channel === ChiChannel.SNP
 }
+
+trait HasChiOrder { this: Bundle =>
+  val order = UInt(Order.width.W)
+
+  def noOrder = order === Order.None
+  def isRO    = order === Order.RequestOrder
+  def isEO    = order === Order.EndpointOrder
+  def isOWO   = order === Order.OWO
+  def isRA    = order === Order.RequestAccepted
+}
+
+trait HasChiSnpField { this: Bundle =>
+  val snpAttr = Bool()
+  val snoopMe = Bool()
+
+  def mustSnp = snoopMe
+  def canSnp  = snpAttr
+  def cantSnp = !snpAttr
+  def illegalSnpField = snoopMe & !snpAttr
+}
+
+trait HasChiSize { this: DJBundle =>
+  val size = UInt(ChiSizeBits.W)
+
+  def isFullSize    = size === ChiFullSize.U
+  def isHalfSize    = size === ChiHalfSize.U
+  def isNotFullSize = size <= ChiHalfSize.U
+}
+
+

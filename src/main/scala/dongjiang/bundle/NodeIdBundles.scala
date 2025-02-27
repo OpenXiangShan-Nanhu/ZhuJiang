@@ -6,7 +6,7 @@ import org.chipsalliance.cde.config._
 import dongjiang._
 import xs.utils.debug.HardwareAssertion
 
-trait HasNodeId extends DJBundle { this: Bundle =>
+trait HasNodeId { this: DJBundle =>
   val fromLAN   = Bool()
   val nodeId    = UInt(nodeIdBits.W)
 
@@ -16,14 +16,20 @@ trait HasNodeId extends DJBundle { this: Bundle =>
   def lanNId    = nodeId(nodeIdBits-1, nodeIdBits-lanNBits)
   def lanAId    = nodeId(lanABits-1 , 0)
   // BBN
-  def bbnIId    = nodeId(nodeIdBits - 1, nodeIdBits - bbnIBits)
+  def bbnCI     = nodeId(nodeIdBits - 1, nodeIdBits - bbnIBits)
   def bbnBId    = nodeId(bbnBBits - 1, 0)
 
-  // LAN
-  def isCc :Bool = fromLAN & fromLanXNode(nodeId, ccNodeIdSeq)
-  def isRni:Bool = fromLAN & fromLanXNode(nodeId, rniNodeIdSeq)
-  def isSn :Bool = fromLAN & fromLanXNode(nodeId, snNodeIdSeq)
-  def isRn :Bool = isCc    | isRni
+  // LAN NID
+  def fromCc :Bool = fromLAN & fromLanXNode(nodeId, ccNodeIdSeq)
+  def fromRni:Bool = fromLAN & fromLanXNode(nodeId, rniNodeIdSeq)
+  def fromSn :Bool = fromLAN & fromLanXNode(nodeId, snNodeIdSeq)
+  def fromRn :Bool = fromCc  | fromRni
+
+  // LAN AID
+  // AID: 0 -> CHI2TL/DMA; 1 -> L2; 2 -> TL2CHI
+  def fromCcRnf:  Bool = fromCc  & lanAId === 1.U
+  def fromCcRni:  Bool = fromCc  & lanAId === 2.U
+  def fromRniDma: Bool = fromRni & lanAId === 0.U
 
   // metaId
   def metaId: UInt = {
@@ -36,7 +42,7 @@ trait HasNodeId extends DJBundle { this: Bundle =>
           }
       }
     }.otherwise {
-      metaId := bbnIId
+      metaId := bbnCI
     }
     metaId
   }

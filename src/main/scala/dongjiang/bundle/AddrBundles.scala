@@ -9,7 +9,7 @@ import dongjiang._
 trait HasAddr extends DJBundle { this: Bundle =>
   val addr      = UInt(addrBits.W)
 
-  def islandId  = getIslandId(addr)
+  def ci        = getCI(addr)
   def useAddr   = getUseAddr(addr)
   def bankId    = getBankId(addr)
   def offset    = getOffset(addr)

@@ -100,8 +100,8 @@ trait HasParseZJParam extends HasZJParams {
   lazy val nrHnfPort        = lanHnfNodes.map(_.hfpId).distinct.length
   lazy val nrBank           = lanHnfNodes.length / nrHnfPort
   lazy val nrCcNode         = lanCcNodes.length
-  lazy val nrChip           = 8 // TODO: parameterize
-  lazy val metaIdBits       = log2Ceil(nrCcNode + nrChip)
+  lazy val nrCI             = 16 // TODO: parameterize
+  lazy val metaIdBits       = log2Ceil(nrCcNode + nrCI)
 
   // ICN Number Per Bank
   lazy val nrLanIcn       = nrHnfPort
@@ -131,20 +131,20 @@ trait HasDJParam extends HasParseZJParam {
   val djparam = p(ZJParametersKey).djParams
 
   // CHI field width
-  lazy val chiOpcodeBits      = 7
-  lazy val chiTxnIdBits       = 12
-  lazy val chiDBIDBits        = 12
-  lazy val chiFwdTxnIdBits    = 12
-  lazy val chiReturnTxnIdBits = 12
-  lazy val chiSizeBits        = 3
+  lazy val ChiOpcodeBits      = 7
+  lazy val ChiTxnIdBits       = 12
+  lazy val ChiDBIDBits        = 12
+  lazy val ChiFwdTxnIdBits    = 12
+  lazy val ChiReturnTxnIdBits = 12
+  lazy val ChiSizeBits        = 3
 
   // Data Parameters
-  lazy val dataBits         = djparam.cacheLine * 8
-  lazy val beatBits         = djparam.beatByte * 8
-  lazy val maskBits         = djparam.beatByte
-  lazy val chiFullSize      = log2Ceil(djparam.cacheLine) // 6
-  lazy val chiHalfSize      = log2Ceil(djparam.beatByte)  // 5
-  require(maskBits == zjParams.beBits)
+  lazy val DataBits         = djparam.cacheLine * 8
+  lazy val BeatBits         = djparam.beatByte * 8
+  lazy val MaskBits         = djparam.beatByte
+  lazy val ChiFullSize      = log2Ceil(djparam.cacheLine) // 6
+  lazy val ChiHalfSize      = log2Ceil(djparam.beatByte)  // 5
+  require(MaskBits == zjParams.beBits)
 
 
   // Addr Parameters
@@ -156,7 +156,7 @@ trait HasDJParam extends HasParseZJParam {
   //            = [unUse]     + [dsBank]
   // full
   lazy val addrBits         = djparam.addressBits
-  lazy val islandIdBits     = 1
+  lazy val ciBits           = 4
   lazy val bankBits         = log2Ceil(nrBank)
   lazy val offsetBits       = log2Ceil(djparam.cacheLine)
   lazy val dirBankBits      = log2Ceil(djparam.nrDirBank)
@@ -174,11 +174,11 @@ trait HasDJParam extends HasParseZJParam {
   lazy val posSetBits       = log2Ceil(posSets)
   lazy val posTagBits       = addrBits - posSetBits - dirBankBits - offsetBits
   // require [ccxChipId] > [bankId] > [offset]
-  require(bankOff + bankBits - 1 < addrBits - islandIdBits)
+  require(bankOff + bankBits - 1 < addrBits - ciBits)
   require(bankOff > offsetBits)
   // islandId
-  lazy val islandId_hi      = addrBits - 1
-  lazy val islandId_lo      = addrBits - islandIdBits
+  lazy val ci_hi            = addrBits - 1
+  lazy val ci_lo            = addrBits - ciBits
   // useAddr
   lazy val useAddr_hi       = addrBits - 1
   lazy val useAddr_lo       = offsetBits
@@ -211,7 +211,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val posSet_ua_lo     = dirBankBits
 
   // base
-  def getIslandId (a: UInt) = a(islandId_hi, islandId_lo)
+  def getCI       (a: UInt) = a(ci_hi, ci_lo)
   def getUseAddr  (a: UInt) = Cat(a(useAddr_hi, bankId_hi + 1), a(bankId_lo - 1, useAddr_lo))
   def getBankId   (a: UInt) = a(bankId_hi, bankId_lo)
   def getOffset   (a: UInt) = a(offset_hi, offset_lo)
@@ -234,7 +234,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val dbIdBits         = log2Ceil(djparam.nrDataBuf)
   lazy val dcIdBits         = log2Ceil(djparam.nrDataCM)
   require(dbIdBits <= dcIdBits)
-  require(dcIdBits <= chiTxnIdBits)
+  require(dcIdBits <= ChiTxnIdBits)
 
   // Replacement(PLRU) Parameters
   lazy val sReplWayBits     = djparam.llcWays - 1
