@@ -28,22 +28,35 @@ class Frontend(implicit p: Parameters) extends DJModule {
    */
   val req2Task    = Module(new ReqToChiTask())
   val snp2Task    = Module(new SnpToChiTask())
-  val taskBuffer  = Module(new TaskBuffer())
+  val reqTaskBuf  = Module(new TaskBuffer(sort = true, nrReqTaskBuf))
+  val snpTaskBuf  = Module(new TaskBuffer(sort = false, nrSnpTaskBuf))
 
 
   /*
    * Connect
    */
+  // req2Task
   req2Task.io.config  := io.config
   req2Task.io.rxReq   <> io.rxReq
 
-  snp2Task.io.config := io.config
-  snp2Task.io.rxSnp <> io.rxSnp
+  // reqTaskBuf
+  reqTaskBuf.io         <> DontCare
+  reqTaskBuf.io.chiTask <> req2Task.io.chiTask
+  HardwareAssertion(!reqTaskBuf.io.task.valid)
 
-  taskBuffer.io.chiTask <> fastArb(Seq(snp2Task.io.chiTask, req2Task.io.chiTask))
-
-
-
+  if(hasHnx) {
+    // snp2Task
+    snp2Task.io.config  := io.config
+    snp2Task.io.rxSnp   <> io.rxSnp
+    // snpTaskBuf
+    snpTaskBuf.io         <> DontCare
+    snpTaskBuf.io.chiTask <> snp2Task.io.chiTask
+    HardwareAssertion(!snpTaskBuf.io.task.valid)
+  } else {
+    // DontCare snp2Task and snpTaskBuf
+    snp2Task.io   <> DontCare
+    snpTaskBuf.io <> DontCare
+  }
 
   /*
    * HardwareAssertion placePipe

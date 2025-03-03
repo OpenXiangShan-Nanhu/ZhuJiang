@@ -16,7 +16,8 @@ case class DJParam(
                   sfSizeInKiB:        Int = 8 * 1024,
                   openDCT:            Boolean = true,
                   // ------------------------ Frontend -------------------------- //
-                  nrTaskBuf:          Int = 64,
+                  nrReqTaskBuf:       Int = 64,
+                  nrSnpTaskBuf:       Int = 32,
                   nrPoS:              Int = 128, // The number of outstanding
                   // ------------------------ Memblock ----------------------- //
                   dataBufSizeInByte:  Int = 32 * 32,
@@ -37,18 +38,18 @@ case class DJParam(
                   dirExtraHold:       Boolean = false,
                 ) {
   lazy val hasLLC    = llcSizeInKiB != 0
-  lazy val cacheLine = 64 // Bytes
-  lazy val beatByte  = 32
-  lazy val nrBeat    = 2
+  lazy val CacheLine = 64 // Bytes
+  lazy val BeatByte  = 32
+  lazy val nrBeat    = CacheLine / BeatByte
   // Last level Cache
-  lazy val llcSets   = llcSizeInKiB * 1024 / cacheLine / llcWays
+  lazy val llcSets   = llcSizeInKiB * 1024 / CacheLine / llcWays
   // Snoop filter
-  lazy val sfSets    = sfSizeInKiB * 1024 / cacheLine / sfWays
+  lazy val sfSets    = sfSizeInKiB * 1024 / CacheLine / sfWays
   // PoS Table
   lazy val posWays   = if(hasLLC) min(llcWays, sfWays) else sfWays
   lazy val posSets   = nrPoS / posWays
   // Memblock
-  lazy val nrDataBuf = dataBufSizeInByte / beatByte
+  lazy val nrDataBuf = dataBufSizeInByte / BeatByte
   // Backend
   lazy val nrReplaceCM  = nrPoS / 2
   lazy val nrRetryBuf   = nrPoS / 4
@@ -58,7 +59,8 @@ case class DJParam(
 
   require(llcSizeInKiB >= 0)
   require(sfSizeInKiB > 0)
-  require(nrTaskBuf > 0)
+  require(nrReqTaskBuf > 0)
+  require(nrSnpTaskBuf >= 0)
   require(nrPoS > 0)
   require(isPow2(dataBufSizeInByte))
   require(nrDataCM >= nrDataBuf)
@@ -139,26 +141,26 @@ trait HasDJParam extends HasParseZJParam {
   lazy val ChiSizeBits        = 3
 
   // Data Parameters
-  lazy val DataBits         = djparam.cacheLine * 8
-  lazy val BeatBits         = djparam.beatByte * 8
-  lazy val MaskBits         = djparam.beatByte
-  lazy val ChiFullSize      = log2Ceil(djparam.cacheLine) // 6
-  lazy val ChiHalfSize      = log2Ceil(djparam.beatByte)  // 5
+  lazy val DataBits         = djparam.CacheLine * 8
+  lazy val BeatBits         = djparam.BeatByte * 8
+  lazy val MaskBits         = djparam.BeatByte
+  lazy val ChiFullSize      = log2Ceil(djparam.CacheLine) // 6
+  lazy val ChiHalfSize      = log2Ceil(djparam.BeatByte)  // 5
   require(MaskBits == zjParams.beBits)
 
 
   // Addr Parameters
-  // [fullAddr] = [cacheable] + [ccxChipId] + [useAddr1] + [bankId] + [useAddr0] + [offset]
-  // [useAddr]  = [cacheable] + [ccxChipId] + [useAddr1] + [useAddr0]
-  //            = [llcTag]    + [llcSet]    + [dirBank]
-  //            = [sfTag]     + [sfSet]     + [dirBank]
-  //            = [posTag]    + [posSet]    + [dirBank]
-  //            = [unUse]     + [dsBank]
+  // [fullAddr] = [useAddr1] + [bankId] + [useAddr0] + [offset]
+  // [useAddr]  = [useAddr1] + [useAddr0]
+  //            = [ci]       + [llcTag]   + [llcSet] + [dirBank]
+  //            = [ci]       + [sfTag]    + [sfSet]  + [dirBank]
+  //            = [ci]       + [posTag]   + [posSet] + [dirBank]
+  //            = [unUse]    + [dsBank]
   // full
   lazy val addrBits         = djparam.addressBits
   lazy val ciBits           = 4
   lazy val bankBits         = log2Ceil(nrBank)
-  lazy val offsetBits       = log2Ceil(djparam.cacheLine)
+  lazy val offsetBits       = log2Ceil(djparam.CacheLine)
   lazy val dirBankBits      = log2Ceil(djparam.nrDirBank)
   lazy val useAddrBits      = addrBits - bankBits - offsetBits
   // llc per dirBank
@@ -176,9 +178,6 @@ trait HasDJParam extends HasParseZJParam {
   // require [ccxChipId] > [bankId] > [offset]
   require(bankOff + bankBits - 1 < addrBits - ciBits)
   require(bankOff > offsetBits)
-  // islandId
-  lazy val ci_hi            = addrBits - 1
-  lazy val ci_lo            = addrBits - ciBits
   // useAddr
   lazy val useAddr_hi       = addrBits - 1
   lazy val useAddr_lo       = offsetBits
@@ -188,30 +187,33 @@ trait HasDJParam extends HasParseZJParam {
   // offset
   lazy val offset_hi        = offsetBits - 1
   lazy val offset_lo        = 0
+  // islandId
+  lazy val ci_ua_hi         = useAddrBits - 1
+  lazy val ci_ua_lo         = useAddrBits - ciBits
   // dirBank
-  lazy val dirBank_ua_hi    = useAddr_lo + dirBankBits - 1
-  lazy val dirBank_ua_lo    = useAddr_lo
+  lazy val dirBank_ua_hi    = dirBankBits - 1
+  lazy val dirBank_ua_lo    = 0
   // llcTag(per dirBank)
-  lazy val llcTag_ua_hi     = useAddrBits - 1
-  lazy val llcTag_ua_lo     = useAddrBits - llcTagBits
+  lazy val llcTag_ua_hi     = ci_ua_lo - 1
+  lazy val llcTag_ua_lo     = ci_ua_lo - llcTagBits
   // llcSet(per dirBank)
   lazy val llcSet_ua_hi     = llcTag_ua_lo - 1
   lazy val llcSet_ua_lo     = dirBankBits
   // sfTag(per dirBank)
-  lazy val sfTag_ua_hi      = useAddrBits - 1
-  lazy val sfTag_ua_lo      = useAddrBits - sfTagBits
+  lazy val sfTag_ua_hi      = ci_ua_lo - 1
+  lazy val sfTag_ua_lo      = ci_ua_lo - sfTagBits
   // sfSet(per dirBank)
   lazy val sfSet_ua_hi      = sfTag_ua_lo - 1
   lazy val sfSet_ua_lo      = dirBankBits
   // posTag(per dirBank)
-  lazy val posTag_ua_hi     = useAddrBits - 1
-  lazy val posTag_ua_lo     = useAddrBits - posTagBits
+  lazy val posTag_ua_hi     = ci_ua_lo - 1
+  lazy val posTag_ua_lo     = ci_ua_lo - posTagBits
   // posSet(per dirBank)
   lazy val posSet_ua_hi     = posTag_ua_lo - 1
   lazy val posSet_ua_lo     = dirBankBits
 
   // base
-  def getCI       (a: UInt) = a(ci_hi, ci_lo)
+  def getCI       (a: UInt) = a(ci_ua_hi, ci_ua_lo)
   def getUseAddr  (a: UInt) = Cat(a(useAddr_hi, bankId_hi + 1), a(bankId_lo - 1, useAddr_lo))
   def getBankId   (a: UInt) = a(bankId_hi, bankId_lo)
   def getOffset   (a: UInt) = a(offset_hi, offset_lo)
@@ -228,7 +230,10 @@ trait HasDJParam extends HasParseZJParam {
 
 
   // Frontend(Per dirBank) Parameters
-  lazy val nrTaskBuf        = djparam.nrTaskBuf / djparam.nrDirBank
+  lazy val nrReqTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
+  lazy val nrSnpTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
+  lazy val nrTaskBufMax     = max(nrReqTaskBuf, nrSnpTaskBuf)
+  lazy val taskIdMaxBits    = if(hasHnx) log2Ceil(nrTaskBufMax)+1 else log2Ceil(nrTaskBufMax) // The extra bit is used to distinguish the source of the request
 
   // Memblock Parameters
   lazy val dbIdBits         = log2Ceil(djparam.nrDataBuf)

@@ -18,3 +18,7 @@ class ChiTask(implicit p: Parameters) extends DJBundle with HasAddr with HasNode
   val fwdTxnID    = UInt(ChiFwdTxnIdBits.W)
   val retToSrc    = Bool()
 }
+
+trait HasTaskBufId { this: DJBundle =>
+  val taskBufId   = UInt(taskIdMaxBits.W)
+}

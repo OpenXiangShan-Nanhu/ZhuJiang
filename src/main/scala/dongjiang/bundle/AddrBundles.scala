@@ -21,3 +21,5 @@ trait HasAddr extends DJBundle { this: Bundle =>
   def posTag    = getPosTag(addr)
   def posSet    = getPosSet(addr)
 }
+
+class Addr(implicit p: Parameters) extends DJBundle with HasAddr
