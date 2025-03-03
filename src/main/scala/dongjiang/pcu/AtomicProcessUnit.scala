@@ -6,6 +6,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import xs.utils.perf.HasPerfLogging
+import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
 
 object AtomicOp {
@@ -54,8 +55,8 @@ class AtomicProcessUnit()(implicit p: Parameters) extends DJModule with HasPerfL
   })
 
   // assert
-  assert(io.in.bits.op <= COMPARE.U | !io.in.valid)
-  assert(Mux(io.in.bits.op === COMPARE.U, PopCount(io.in.bits.atomic.mask) <= 32.U, PopCount(io.in.bits.atomic.mask) <= 8.U) | !io.in.valid)
+  HardwareAssertion(io.in.bits.op <= COMPARE.U | !io.in.valid)
+  HardwareAssertion(Mux(io.in.bits.op === COMPARE.U, PopCount(io.in.bits.atomic.mask) <= 32.U, PopCount(io.in.bits.atomic.mask) <= 8.U) | !io.in.valid)
 
 
 // ----------------------------------------- Reg and Wire declaration ------------------------------------ //
@@ -107,7 +108,7 @@ class AtomicProcessUnit()(implicit p: Parameters) extends DJModule with HasPerfL
   val halfBytesNum_s1 = (bytesNum_s1 >> 1).asUInt
   amoDataVec_s1       := in_s1_g.atomic.data.asTypeOf(amoDataVec_s1)
   inDataVec_s1        := in_s1_g.data.asTypeOf(inDataVec_s1)
-  assert(bytesNum_s1 > 0.U | !valid_s1_g)
+  HardwareAssertion(bytesNum_s1 > 0.U | !valid_s1_g)
 
   /*
    * Parse loadData
@@ -267,6 +268,9 @@ class AtomicProcessUnit()(implicit p: Parameters) extends DJModule with HasPerfL
   io.out.valid      := valid_s3_g
   io.out.bits.dbID  := dbID_s3_g
   io.out.bits.data  := outDataVec_s3.asUInt
+
+
+  HardwareAssertion.placePipe(3)
 }
 
 
