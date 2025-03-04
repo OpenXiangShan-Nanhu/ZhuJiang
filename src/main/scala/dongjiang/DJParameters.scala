@@ -152,9 +152,10 @@ trait HasDJParam extends HasParseZJParam {
   // Addr Parameters
   // [fullAddr] = [useAddr1] + [bankId] + [useAddr0] + [offset]
   // [useAddr]  = [useAddr1] + [useAddr0]
-  //            = [ci]       + [llcTag]   + [llcSet] + [dirBank]
-  //            = [ci]       + [sfTag]    + [sfSet]  + [dirBank]
-  //            = [ci]       + [posTag]   + [posSet] + [dirBank]
+  //            = [llcTag]   + [llcSet] + [dirBank]
+  //            = [sfTag]    + [sfSet]  + [dirBank]
+  //            = [posTag]   + [posSet] + [dirBank]
+  //            = [ci]       + [unUse]
   //            = [unUse]    + [dsBank]
   // full
   lazy val addrBits         = djparam.addressBits
@@ -162,21 +163,22 @@ trait HasDJParam extends HasParseZJParam {
   lazy val bankBits         = log2Ceil(nrBank)
   lazy val offsetBits       = log2Ceil(djparam.CacheLine)
   lazy val dirBankBits      = log2Ceil(djparam.nrDirBank)
+  lazy val dsBankBits       = log2Ceil(djparam.nrDSBank)
   lazy val useAddrBits      = addrBits - bankBits - offsetBits
   // llc per dirBank
   lazy val llcSets          = djparam.llcSets / djparam.nrDirBank
   lazy val llcSetBits       = log2Ceil(llcSets)
-  lazy val llcTagBits       = addrBits - llcSetBits - dirBankBits - offsetBits
+  lazy val llcTagBits       = addrBits - bankBits - llcSetBits - dirBankBits - offsetBits
   // sf per dirBank
   lazy val sfSets           = djparam.sfSets / djparam.nrDirBank
   lazy val sfSetBits        = log2Ceil(sfSets)
-  lazy val sfTagBits        = addrBits - sfSetBits - dirBankBits - offsetBits
+  lazy val sfTagBits        = addrBits - bankBits - sfSetBits - dirBankBits - offsetBits
   // pos per dirBank
   lazy val posSets          = djparam.posSets / djparam.nrDirBank
   lazy val posSetBits       = log2Ceil(posSets)
-  lazy val posTagBits       = addrBits - posSetBits - dirBankBits - offsetBits
-  // require [ccxChipId] > [bankId] > [offset]
-  require(bankOff + bankBits - 1 < addrBits - ciBits)
+  lazy val posTagBits       = addrBits - bankBits - posSetBits - dirBankBits - offsetBits
+  // require [ci_lo] > [bankId_hi] > [bankId_lo] > [offset_hi]
+  require(addrBits - ciBits > bankOff + bankBits - 1)
   require(bankOff > offsetBits)
   // useAddr
   lazy val useAddr_hi       = addrBits - 1
@@ -194,23 +196,26 @@ trait HasDJParam extends HasParseZJParam {
   lazy val dirBank_ua_hi    = dirBankBits - 1
   lazy val dirBank_ua_lo    = 0
   // llcTag(per dirBank)
-  lazy val llcTag_ua_hi     = ci_ua_lo - 1
-  lazy val llcTag_ua_lo     = ci_ua_lo - llcTagBits
+  lazy val llcTag_ua_hi     = useAddrBits - 1
+  lazy val llcTag_ua_lo     = useAddrBits - llcTagBits
   // llcSet(per dirBank)
-  lazy val llcSet_ua_hi     = llcTag_ua_lo - 1
+  lazy val llcSet_ua_hi     = dirBankBits + llcSetBits - 1
   lazy val llcSet_ua_lo     = dirBankBits
   // sfTag(per dirBank)
-  lazy val sfTag_ua_hi      = ci_ua_lo - 1
-  lazy val sfTag_ua_lo      = ci_ua_lo - sfTagBits
+  lazy val sfTag_ua_hi      = useAddrBits - 1
+  lazy val sfTag_ua_lo      = useAddrBits - sfTagBits
   // sfSet(per dirBank)
-  lazy val sfSet_ua_hi      = sfTag_ua_lo - 1
+  lazy val sfSet_ua_hi      = dirBankBits + sfSetBits - 1
   lazy val sfSet_ua_lo      = dirBankBits
   // posTag(per dirBank)
-  lazy val posTag_ua_hi     = ci_ua_lo - 1
-  lazy val posTag_ua_lo     = ci_ua_lo - posTagBits
+  lazy val posTag_ua_hi     = useAddrBits - 1
+  lazy val posTag_ua_lo     = useAddrBits - posTagBits
   // posSet(per dirBank)
-  lazy val posSet_ua_hi     = posTag_ua_lo - 1
+  lazy val posSet_ua_hi     = dirBankBits + posSetBits - 1
   lazy val posSet_ua_lo     = dirBankBits
+  // dsBank
+  lazy val dsBank_ua_hi     = dsBankBits - 1
+  lazy val dsBank_ua_lo     = 0
 
   // base
   def getCI       (a: UInt) = a(ci_ua_hi, ci_ua_lo)
@@ -227,13 +232,15 @@ trait HasDJParam extends HasParseZJParam {
   // pos
   def getPosTag   (a: UInt) = getUseAddr(a)(posTag_ua_hi, posTag_ua_lo)
   def getPosSet   (a: UInt) = getUseAddr(a)(posSet_ua_hi, posSet_ua_lo)
+  // ds
+  def getDSBank   (a: UInt) = getUseAddr(a)(dsBank_ua_hi, dsBank_ua_lo)
 
 
   // Frontend(Per dirBank) Parameters
   lazy val nrReqTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
   lazy val nrSnpTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
-  lazy val nrTaskBufMax     = max(nrReqTaskBuf, nrSnpTaskBuf)
-  lazy val taskIdMaxBits    = if(hasHnx) log2Ceil(nrTaskBufMax)+1 else log2Ceil(nrTaskBufMax) // The extra bit is used to distinguish the source of the request
+  lazy val posWays          = djparam.posWays
+  lazy val posWayBits       = log2Ceil(posWays)
 
   // Memblock Parameters
   lazy val dbIdBits         = log2Ceil(djparam.nrDataBuf)

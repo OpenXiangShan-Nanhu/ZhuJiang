@@ -38,6 +38,20 @@ object fastRRArb {
     arb.io.out
   }
 
+  def apply[T <: Data](in: Seq[ValidIO[T]]): ValidIO[T] = {
+    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, true))
+    val out = WireInit(0.U.asTypeOf(in.head))
+    arb.io.in.zip(in).foreach {
+      case (a, b) =>
+        a.valid := b.valid
+        a.bits := b.bits
+    }
+    out.valid := arb.io.out.valid
+    out.bits := arb.io.out.bits
+    arb.io.out.ready := true.B
+    out
+  }
+
   def apply[T <: Data](in: Seq[DecoupledIO[T]], out: ValidIO[T]): Unit = {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, true))
     arb.io.in.zip(in).foreach { case (a, b) => a <> b }
@@ -68,6 +82,20 @@ object fastArb {
     val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
     arb.io.in.zip(in).foreach { case (a, b) => a <> b }
     arb.io.out
+  }
+
+  def apply[T <: Data](in: Seq[ValidIO[T]]): ValidIO[T] = {
+    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
+    val out = WireInit(0.U.asTypeOf(in.head))
+    arb.io.in.zip(in).foreach {
+      case (a, b) =>
+        a.valid := b.valid
+        a.bits  := b.bits
+    }
+    out.valid := arb.io.out.valid
+    out.bits  := arb.io.out.bits
+    arb.io.out.ready := true.B
+    out
   }
 
   def apply[T <: Data](in: Seq[DecoupledIO[T]], out: ValidIO[T]): Unit = {

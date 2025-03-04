@@ -80,6 +80,14 @@ class DongJiang(hnNodeSeq: Seq[Node])(implicit p: Parameters) extends DJRawModul
        |  dirSetup: ${djparam.dirSetup}
        |  dirLatency: ${djparam.dirLatency}
        |  dirExtraHold: ${djparam.dirExtraHold}
+       |  address slice:
+       |    [fullAddr(${djparam.addressBits-1}:0)] = [useAddr1(${useAddr_hi}:${bankId_hi+1})] + [bankId(${bankId_hi}:${bankId_lo})] + [useAddr0(${bankId_lo-1}:${useAddr_lo})] + [offset(${offset_hi}:${offset_lo})]
+       |    [useAddr(${useAddrBits-1}:0)]  = [useAddr1(${useAddrBits-1}:${bankId_lo-offsetBits})] + [useAddr0(${bankId_lo-offsetBits-1}:0)]
+       |                     = [llcTag(${llcTag_ua_hi}:${llcTag_ua_lo})] + [llcSet(${llcSet_ua_hi}:${llcSet_ua_lo})] + [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]
+       |                     = [sfTag(${sfTag_ua_hi}:${sfTag_ua_lo})] + [sfSet(${sfSet_ua_hi}:${sfSet_ua_lo})] + [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]
+       |                     = [posTag(${posTag_ua_hi}:${posTag_ua_lo})] + [posSet(${posSet_ua_hi}:${posSet_ua_lo})] + [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]
+       |                     = [ci(${ci_ua_hi}:${ci_ua_lo})] + [unUse(${ci_ua_lo-1}:0)]
+       |                     = [unUse(${useAddrBits-1}:${dsBank_ua_hi+1})] + [dsBank(${dsBank_ua_hi}:${dsBank_ua_lo})]
        |}
        |""".stripMargin)
 
@@ -87,7 +95,7 @@ class DongJiang(hnNodeSeq: Seq[Node])(implicit p: Parameters) extends DJRawModul
    * Module declaration
    */
   val level     = 0
-  val frontends = Seq.fill(djparam.nrDirBank) { Module(new Frontend()) }
+  val frontends = Seq.tabulate(djparam.nrDirBank)(i => Module(new Frontend(i)))
   val backend   = Module(new Backend())
   val directory = Module(new Directory())
   val dataCtrl  = Module(new DataCtrl())
