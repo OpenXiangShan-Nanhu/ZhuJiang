@@ -56,9 +56,6 @@ local OpcodeREQ = setmetatable({
 
 	AtomicSwap = 0x38 + lshift(0, 6),
 	AtomicCompare = 0x39 + lshift(0, 6),
-
-	Replace = 0x7A + lshift(0, 6),
-	FlushDCU = 0x7B + lshift(0, 6),
 }, { __call = enum_search })
 
 local OpcodeDAT = setmetatable({

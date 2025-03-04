@@ -134,10 +134,10 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
     hfDevSeq(i).io.config.closeLLC := false.B
     hfDevSeq(i).io.config.ci := localRing.io_chip
     hfDevSeq(i).io.config.bankId := bankId.U
-    hfDevSeq(i).reset := placeResetGen(s"dcu_$bankId", hfIcnSeq(i)._2.head)
+    hfDevSeq(i).reset := placeResetGen(s"hnf_$bankId", hfIcnSeq(i)._2.head)
     hfDevSeq(i).clock := clock
-    hfDevSeq(i).suggestName(s"dcu_$bankId")
-    HardwareAssertion.fromDomain(hfDevSeq(i).assertionOut, hfDevSeq(i).assertionInfo, level = 0, s"dcu $bankId")
+    hfDevSeq(i).suggestName(s"hnf_$bankId")
+    HardwareAssertion.fromDomain(hfDevSeq(i).assertionOut, hfDevSeq(i).assertionInfo, level = 0, s"hnf $bankId")
     HardwareAssertion.placePipe(Int.MaxValue-1)
   }
 

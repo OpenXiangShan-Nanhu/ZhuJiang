@@ -90,7 +90,7 @@ case class Node(
       case NodeType.HF => s"hnf_pcu_$bankId"
       case NodeType.HI => s"hni_$attr"
       case NodeType.C => s"c2c_$domainId"
-      case NodeType.S => if(attr == "") s"sn_dcu_$bankId" else s"sn_$attr"
+      case NodeType.S => s"sn_$attr"
       case _ => "pip"
     }
     s"$csnStr${nstr}_id_0x${nodeId.toHexString}"
