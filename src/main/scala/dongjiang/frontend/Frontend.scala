@@ -46,9 +46,9 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   req2Task.io.rxReq         <> io.rxReq
 
   // reqTaskBuf
-  reqTaskBuf.io.taskIn      <> req2Task.io.chiTask
-  reqTaskBuf.io.retry       := block.io.retryOut
-  reqTaskBuf.io.sleep       := posTable.io.sleepOut
+  reqTaskBuf.io.chiTask     <> req2Task.io.chiTask
+  reqTaskBuf.io.retry_s1    := block.io.retry_s1
+  reqTaskBuf.io.sleep_s1    := posTable.io.sleep_s1
   reqTaskBuf.io.wakeupVec   := posTable.io.wakeupVec
 
   // snp2Task and snpTaskBuf
@@ -56,11 +56,11 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // snp2Task
     snp2Task.io.rxSnp       <> io.rxSnp
     // snpTaskBuf
-    snpTaskBuf.io.taskIn    <> snp2Task.io.chiTask
-    reqTaskBuf.io.retry     := block.io.retryOut
-    reqTaskBuf.io.sleep     := DontCare // snp never sleep
+    snpTaskBuf.io.chiTask   <> snp2Task.io.chiTask
+    reqTaskBuf.io.retry_s1  := block.io.retry_s1
+    reqTaskBuf.io.sleep_s1  := DontCare // snp never sleep
     reqTaskBuf.io.wakeupVec := DontCare // not need to wakeup
-    HardwareAssertion(!snpTaskBuf.io.taskOut.valid)
+    HardwareAssertion(!snpTaskBuf.io.task_s0.valid)
   } else {
     // DontCare snp2Task and snpTaskBuf
     snp2Task.io             <> DontCare
@@ -69,15 +69,15 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
 
   // posTable
   posTable.io               <> DontCare
-  posTable.io.reqIn         := fastRRArb(Seq(snpTaskBuf.io.req2Pos, reqTaskBuf.io.req2Pos))
+  posTable.io.req_s0         := fastRRArb(Seq(snpTaskBuf.io.req2Pos_s0, reqTaskBuf.io.req2Pos_s0))
 
   // block
   block.io                  <> DontCare
-  block.io.taskIn           := fastRRArb(Seq(snpTaskBuf.io.taskOut, reqTaskBuf.io.taskOut))
-  block.io.posRetry         := posTable.io.fullOut | posTable.io.sleepOut
-  block.io.posIdx           := posTable.io.posIdxOut
+  block.io.task_s0          := fastRRArb(Seq(snpTaskBuf.io.task_s0, reqTaskBuf.io.task_s0))
+  block.io.posRetry_s1      := posTable.io.full_s1 | posTable.io.sleep_s1
+  block.io.posIdx_s1        := posTable.io.posIdx_s1
   block.io.useNum           := Fill(retryBits, 1.U)
-  block.io.readDir.ready    := true.B
+  block.io.readDir_s1.ready := true.B
 
   /*
    * HardwareAssertion placePipe

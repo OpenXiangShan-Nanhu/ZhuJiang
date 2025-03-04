@@ -16,28 +16,28 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // Task
-    val taskIn    = Flipped(Valid(new ChiTask()))
-    val taskOut   = Valid(new ChiTask with HasPosIndex with HasDCID)
+    val task_s0       = Flipped(Valid(new ChiTask()))
+    val task_s1       = Valid(new ChiTask with HasPosIndex with HasDCID)
     // Read Directory
-    val readDir   = Decoupled(new Addr with HasDCID)
+    val readDir_s1    = Decoupled(new Addr with HasDCID)
     // Req to DataBuffer
-    val reqDB     = Decoupled(new DJBundle with HasLLCTxnID {
-      val double  = Bool()
+    val reqDB_s1      = Decoupled(new DJBundle with HasLLCTxnID {
+      val double      = Bool()
     })
-    val respDB    = Input(new DCID())
+    val respDB_s1     = Input(new DCID())
     // Message from PoS
-    val posRetry  = Input(Bool())
-    val posIdx    = Input(new PosIndex())
-    // Block Message(The number of resources already used)
-    val useNum    = Input(UInt(retryBits.W))
+    val posRetry_s1   = Input(Bool())
+    val posIdx_s1     = Input(new PosIndex())
     // Return to TaskBuf
-    val retryOut  = Output(Bool())
+    val retry_s1      = Output(Bool())
     // Resp to Node(RN/SN)
-    val resp2Node = Decoupled(new RespFlit())
+    val resp2Node_s1  = Decoupled(new RespFlit())
+    // Block Message(The number of resources already used)
+    val useNum        = Input(UInt(retryBits.W))
   })
   dontTouch(io)
 
-  HardwareAssertion(!io.taskIn.valid)
+  HardwareAssertion(!io.task_s0.valid)
 
   /*
    * REG and Wire declaration
@@ -53,65 +53,65 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val dir           = Bool()
     val db            = Bool()
     val resp          = Bool()
+    def all = rsvd | pos | dir | db | resp
   })
   dontTouch(block_s1)
 
   /*
    * Receive Task
    */
-  valid_s1        := io.taskIn.valid
-  taskReg_s1      := io.taskIn.bits
-  needDBReg_s1    := io.taskIn.bits.reqNeedData | io.taskIn.bits.snpNeedData
-  needRespReg_s1  := io.taskIn.bits.isWrite | io.taskIn.bits.isEO
+  valid_s1        := io.task_s0.valid
+  taskReg_s1      := io.task_s0.bits
+  needDBReg_s1    := io.task_s0.bits.reqNeedData | io.task_s0.bits.snpNeedData
+  needRespReg_s1  := io.task_s0.bits.isWrite | io.task_s0.bits.isEO
 
   /*
    * Block logic
    */
   // Reserve an extra entry for the task to be sent to LAN
-  val useNum      = io.useNum + (valid_s1 & io.taskIn.valid)
-  needRsvdReg_s1  := useNum > (nrRetryBuf.U - 1.U - io.taskIn.bits.fromBBN)
+  val useNum      = io.useNum + (valid_s1 & io.task_s0.valid)
+  needRsvdReg_s1  := useNum > (nrRetryBuf.U - 1.U - io.task_s0.bits.fromBBN)
   // block
   block_s1.rsvd   := needRsvdReg_s1
-  block_s1.pos    := io.posRetry
-  block_s1.dir    := !io.readDir.ready
-  block_s1.db     := needDBReg_s1 & !io.reqDB.ready
-  block_s1.resp   := needRespReg_s1 & !io.resp2Node.ready
-  val block       = block_s1.rsvd | block_s1.pos | block_s1.dir | block_s1.db | block_s1.resp
-  io.retryOut     := valid_s1 & block
+  block_s1.pos    := io.posRetry_s1
+  block_s1.dir    := !io.readDir_s1.ready
+  block_s1.db     := needDBReg_s1 & !io.reqDB_s1.ready
+  block_s1.resp   := needRespReg_s1 & !io.resp2Node_s1.ready
+  io.retry_s1     := valid_s1 & block_s1.all
 
   /*
    * Send Req to DataBuffer
    */
 
-  io.reqDB.valid          := valid_s1 & needDBReg_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.dir | block_s1.resp)
-  io.reqDB.bits.llcTxnID  := io.posIdx.getLLCTxnID(dirBank)
-  io.reqDB.bits.double    := taskReg_s1.isFullSize
+  io.reqDB_s1.valid         := valid_s1 & needDBReg_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.dir | block_s1.resp)
+  io.reqDB_s1.bits.llcTxnID := io.posIdx_s1.getLLCTxnID(dirBank)
+  io.reqDB_s1.bits.double   := taskReg_s1.isFullSize
 
   /*
    * Task Out
    */
-  io.taskOut.valid      := valid_s1 & !block
-  io.taskOut.bits       := taskReg_s1.asUInt.asTypeOf(io.taskOut.bits)
-  io.taskOut.bits.pos   := io.posIdx
-  io.taskOut.bits.dcid  := io.respDB.dcid
+  io.task_s1.valid      := valid_s1 & !block_s1.all
+  io.task_s1.bits       := taskReg_s1.asUInt.asTypeOf(io.task_s1.bits)
+  io.task_s1.bits.pos   := io.posIdx_s1
+  io.task_s1.bits.dcid  := io.respDB_s1.dcid
 
   /*
    * Read Directory
    */
-  io.readDir.valid      := valid_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.db | block_s1.resp)
-  io.readDir.bits.addr  := taskReg_s1.addr
-  io.readDir.bits.dcid  := io.respDB.dcid
+  io.readDir_s1.valid     := valid_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.db | block_s1.resp)
+  io.readDir_s1.bits.addr := taskReg_s1.addr
+  io.readDir_s1.bits.dcid := io.respDB_s1.dcid
 
   /*
    * Resp to Node
    */
-  io.resp2Node.valid        := valid_s1 & needRespReg_s1 & (block_s1.rsvd | block_s1.pos | block_s1.dir | block_s1.db)
-  io.resp2Node.bits         := DontCare
-  io.resp2Node.bits.TgtID   := taskReg_s1.nodeId
-  io.resp2Node.bits.TxnID   := taskReg_s1.txnID
-  io.resp2Node.bits.Opcode  := Mux(taskReg_s1.isEO, ReadReceipt, Mux(taskReg_s1.isOWO, DBIDResp, CompDBIDResp))
-  io.resp2Node.bits.RespErr := RespErr.NormalOkay
-  io.resp2Node.bits.DBID    := io.posIdx.getLLCTxnID(dirBank)
+  io.resp2Node_s1.valid        := valid_s1 & needRespReg_s1 & (block_s1.rsvd | block_s1.pos | block_s1.dir | block_s1.db)
+  io.resp2Node_s1.bits         := DontCare
+  io.resp2Node_s1.bits.TgtID   := taskReg_s1.nodeId
+  io.resp2Node_s1.bits.TxnID   := taskReg_s1.txnID
+  io.resp2Node_s1.bits.Opcode  := Mux(taskReg_s1.isEO, ReadReceipt, Mux(taskReg_s1.isOWO, DBIDResp, CompDBIDResp))
+  io.resp2Node_s1.bits.RespErr := RespErr.NormalOkay
+  io.resp2Node_s1.bits.DBID    := io.posIdx_s1.getLLCTxnID(dirBank)
 
 
   /*
