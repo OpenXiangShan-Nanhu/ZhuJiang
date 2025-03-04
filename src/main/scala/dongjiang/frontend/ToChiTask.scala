@@ -32,7 +32,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
   val req       = io.rxReq.bits
   val task      = io.chiTask.bits
   task.addr     := req.Addr
-  task.fromLAN  := task.ci === io.config.ci
+  task.isLAN    := task.ci === io.config.ci
   task.nodeId   := req.SrcID
   task.channel  := REQ
   task.opcode   := req.Opcode
@@ -58,7 +58,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     HardwareAssertion(Mux(task.fromBBN, io.config.hnIdVec.last === req.TgtID, io.config.hnIdVec.last =/= req.TgtID))
     HardwareAssertion(io.config.hnIdVec.map(_ === req.TgtID).reduce(_ | _))
     // SrcID
-    HardwareAssertion.withEn(task.fromCcRnf | task.fromCcRni | task.fromRniDma, task.fromLAN)
+    HardwareAssertion.withEn(task.fromCcRnf | task.fromCcRni | task.fromRniDma, task.isLAN)
     HardwareAssertion.withEn(task.bbnCI =/= io.config.ci, task.fromBBN)
     // TxnID
     // ReturnNID
@@ -157,7 +157,7 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
   val snp       = io.rxSnp.bits
   val task      = io.chiTask.bits
   task.addr     := Cat(snp.Addr, 0.U(3.W))
-  task.fromLAN  := false.B
+  task.isLAN    := false.B
   task.nodeId   := snp.SrcID
   task.channel  := SNP
   task.opcode   := snp.Opcode

@@ -43,9 +43,20 @@ class PosIndex(implicit p: Parameters) extends DJBundle {
   val set = UInt(posSetBits.W)
   val way = UInt(posWayBits.W)
 
-  def idxMatch(i: Int, j: Int) = set === i.U & way === j.U
+  def idxMatch(i: Int, j: Int)  = set === i.U & way === j.U
+  def getLLCTxnID(dirBank: Int) = Cat(dirBank.U, set, way)
 }
 
 trait HasPosIndex extends DJBundle { this: DJBundle =>
   val pos = new PosIndex()
 }
+
+trait HasLLCTxnID extends DJBundle { this: DJBundle =>
+  val llcTxnID = UInt(log2Ceil(djparam.nrPoS).W)
+}
+
+trait HasDCID extends DJBundle { this: DJBundle =>
+  val dcid = UInt(dcIdBits.W)
+}
+
+class DCID(implicit p: Parameters) extends DJBundle with HasDCID

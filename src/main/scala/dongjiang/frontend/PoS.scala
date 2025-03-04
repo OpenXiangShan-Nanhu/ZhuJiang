@@ -14,27 +14,27 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * IO declaration
    */
   val io = IO(new Bundle {
-    val config    = new DJConfigIO()
+    val config      = new DJConfigIO()
     // req and ack
-    val reqIn     = Flipped(Valid(new DJBundle with HasAddr {
-      val isSnp   = Bool()
+    val reqIn       = Flipped(Valid(new DJBundle with HasAddr {
+      val isSnp     = Bool()
     }))
-    val sleepOut  = Output(Bool())
-    val retryOut  = Output(Bool())
-    val posIdxOut = Output(new PosIndex())
+    val sleepOut    = Output(Bool())
+    val fullOut     = Output(Bool())
+    val posIdxOut   = Output(new PosIndex())
     // retry from block
-    val retryIn   = Input(Bool())
+    val blockRetry  = Input(Bool())
     // update PoS
-    val canNest   = Input(Valid(new PosIndex()))
-    val updTag    = Input(Valid(new Addr with HasPosIndex))
-    val clean     = Input(Vec(2, Valid(new DJBundle with HasPosIndex {
-      val isSnp   = Bool()
+    val canNest     = Input(Valid(new PosIndex()))
+    val updTag      = Input(Valid(new Addr with HasPosIndex))
+    val clean       = Input(Vec(2, Valid(new DJBundle with HasPosIndex {
+      val isSnp     = Bool()
     })))
     // wakeup TaskBuf Entry
-    val wakeupVec = Vec(2, Valid(new Addr))
+    val wakeupVec   = Vec(2, Valid(new Addr))
+    // PoS Busy Signal
+    val posBusy     = Output(UInt(2.W))
   })
-
-  HardwareAssertion(!io.reqIn.valid)
 
   /*
    * REG and Wire declaration
@@ -94,10 +94,9 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * Retrun ack to taskBuf and block
    */
-  io.sleepOut   := RegNext(io.reqIn.valid & !receive & !io.reqIn.bits.isSnp)
-  io.retryOut   := RegNext(io.reqIn.valid & !receive)
+  io.sleepOut   := RegNext(io.reqIn.valid & !receive & hasMatch)
+  io.fullOut    := RegNext(io.reqIn.valid & !receive & !hasFreeWay)
   io.posIdxOut  := reqInReg.bits.pos
-  HardwareAssertion.withEn(io.sleepOut, io.retryOut)
 
   /*
    * Modify pos tag
@@ -107,7 +106,7 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
       tagSet.zipWithIndex.foreach {
         case(tag, j) =>
           val updHit  = io.updTag.valid & io.updTag.bits.pos.idxMatch(i, j)
-          val reqHit  = reqInReg.valid  & reqInReg.bits.pos.idxMatch(i , j) & !io.retryIn
+          val reqHit  = reqInReg.valid  & reqInReg.bits.pos.idxMatch(i , j) & !io.blockRetry
           when(updHit) {
             tag := io.updTag.bits.posTag
           }.elsewhen(reqHit) {
@@ -129,7 +128,7 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
           val cleanHit    = cleanHitVec.reduce(_ | _)
           val cleanSnp    = io.clean(PriorityEncoder(cleanHitVec)).bits.isSnp
           // store req
-          val reqHit      = reqInReg.valid & reqInReg.bits.pos.idxMatch(i, j) & !io.retryIn
+          val reqHit      = reqInReg.valid & reqInReg.bits.pos.idxMatch(i, j) & !io.blockRetry
           val reqIsSnp    = reqInReg.bits.isSnp
           // modify validVec
           val validVecNxt = WireInit(0.U(2.W))
@@ -164,6 +163,18 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
       // get wakeup valid
       wakeup.valid := clean.valid & ctrlTable(cleanSet)(cleanWay).validVec.xorR
   }
+
+  /*
+   * PoS Busy Signal
+   */
+  val useNum  = PopCount(ctrlTable.flatten.map(_.valid))
+  val posBusy = PriorityMux(Seq(
+    (useNum < (nrPoS*0.5 ).toInt.U) -> "b00".U,
+    (useNum < (nrPoS*0.75).toInt.U) -> "b01".U,
+    (useNum < (nrPoS*0.9 ).toInt.U) -> "b10".U,
+    true.B                          -> "b11".U,
+  ))
+  io.posBusy := RegNext(posBusy)
 
   /*
    * HardwareAssertion placePipe

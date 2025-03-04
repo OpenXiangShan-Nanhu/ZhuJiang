@@ -50,12 +50,6 @@ case class DJParam(
   lazy val posSets   = nrPoS / posWays
   // Memblock
   lazy val nrDataBuf = dataBufSizeInByte / BeatByte
-  // Backend
-  lazy val nrReplaceCM  = nrPoS / 2
-  lazy val nrRetryBuf   = nrPoS / 4
-  lazy val nrSnoopCM    = nrPoS / 4
-  lazy val nrReadCM     = nrPoS / 4
-  lazy val nrDatalessCM = nrPoS / 4
 
   require(llcSizeInKiB >= 0)
   require(sfSizeInKiB > 0)
@@ -239,6 +233,7 @@ trait HasDJParam extends HasParseZJParam {
   // Frontend(Per dirBank) Parameters
   lazy val nrReqTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
   lazy val nrSnpTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
+  lazy val nrPoS            = djparam.nrPoS / djparam.nrDirBank
   lazy val posWays          = djparam.posWays
   lazy val posWayBits       = log2Ceil(posWays)
 
@@ -251,6 +246,16 @@ trait HasDJParam extends HasParseZJParam {
   // Replacement(PLRU) Parameters
   lazy val sReplWayBits     = djparam.llcWays - 1
   lazy val sfReplWayBits    = djparam.sfWays - 1
+
+  // Backend Parameters
+  lazy val nrReplaceCM      = djparam.nrPoS / 2
+  lazy val nrRetryBuf       = djparam.nrPoS / 4
+  lazy val nrSnoopCM        = djparam.nrPoS / 4
+  lazy val nrReadCM         = djparam.nrPoS / 4
+  lazy val nrDatalessCM     = djparam.nrPoS / 4
+  require(nrRetryBuf >= 4)
+
+  lazy val retryBits        = log2Ceil(nrRetryBuf) + 1
 
 
   // TIMEOUT CHECK CNT VALUE

@@ -7,10 +7,10 @@ import dongjiang._
 import xs.utils.debug.HardwareAssertion
 
 trait HasNodeId { this: DJBundle =>
-  val fromLAN   = Bool()
+  val isLAN     = Bool()
   val nodeId    = UInt(nodeIdBits.W)
 
-  def fromBBN   = !fromLAN
+  def fromBBN   = !isLAN
 
   // LAN
   def lanNId    = nodeId(nodeIdBits-1, nodeIdBits-lanNBits)
@@ -20,9 +20,9 @@ trait HasNodeId { this: DJBundle =>
   def bbnBId    = nodeId(bbnBBits - 1, 0)
 
   // LAN NID
-  def fromCc :Bool = fromLAN & fromLanXNode(nodeId, ccNodeIdSeq)
-  def fromRni:Bool = fromLAN & fromLanXNode(nodeId, rniNodeIdSeq)
-  def fromSn :Bool = fromLAN & fromLanXNode(nodeId, snNodeIdSeq)
+  def fromCc :Bool = isLAN & fromLanXNode(nodeId, ccNodeIdSeq)
+  def fromRni:Bool = isLAN & fromLanXNode(nodeId, rniNodeIdSeq)
+  def fromSn :Bool = isLAN & fromLanXNode(nodeId, snNodeIdSeq)
   def fromRn :Bool = fromCc  | fromRni
 
   // LAN AID
@@ -34,7 +34,7 @@ trait HasNodeId { this: DJBundle =>
   // metaId
   def metaId: UInt = {
     val metaId = WireInit(0.U(metaIdBits.W))
-    when(fromLAN) {
+    when(isLAN) {
       ccNodeIdSeq.zipWithIndex.foreach {
         case (ccId, i) =>
           when(ccId.U >> lanABits === lanNId) {
@@ -64,7 +64,7 @@ trait HasNodeId { this: DJBundle =>
     val _bbn_nodeId = WireInit(0.U(nodeIdBits.W))
     _bbn_nodeId := (metaId - nrCcNode.U) << bbnBBits  // bbNBId will be remap in BBN Router
     // Set value
-    this.fromLAN := _fromLAN
+    this.isLAN := _fromLAN
     this.nodeId  := Mux(_fromLAN, _lan_nodeId, _bbn_nodeId)
   }
 

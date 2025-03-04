@@ -153,6 +153,7 @@ trait HasChiOp { this: DJBundle with HasChiChannel =>
     AtomicStoreUMIN,
   )
 
+  // REQ
   def isAtomicLoad: Bool = reqIs(
     AtomicLoadADD,
     AtomicLoadCLR,
@@ -164,14 +165,17 @@ trait HasChiOp { this: DJBundle with HasChiChannel =>
     AtomicLoadUMIN,
   )
 
+  // REQ
   def isAtomicSwap: Bool = reqIs(
     AtomicSwap,
   )
 
+  // REQ
   def isAtomicCompare: Bool = reqIs(
     AtomicCompare,
   )
 
+  // REQ
   def isAtomic: Bool = isAtomicStore | isAtomicLoad | isAtomicSwap | isAtomicCompare
 
   // REQ
@@ -184,8 +188,8 @@ trait HasChiOp { this: DJBundle with HasChiChannel =>
   // REQ: Get Atomic type expect AmoticStoreX
   def getAtomicOp: UInt = opcode(3, 0)
 
-
   // REQ: legal
+  // Note: If it is modified, you need to check if reqNeedData needs to be modified accordingly.
   def reqIsLegal: Bool = reqIs(
     // Read
     ReadNoSnp,
@@ -231,6 +235,7 @@ trait HasChiOp { this: DJBundle with HasChiChannel =>
   )
 
   // SNP: legal
+  // Note: If it is modified, you need to check if snpNeedData needs to be modified accordingly.
   def snpIsLegal: Bool = snpIs(
     // SnpLCrdReturn,
     // SnpShared,

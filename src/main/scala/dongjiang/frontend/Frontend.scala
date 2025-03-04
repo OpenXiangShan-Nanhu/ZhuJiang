@@ -31,6 +31,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val reqTaskBuf  = Module(new TaskBuffer(sort = true, nrReqTaskBuf))
   val snpTaskBuf  = Module(new TaskBuffer(sort = false, nrSnpTaskBuf))
   val posTable    = Module(new PoS(dirBank))
+  val block       = Module(new Block(dirBank))
 
 
   /*
@@ -46,7 +47,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
 
   // reqTaskBuf
   reqTaskBuf.io.taskIn      <> req2Task.io.chiTask
-  reqTaskBuf.io.retry       := posTable.io.retryOut
+  reqTaskBuf.io.retry       := block.io.retryOut
   reqTaskBuf.io.sleep       := posTable.io.sleepOut
   reqTaskBuf.io.wakeupVec   := posTable.io.wakeupVec
 
@@ -56,7 +57,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     snp2Task.io.rxSnp       <> io.rxSnp
     // snpTaskBuf
     snpTaskBuf.io.taskIn    <> snp2Task.io.chiTask
-    reqTaskBuf.io.retry     := posTable.io.retryOut
+    reqTaskBuf.io.retry     := block.io.retryOut
     reqTaskBuf.io.sleep     := DontCare // snp never sleep
     reqTaskBuf.io.wakeupVec := DontCare // not need to wakeup
     HardwareAssertion(!snpTaskBuf.io.taskOut.valid)
@@ -68,7 +69,15 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
 
   // posTable
   posTable.io               <> DontCare
-  posTable.io.reqIn         <> fastRRArb(Seq(snpTaskBuf.io.req2Pos, reqTaskBuf.io.req2Pos))
+  posTable.io.reqIn         := fastRRArb(Seq(snpTaskBuf.io.req2Pos, reqTaskBuf.io.req2Pos))
+
+  // block
+  block.io                  <> DontCare
+  block.io.taskIn           := fastRRArb(Seq(snpTaskBuf.io.taskOut, reqTaskBuf.io.taskOut))
+  block.io.posRetry         := posTable.io.fullOut | posTable.io.sleepOut
+  block.io.posIdx           := posTable.io.posIdxOut
+  block.io.useNum           := Fill(retryBits, 1.U)
+  block.io.readDir.ready    := true.B
 
   /*
    * HardwareAssertion placePipe
