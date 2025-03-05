@@ -236,6 +236,12 @@ trait HasDJParam extends HasParseZJParam {
   lazy val nrPoS            = djparam.nrPoS / djparam.nrDirBank
   lazy val posWays          = djparam.posWays
   lazy val posWayBits       = log2Ceil(posWays)
+  lazy val readDirLatency   = max(djparam.dirSetup, djparam.dirLatency) + (if(djparam.dirExtraHold) 1 else 0)
+  // [S0(PoS/Block)] + [S1(ReadDir)] + [S2(Decode)] + Reserve for snp
+  lazy val nrIssueBuf       = 8 // TODO: Need to argue for sufficient resources and no deadlocks
+  lazy val issueBufBits     = log2Ceil(nrIssueBuf)
+  require(nrIssueBuf >= 1 + readDirLatency + 1 + 1)
+
 
   // Memblock Parameters
   lazy val dbIdBits         = log2Ceil(djparam.nrDataBuf)
@@ -254,8 +260,6 @@ trait HasDJParam extends HasParseZJParam {
   lazy val nrReadCM         = djparam.nrPoS / 4
   lazy val nrDatalessCM     = djparam.nrPoS / 4
   require(nrRetryBuf >= 4)
-
-  lazy val retryBits        = log2Ceil(nrRetryBuf) + 1
 
 
   // TIMEOUT CHECK CNT VALUE

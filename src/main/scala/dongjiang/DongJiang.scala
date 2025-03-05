@@ -48,6 +48,7 @@ class DongJiang(hnNodeSeq: Seq[Node])(implicit p: Parameters) extends DJRawModul
   val implicitClock = clock
   val implicitReset = reset
 
+  // TODO
   io.flushCache.ack := DontCare
 
   require(hnNodeSeq.length == nrLanIcn)
@@ -148,6 +149,36 @@ class DongJiang(hnNodeSeq: Seq[Node])(implicit p: Parameters) extends DJRawModul
   chiXbar.io.txDat.inVec.zip(dataCtrl.io.txDatVec).foreach { case (a, b) => a <> b }
   chiXbar.io.txDat.outVec.zip(io.icnVec.map(_.tx.data.get)).foreach { case (a, b) => a <> b }
 
+  // Set CBusy in CHIXbar
+  // TODO: Need to argue reasonableness
+  chiXbar.io.cBusy := Cat(backend.io.multicore, frontends.map(_.io.posBusy).reduce(_ | _))
+
+
+  /*
+   * Connect frontends
+   */
+  frontends.zipWithIndex.foreach {
+    case(f, i) =>
+      f.io.respDB_s1  := dataCtrl.io.respDBVec(i)
+      f.io.respDir_s3 := directory.io.fRespDirVec(i)
+      f.io.updPosTag  := backend.io.updPosTagVec(i)
+      f.io.cleanPos   := backend.io.cleanPosVec(i)
+  }
+
+  /*
+   * Connect Directory
+   */
+  directory.io.fReadDirVec.zip(frontends.map(_.io.readDir_s1)).foreach { case(a, b) => a <> b }
+
+  /*
+   * Connect backend
+   */
+  backend.io.fastResp <> fastRRArb(frontends.map(_.io.fastResp))
+
+  /*
+   * Connect DataCtrl
+   */
+  dataCtrl.io.reqDBVec.zip(frontends.map(_.io.reqDB_s1)).foreach { case(a, b) => a <> b }
 
   /*
    * Hardware Assertion Node And IO

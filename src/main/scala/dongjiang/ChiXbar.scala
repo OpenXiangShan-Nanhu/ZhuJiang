@@ -42,6 +42,8 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
       val inVec   = Vec(nrIcn, Flipped(Decoupled(new DataFlit())))
       val outVec  = Vec(nrIcn, Decoupled(new DataFlit()))
     }
+    // cBusy
+    val cBusy     = Input(UInt(3.W))
   })
   require(nrIcn <= 3)
   require(nrLanIcn <= 2)
@@ -161,4 +163,8 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     // tx dat
     selectNetwork(io.txDat.inVec.take(2), io.txDat.outVec.take(2))
   }
+
+  // Set CBusy
+  io.txRsp.outVec.foreach(_.bits.CBusy := io.cBusy)
+  io.txDat.outVec.foreach(_.bits.CBusy := io.cBusy)
 }

@@ -14,9 +14,17 @@ class Directory(implicit p: Parameters) extends DJModule {
    * IO declaration
    */
   val io = IO(new Bundle {
-    val test = Output(Bool())
+    // Read from frontends
+    val fReadDirVec = Vec(djparam.nrDirBank, Flipped(Decoupled(new DJBundle with HasAddr with HasDCID {
+      val early     = Bool() // Early access to data
+    })))
+    // Resp to frontends
+    val fRespDirVec = Output(Vec(djparam.nrDirBank, Bool())) // TODO
   })
   io <> DontCare
+  io.fReadDirVec.foreach(_.ready := true.B)
+
+
 
 
 }

@@ -15,13 +15,22 @@ class Backend(implicit p: Parameters) extends DJModule {
    * IO declaration
    */
   val io = IO(new Bundle {
-    // chi tx
-    val txReqVec = Vec(nrIcn, Decoupled(new ReqFlit(true)))
-    val txSnpVec = Vec(nrIcn, Decoupled(new SnoopFlit()))
-    val txRspVec = Vec(nrIcn, Decoupled(new RespFlit()))
-    // chi rx
-    val rxRspVec = Vec(nrIcn, Flipped(Decoupled(new RespFlit())))
-    val rxDat    = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
+    // CHI TX
+    val txReqVec      = Vec(nrIcn, Decoupled(new ReqFlit(true)))
+    val txSnpVec      = Vec(nrIcn, Decoupled(new SnoopFlit()))
+    val txRspVec      = Vec(nrIcn, Decoupled(new RespFlit()))
+    // CHI RX
+    val rxRspVec      = Vec(nrIcn, Flipped(Decoupled(new RespFlit())))
+    val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
+    // CHI RESP From Frontend
+    val fastResp      = Flipped(Decoupled(new RespFlit()))
+    // Update PoS Message
+    val updPosTagVec  = Vec(djparam.nrDirBank, Valid(new Addr with HasPosIndex))
+    val cleanPosVec   = Vec(djparam.nrDirBank, Valid(new DJBundle with HasPosIndex {
+      val isSnp       = Bool()
+    }))
+    // Multicore Req running in LAN
+    val multicore     = Bool()
   })
   io <> DontCare
 

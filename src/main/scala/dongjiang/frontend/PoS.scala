@@ -25,15 +25,15 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // retry from block
     val retry_s1    = Input(Bool())
     // update PoS
-    val canNest     = Input(Valid(new PosIndex()))
-    val updTag      = Input(Valid(new Addr with HasPosIndex))
-    val clean       = Input(Vec(2, Valid(new DJBundle with HasPosIndex {
+    val canNest     = Flipped(Valid(new PosIndex()))
+    val updTag      = Flipped(Valid(new Addr with HasPosIndex))
+    val clean       = Flipped(Valid(new DJBundle with HasPosIndex {
       val isSnp     = Bool()
-    })))
+    }))
     // wakeup TaskBuf Entry
-    val wakeupVec   = Vec(2, Valid(new Addr))
+    val wakeup      = Valid(new Addr)
     // PoS Busy Signal
-    val posBusy     = Output(UInt(2.W))
+    val busy        = Output(UInt(2.W))
   })
 
   /*
@@ -124,9 +124,8 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
       ctrlSet.zipWithIndex.foreach {
         case (ctrl, j) =>
           // receive clean
-          val cleanHitVec = io.clean.map(c => c.valid & c.bits.pos.idxMatch(i, j))
-          val cleanHit    = cleanHitVec.reduce(_ | _)
-          val cleanSnp    = io.clean(PriorityEncoder(cleanHitVec)).bits.isSnp
+          val cleanHit    = io.clean.valid & io.clean.bits.pos.idxMatch(i, j)
+          val cleanSnp    = io.clean.bits.isSnp
           // store req
           val reqHit      = reqReg_s1.valid & reqReg_s1.bits.pos.idxMatch(i, j) & !io.retry_s1
           val reqIsSnp    = reqReg_s1.bits.isSnp
@@ -144,7 +143,6 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
           // assert
           HardwareAssertion.withEn(PopCount(ctrl.validVec ^ validVecNxt) === 1.U, cleanHit | reqHit,
                                                                     desc = cf"PoS Index[${i}][${j}]")
-          HardwareAssertion(PopCount(cleanHitVec) <= 1.U,           desc = cf"PoS Index[${i}][${j}]")
           HardwareAssertion(PopCount(Seq(cleanHit, reqHit)) <= 1.U, desc = cf"PoS Index[${i}][${j}]")
           HardwareAssertion.withEn(!ctrl.canNest, canNestHit,       desc = cf"PoS Index[${i}][${j}]")
       }
@@ -153,16 +151,13 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * wakeup someone by addr
    */
-  io.wakeupVec.zip(io.clean).foreach {
-    case(wakeup, clean) =>
-      // get wakeup addr
-      val cleanWay = clean.bits.pos.way
-      val cleanSet = clean.bits.pos.set
-      val cleanTag = tagTable(cleanSet)(cleanWay)
-      wakeup.bits.catPoS(io.config.bankId, cleanTag, cleanSet, dirBank.U(dirBankBits.W))
-      // get wakeup valid
-      wakeup.valid := clean.valid & ctrlTable(cleanSet)(cleanWay).validVec.xorR
-  }
+  // get wakeup addr
+  val cleanWay = io.clean.bits.pos.way
+  val cleanSet = io.clean.bits.pos.set
+  val cleanTag = tagTable(cleanSet)(cleanWay)
+  io.wakeup.bits.catPoS(io.config.bankId, cleanTag, cleanSet, dirBank.U(dirBankBits.W))
+  // get wakeup valid
+  io.wakeup.valid := io.clean.valid & ctrlTable(cleanSet)(cleanWay).validVec.xorR
 
   /*
    * PoS Busy Signal
@@ -174,7 +169,7 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
     (useNum < (nrPoS*0.9 ).toInt.U) -> "b10".U,
     true.B                          -> "b11".U,
   ))
-  io.posBusy := RegNext(posBusy)
+  io.busy := RegNext(posBusy)
 
   /*
    * HardwareAssertion placePipe

@@ -41,7 +41,7 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
     })
     val retry_s1    = Input(Bool()) // Reject Task by Block or PoS Full
     val sleep_s1    = Input(Bool()) // Reject Task by PoS Match
-    val wakeupVec   = Flipped(Vec(2, Valid(new Addr))) // PoS wakeup someone
+    val wakeup      = Flipped(Valid(new Addr)) // PoS wakeup someone
   })
   dontTouch(io)
 
@@ -109,13 +109,12 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
   ctrlEntrys.zipWithIndex.foreach {
     case(ctrl, i) =>
       // hit
-      val recTaskHit0  = io.chiTask.fire     & freeId                   === i.U & newTaskNID === 0.U
-      val recTaskHit1  = io.chiTask.fire     & freeId                   === i.U & newTaskNID =/= 0.U
-      val sendTaskHit  = taskValid           & beSendId                 === i.U
-      val sleepHit     = io.sleep_s1         & willBeFreeReg_s1.bits    === i.U
-      val retryHit     = io.retry_s1         & willBeFreeReg_s1.bits    === i.U
-      val wakeupHitVec = io.wakeupVec.map(w => w.valid & w.bits.useAddr === taskEntrys(i).useAddr & ctrl.nid.getOrElse(0.U) === 0.U)
-      val wakeupHit    = wakeupHitVec.reduce(_ | _) & ctrl.isSleep
+      val recTaskHit0  = io.chiTask.fire  & freeId                      === i.U & newTaskNID === 0.U
+      val recTaskHit1  = io.chiTask.fire  & freeId                      === i.U & newTaskNID =/= 0.U
+      val sendTaskHit  = taskValid        & beSendId                    === i.U
+      val sleepHit     = io.sleep_s1      & willBeFreeReg_s1.bits       === i.U
+      val retryHit     = io.retry_s1      & willBeFreeReg_s1.bits       === i.U
+      val wakeupHit    = io.wakeup.valid  & io.wakeup.bits.useAddr      === taskEntrys(i).useAddr & ctrl.nid.getOrElse(0.U) === 0.U
       val toFreeHit    = willBeFreeReg_s1.valid & willBeFreeReg_s1.bits === i.U
       // state:
       // FREE   ---(NID=0)---> BESEND
@@ -144,8 +143,6 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
       }
       // assert Hit
       HardwareAssertion(PopCount(Seq(recTaskHit0, recTaskHit1, sendTaskHit, sleepHit, retryHit, wakeupHit)) <= 1.U,
-                                                              desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
-      HardwareAssertion.withEn(PopCount(wakeupHitVec) <= 1.U, ctrl.isSleep,
                                                               desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       HardwareAssertion.withEn(ctrl.isFree,     recTaskHit0,  desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       HardwareAssertion.withEn(ctrl.isFree,     recTaskHit1,  desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")

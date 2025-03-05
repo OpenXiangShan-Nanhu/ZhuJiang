@@ -14,11 +14,17 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
    * IO declaration
    */
   val io = IO(new Bundle {
-    // chi tx/rx Dat
-    val txDatVec = Vec(nrIcn, Decoupled(new DataFlit()))
-    val rxDat    = Flipped(Decoupled(new DataFlit())) // Only use rxDat.Data/DataID/BE in Backend
+    // CHI TX/RX DAT
+    val txDatVec  = Vec(nrIcn, Decoupled(new DataFlit()))
+    val rxDat     = Flipped(Decoupled(new DataFlit())) // Only use rxDat.Data/DataID/BE in DataCtrl
+    // DB Req/Resp
+    val reqDBVec  = Vec(djparam.nrDirBank, Flipped(Decoupled(new DJBundle with HasLLCTxnID {
+      val double      = Bool()
+    })))
+    val respDBVec = Output(Vec(djparam.nrDirBank, new DCID()))
   })
   io <> DontCare
+  io.reqDBVec.foreach(_.ready := true.B)
 
 
 }

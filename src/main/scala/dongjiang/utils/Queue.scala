@@ -5,8 +5,8 @@ import chisel3.util._
 
 class DecoupledQueue[T <: Data](gen:T) extends Module {
   val io = IO(new Bundle {
-    val enq = Flipped(Decoupled(gen))
-    val deq = Decoupled(gen)
+    val enq   = Flipped(Decoupled(gen))
+    val deq   = Decoupled(gen)
     val count = Output(UInt(2.W))
   })
 
@@ -64,4 +64,26 @@ object fastDecoupledQueue {
     }
     out
   }
+}
+
+
+
+class CounterQueue[T <: Data](gen:T, entries:Int=1, count:Int=1) extends Module {
+  val io = IO(new Bundle {
+    val enq   = Flipped(Decoupled(gen))
+    val deq   = Decoupled(gen)
+    val count = Output(UInt(2.W))
+  })
+
+  val q = Module(new Queue(gen, entries = entries, pipe = count == 1))
+
+  val counter = Counter(1 to count, q.io.deq.valid, io.deq.fire)
+
+  // enq
+  q.io.enq <> io.enq
+
+  // deq
+  io.deq.valid := io.deq.valid & counter._2
+
+
 }
