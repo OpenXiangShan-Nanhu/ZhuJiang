@@ -60,10 +60,10 @@ class ChiWrCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
   private val axiBBdl   = WireInit(0.U.asTypeOf(io.axiB.bits))
   private val rdDBBdl   = WireInit(0.U.asTypeOf(io.rdDB.bits))
   private val txAckBdl  = WireInit(0.U.asTypeOf(io.chiTxRsp.bits))
-  private val rcvIsDBID = WireInit(io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp))
-  private val rcvIsComp = WireInit(io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.Comp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp))
-  private val rspTxnid  = WireInit(io.chiRxRsp.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))
-  private val txIsAck   = WireInit(io.rdDB.fire & io.rdDB.bits.withAck | io.chiTxRsp.fire)
+  private val rcvIsDBID = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp)
+  private val rcvIsComp = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.Comp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp)
+  private val rspTxnid  = io.chiRxRsp.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0)
+  private val txIsAck   = io.rdDB.fire & io.rdDB.bits.withAck | io.chiTxRsp.fire
   
 
 /* 
@@ -91,7 +91,8 @@ class ChiWrCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
     case(e, i) =>
       when(io.axiAw.fire & headPtr.value === i.U){
         e.AWMesInit(io.axiAw.bits)
-      }.elsewhen(io.reqDB.fire & reqDBPtr.value === i.U){
+      }
+      when(io.reqDB.fire & reqDBPtr.value === i.U){
         e.dbSite1 := io.respDB.bits.buf(0)
         e.dbSite2 := io.respDB.bits.buf(1)
       }
@@ -105,7 +106,7 @@ class ChiWrCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
   }
 
   txReqBdl.WReqInit(chiEntrys(txReqPtr.value), txReqPtr.value)
-  rdDBBdl.dataID    := Mux(txDatPtr.poi === 0.U, 0.U, 2.U)
+  rdDBBdl.dataID    := Mux(txDatPtr.poi === 0.U & !chiEntrys(txDatPtr.set).addr(5), 0.U, 2.U)
   rdDBBdl.set       := Mux(txDatPtr.poi === 0.U, chiEntrys(txDatPtr.set).dbSite1, chiEntrys(txDatPtr.set).dbSite2)
   rdDBBdl.tgtId     := chiEntrys(txDatPtr.set).tgtid
   rdDBBdl.txnID     := chiEntrys(txDatPtr.set).dbid
@@ -149,5 +150,12 @@ class ChiWrCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
   when(rcvIsDBID){
     assert(rxDBIDPtr.value === rspTxnid)
   }
-
+  assert(txReqPtr <= headPtr)
+  assert(reqDBPtr <= headPtr)
+  assert(txBPtr   <= txReqPtr)
+  assert(txAckPtr <= txReqPtr)
+  assert(((txDatPtr.flag ^ rxDBIDPtr.flag) ^ (txDatPtr.set < rxDBIDPtr.value)) | txDatPtr.flag === rxDBIDPtr.flag & txDatPtr.set === rxDBIDPtr.value)
+  assert(((txDatPtr.flag ^ tailPtr.flag) ^ (tailPtr.value < txDatPtr.set)) | txDatPtr.flag === tailPtr.flag & txDatPtr.set === tailPtr.value)
+  assert(tailPtr <= txBPtr)
+  assert(tailPtr <= txAckPtr)
 }

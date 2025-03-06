@@ -11,6 +11,7 @@ import zhujiang.chi._
 import zhujiang.axi._
 import xijiang.{Node, NodeType}
 import zhujiang.chi.ReqOpcode.AtomicLoadUMIN
+import zhujiang.device.dma.BurstMode.{Wrap => Wrap}
 
 object DmaDef {
     def RREncoder(in: Seq[Bool]): UInt = {
@@ -34,57 +35,76 @@ object BurstMode {
   val Reserve      = "b11".U
 }
 
-class AxiRdEntry(implicit p: Parameters) extends ZJBundle {
+class AxiRdEntry(isPipe: Boolean)(implicit p: Parameters) extends ZJBundle {
   val prefixAddr   = UInt(36.W)
   val shiftAddr    = UInt(12.W)
-  val addrMask     = UInt(12.W)
-  val arId         = UInt(zjParams.dmaParams.idBits.W)
-  val cnt          = UInt(8.W)
-  val len          = UInt(8.W)
+  val endAddr      = UInt(12.W)
+  val id           = UInt(zjParams.dmaParams.idBits.W)
+  val byteMask     = UInt(12.W)
+  val cnt          = if(!isPipe) Some(UInt(8.W)) else None
+  val len          = if(isPipe) Some(UInt(8.W)) else None
+  val num          = if(!isPipe) Some(UInt(8.W)) else None
   val size         = UInt(3.W)
   val burst        = UInt(2.W)
+  val error        = if(!isPipe) Some(Bool()) else None
 
   def byteComp(len:UInt, size:UInt) = {
     val maxShift = 1 << 3
     val tail = ((BigInt(1) << maxShift) - 1).U
     (Cat(len, tail) << size) >> maxShift
   }
+  def pipeInit[T <: ARFlit](ar: T): AxiRdEntry = {
+    this.prefixAddr  := ar.addr(raw - 1, 12)
+    this.shiftAddr   := ar.addr(11, 0)
+    this.endAddr     := ((ar.addr(11, 0) >> ar.size) + (ar.len + 1.U)) << ar.size
+    this.id          := ar.id
+    this.len.get     := ar.len + 1.U
+    this.byteMask    := Mux(ar.burst === BurstMode.Wrap, byteComp(ar.len, ar.size), 0.U) 
+    this.size        := ar.size
+    this.burst       := ar.burst
+    this
+  }
 
-  def assignArVal[T <: ARFlit](ar : T): AxiRdEntry = {
-    this.arId   := ar.id
-    this.len    := ar.len + 1.U
-    this.cnt    := 0.U
-    this.size   := ar.size
-    this.prefixAddr := ar.addr(raw - 1, 12)
-    this.shiftAddr  := ar.addr(11, 0) >> ar.size << ar.size
-    this.addrMask   := byteComp(ar.len, ar.size)
-    this.burst      := ar.burst
+  def entryInit[T <: AxiRdEntry](info : T): AxiRdEntry = {
+    this.prefixAddr   := info.prefixAddr
+    this.shiftAddr    := info.shiftAddr
+    this.endAddr      := info.endAddr
+    this.id           := info.id
+    this.byteMask     := info.byteMask
+    this.cnt.get      := 0.U
+    this.num.get      := Mux(info.burst === BurstMode.Incr, info.endAddr(11, 6) + info.endAddr(5, 0).orR - info.shiftAddr(11, 6), info.len.get)
+    this.size         := info.size
+    this.burst        := info.burst
+    this.error.get    := (info.endAddr < info.shiftAddr) & info.burst === BurstMode.Incr
     this
   }
 }
-class lenValue(implicit p: Parameters) extends ZJBundle {
-  val len    = UInt(8.W)
-  val burst  = UInt(2.W)
-}
 
-class SpiltArValue(implicit p: Parameters) extends ZJBundle {
+class dataWithid(implicit p: Parameters) extends ZJBundle {
+  val data   = UInt(dw.W)
+  val id     = UInt(zjParams.dmaParams.idBits.W)
+  val entry  = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
+}
+class dArEntry(implicit p: Parameters) extends ZJBundle {
+  val id      = UInt(zjParams.dmaParams.idBits.W)
+  val num     = UInt(6.W)
+  val last    = Bool()
   val shift   = UInt(6.W)
   val size    = UInt(6.W)
-}
-class DataValue(implicit p: Parameters) extends ZJBundle {
-  val data   = UInt(dw.W)
-  val rid    = UInt(zjParams.dmaParams.idBits.W)
+  val error   = Bool()
 }
 
-class AxiWrEntry(implicit p: Parameters) extends ZJBundle {
-  val prefixAddr = UInt(36.W)
+class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
+  val prefixAddr = UInt((raw - 12).W)
   val shiftAddr  = UInt(12.W)
+  val endAddr    = UInt(12.W)
   val burst      = UInt(BurstMode.width.W)
-  val cnt        = UInt(8.W)
-  val byteMask   = UInt(9.W)
+  val cnt        = if(!isPipe) Some(UInt(8.W)) else None
+  val byteMask   = UInt(12.W)
   val size       = UInt(3.W)
   val awid       = UInt(zjParams.dmaParams.idBits.W)
-  val len        = UInt(8.W)
+  val num        = if(!isPipe) Some(UInt(8.W)) else None
+  val len        = if(isPipe) Some(UInt(8.W)) else None
 
   def byteComp(len:UInt, size:UInt) = {
     val maxShift = 1 << 3
@@ -92,25 +112,39 @@ class AxiWrEntry(implicit p: Parameters) extends ZJBundle {
     (Cat(len, tail) << size) >> maxShift
   }
 
-  def assignAwVal[T <: AWFlit](aw : T): AxiWrEntry = {
-    this.prefixAddr := aw.addr(raw - 1, 12)
-    this.shiftAddr  := aw.addr(11, 0) >> aw.size << aw.size
-    this.len      := aw.len + 1.U
-    this.burst    := aw.burst
-    this.byteMask := byteComp(aw.len, aw.size)
-    this.awid     := aw.id
-    this.cnt      := 0.U
-    this.size     := aw.size
+  def pipeInit[T <: AWFlit](aw : T): AxiWrEntry = {
+    this.prefixAddr     := aw.addr(raw - 1, 12)
+    this.shiftAddr      := aw.addr(11, 0) >> aw.size << aw.size
+    this.endAddr        := ((aw.addr(11, 0) >> aw.size) + (aw.len + 1.U)) << aw.size
+    this.burst          := aw.burst
+    this.byteMask       := Mux(aw.burst =/= BurstMode.Wrap, 0.U, byteComp(aw.len, aw.size))
+    this.awid           := aw.id
+    this.size           := aw.size
+    this.len.get        := aw.len
+    this
+  }
+  def entryInit[T <: AxiWrEntry](info : T): AxiWrEntry = {
+    this.prefixAddr     := info.prefixAddr
+    this.shiftAddr      := info.shiftAddr
+    this.endAddr        := info.endAddr
+    this.num.get        := Mux(info.burst === BurstMode.Incr, info.endAddr(11, 6) + info.endAddr(5, 0).orR - info.shiftAddr(11, 6), info.len.get + 1.U)
+    this.burst          := info.burst
+    this.cnt.get        := 0.U
+    this.byteMask       := info.byteMask
+    this.size           := info.size
+    this.awid           := info.awid
     this
   }
 }
 
-class SpiltAwValue(implicit p: Parameters) extends ZJBundle {
-  val shift = UInt(6.W)
-  val size  = UInt(6.W)
-  val burst = UInt(2.W)
-  val id    = UInt(zjParams.dmaParams.idBits.W)
-  val last  = Bool()
+class dAwEntry(implicit p: Parameters) extends ZJBundle {
+  val shift     = UInt(6.W)
+  val nextShift = UInt(6.W)
+  val size      = UInt(6.W)
+  val burst     = UInt(2.W)
+  val id        = UInt(zjParams.dmaParams.idBits.W)
+  val last      = Bool()
+  val error     = Bool()
 }
 
 class ChiDBPtr(chiEntrySize: Int) extends Bundle {
@@ -131,17 +165,19 @@ class ChiDBPtr(chiEntrySize: Int) extends Bundle {
   }
 }
 
-class readRdDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
+class readRdDataBuffer(bufferSize: Int, axiParams: AxiParams)(implicit p: Parameters) extends ZJBundle {
   val set      = UInt(log2Ceil(bufferSize).W)
-  val id       = UInt(zjParams.dmaParams.idBits.W)
+  val id       = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
   val resp     = UInt(2.W)
+  val originId = UInt(axiParams.idBits.W)
   val last     = Bool()
 
-  def SetBdl[T <: CHIREntry, R <: ChiDBPtr](c: T, i: R): readRdDataBuffer = {
-    this.id       := c.arId
+  def SetBdl[T <: CHIREntry](c: T, i: UInt): readRdDataBuffer = {
+    this.id       := c.idx
+    this.originId := c.arId
     this.resp     := 0.U
-    this.set      := Mux(i.poi === 1.U, c.dbSite2, c.dbSite1)
-    this.last     := Mux(c.double & i.poi === 0.U, false.B, true.B)
+    this.set      := Mux(i === 1.U, c.dbSite2, c.dbSite1)
+    this.last     := Mux(c.double & i === 0.U, false.B, true.B)
     this
   }
 }
@@ -155,26 +191,32 @@ class readWrDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle
 }
 
 class respDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val data = UInt(dw.W)
-  val id       = UInt(zjParams.dmaParams.idBits.W)
+  val data     = UInt(dw.W)
+  val id       = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
   val resp     = UInt(2.W)
   val last     = Bool()
 }
 
 class CHIREntry(implicit p : Parameters) extends ZJBundle {
   val arId           = UInt(zjParams.dmaParams.idBits.W)
+  val idx            = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
   val double         = Bool()
   val addr           = UInt(raw.W)
   val size           = UInt(3.W)
+  val nid            = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
   val dbSite1        = UInt(log2Ceil(zjParams.dmaParams.bufferSize).W)
   val dbSite2        = UInt(log2Ceil(zjParams.dmaParams.bufferSize).W)
   val haveWrDB1      = Bool()
   val haveWrDB2      = Bool()
+  val sendComp       = Bool()
+  val fromDCT        = Bool()
+  val rcvDatComp     = Bool()
 
   def ARMesInit[T <: ARFlit](b: T): CHIREntry = {
     this           := 0.U.asTypeOf(this)
     this.double    := b.len(0).asBool
-    this.arId      := b.id
+    this.arId      := b.user
+    this.idx       := b.id
     this.addr      := b.addr
     this.size      := b.size
     this
