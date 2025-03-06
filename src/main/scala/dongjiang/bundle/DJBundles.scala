@@ -35,9 +35,17 @@ trait HasAddr extends DJBundle { this: DJBundle =>
   def catPoS(bank: UInt, tag: UInt, set: UInt, dirBank: UInt, offset: UInt = 0.U(offsetBits.W)) = catByX(bank, tag, posTagBits, set, posSetBits, dirBank, offset)
   def catLLC(bank: UInt, tag: UInt, set: UInt, dirBank: UInt, offset: UInt = 0.U(offsetBits.W)) = catByX(bank, tag, llcTagBits, set, llcSetBits, dirBank, offset)
   def catSF (bank: UInt, tag: UInt, set: UInt, dirBank: UInt, offset: UInt = 0.U(offsetBits.W)) = catByX(bank, tag, sfTagBits,  set, sfSetBits,  dirBank, offset)
+
+  def addrType: String = "llc"
+  def cat(bank: UInt, tag: UInt, set: UInt, dirBank: UInt): Unit = if(addrType == "llc") catLLC(bank, tag, set, dirBank) else catSF(bank, tag, set, dirBank)
+  def tag: UInt = if(addrType == "llc") llcTag else sfTag
+  def set: UInt = if(addrType == "llc") llcSet else sfSet
+
 }
 
-class Addr(implicit p: Parameters) extends DJBundle with HasAddr
+class Addr(dirType: String = "llc")(implicit p: Parameters) extends DJBundle with HasAddr {
+  override def addrType: String = dirType
+}
 
 class PosIndex(implicit p: Parameters) extends DJBundle {
   val set = UInt(posSetBits.W)
@@ -63,3 +71,16 @@ trait HasDCID extends DJBundle { this: DJBundle =>
 }
 
 class DCID(implicit p: Parameters) extends DJBundle with HasDCID
+
+class Shift(latency: Int)(implicit p: Parameters) extends DJBundle {
+  val s = UInt(latency.W)
+
+  def input(fire: Bool) = {
+    if (latency == 1) {
+      this.s := fire
+    } else {
+      this.s := Cat(fire, s(latency - 1, 1))
+    }
+  }
+  def isValid = s(0)
+}

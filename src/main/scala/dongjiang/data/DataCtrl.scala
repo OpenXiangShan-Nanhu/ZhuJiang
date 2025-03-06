@@ -15,14 +15,21 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // CHI TX/RX DAT
-    val txDatVec  = Vec(nrIcn, Decoupled(new DataFlit()))
-    val rxDat     = Flipped(Decoupled(new DataFlit())) // Only use rxDat.Data/DataID/BE in DataCtrl
-    // DB Req/Resp
-    val reqDBVec  = Vec(djparam.nrDirBank, Flipped(Decoupled(new DJBundle with HasLLCTxnID {
-      val double      = Bool()
+    val txDatVec    = Vec(nrIcn, Decoupled(new DataFlit()))
+    val rxDat       = Flipped(Decoupled(new DataFlit())) // Only use rxDat.Data/DataID/BE in DataCtrl
+    // DB Req from frontends
+    val reqDBVec    = Vec(djparam.nrDirBank, Flipped(Decoupled(new DJBundle with HasLLCTxnID {
+      val double    = Bool()
     })))
-    val respDBVec = Output(Vec(djparam.nrDirBank, new DCID()))
+    // DB Resp to frontends
+    val respDBVec   = Output(Vec(djparam.nrDirBank, new DCID()))
+    // Read LLC Hit Message
+    val hitMesVec   = Vec(djparam.nrDirBank, Flipped(Valid(new DJBundle with HasDCID {
+      val set       = UInt(llcSetBits.W)
+      val way       = UInt(llcWayBits.W)
+    })))
   })
+
   io <> DontCare
   io.reqDBVec.foreach(_.ready := true.B)
 

@@ -160,7 +160,7 @@ class DongJiang(hnNodeSeq: Seq[Node])(implicit p: Parameters) extends DJRawModul
   frontends.zipWithIndex.foreach {
     case(f, i) =>
       f.io.respDB_s1  := dataCtrl.io.respDBVec(i)
-      f.io.respDir_s3 := directory.io.fRespDirVec(i)
+      f.io.respDir_s3 := directory.io.rRespVec(i)
       f.io.updPosTag  := backend.io.updPosTagVec(i)
       f.io.cleanPos   := backend.io.cleanPosVec(i)
   }
@@ -168,17 +168,20 @@ class DongJiang(hnNodeSeq: Seq[Node])(implicit p: Parameters) extends DJRawModul
   /*
    * Connect Directory
    */
-  directory.io.fReadDirVec.zip(frontends.map(_.io.readDir_s1)).foreach { case(a, b) => a <> b }
+  directory.io.readVec.zip(frontends.map(_.io.readDir_s1)).foreach { case(a, b) => a <> b }
+  directory.io.write  <> backend.io.writeDir
 
   /*
    * Connect backend
    */
   backend.io.fastResp <> fastRRArb(frontends.map(_.io.fastResp))
+  backend.io.respDir  := directory.io.wResp
 
   /*
    * Connect DataCtrl
    */
   dataCtrl.io.reqDBVec.zip(frontends.map(_.io.reqDB_s1)).foreach { case(a, b) => a <> b }
+  dataCtrl.io.hitMesVec.zip(directory.io.rHitMesVec).foreach     { case(a, b) => a <> b }
 
   /*
    * Hardware Assertion Node And IO

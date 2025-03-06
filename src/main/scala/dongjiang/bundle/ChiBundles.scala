@@ -40,21 +40,21 @@ trait HasChiResp { this: Bundle =>
   def passDirty = state(ChiResp.width-1)
 }
 
-class CHIRespBundle extends Bundle with HasChiResp
+class ChiResp extends Bundle with HasChiResp
 
 object ChiState {
   val width = 3
 
-  // [U/S] + [D/C] + [V/I]
-  def I = "b000".U(width.W)
-  def SC = "b001".U(width.W)
-  def UC = "b101".U(width.W)
-  def SD = "b011".U(width.W)
-  def UD = "b111".U(width.W)
+  def I = "b00".U(width.W)
+  def SC = "b01".U(width.W)
+  def UC = "b11".U(width.W)
+  def UD = "b10".U(width.W)
 }
 
-trait HasChiStates { this: Bundle =>
-  val state = UInt(ChiState.width.W)
+trait HasChiState { this: Bundle =>
+  def stateType: String = "llc"
+  val sw    = if(stateType == "llc") ChiState.width else 1
+  val state = UInt(sw.W)
 
   /*
     * Exclusive Coherence State
@@ -62,14 +62,17 @@ trait HasChiStates { this: Bundle =>
     * RN(isShared)  -> HN(isInvalid)
     * RN(isUnique)  -> HN(isInvalid)
     */
-  def isInvalid   = state(0) === ChiState.I(0)
-  def isisShared  = state(ChiState.width-1) === 0.U & !isInvalid
-  def isUnique    = state(ChiState.width-1) === 1.U & !isInvalid
-  def isClean     = state(ChiState.width-2) === 0.U & !isInvalid
-  def isDirty     = state(ChiState.width-2) === 1.U & !isInvalid
+  def isInvalid: Bool = if(stateType == "llc") state(0).asBool else state === ChiState.I
+  def isValid  : Bool = if(stateType == "llc") state(0).asBool else state =/= ChiState.I
+  def isShared : Bool = if(stateType == "llc") false.B         else state === ChiState.SC
+  def isUnique : Bool = if(stateType == "llc") false.B         else state(1).asBool
+  def isClean  : Bool = if(stateType == "llc") false.B         else state(0).asBool
+  def isDirty  : Bool = if(stateType == "llc") false.B         else state === ChiState.UD
 }
 
-class CHIStateBundle extends Bundle with HasChiStates
+class ChiState(dirType: String = "llc") extends Bundle with HasChiState {
+  override def stateType: String = dirType
+}
 
 object ChiChannel {
   val width = 2

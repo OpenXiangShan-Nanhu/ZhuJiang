@@ -39,10 +39,8 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   })
   dontTouch(io)
 
-  HardwareAssertion(!io.task_s0.valid)
-
   /*
-   * REG and Wire declaration
+   * Reg and Wire declaration
    */
   val valid_s1        = RegInit(false.B)
   val taskReg_s1      = Reg(new ChiTask())
@@ -74,7 +72,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val willUseBufNum = (valid_s1 & !block_s1.all) + io.willUseBufNum
   val freeNum       = nrIssueBuf.U - willUseBufNum
   // Reserve an extra entry for the snp task
-  needRsvdReg_s1    := Mux(io.task_s0.bits.isSnp, freeNum > 0.U, freeNum > 1.U)
+  needRsvdReg_s1    := Mux(io.task_s0.bits.isSnp, freeNum === 0.U, freeNum <= 1.U)
   // block
   block_s1.rsvd     := needRsvdReg_s1
   block_s1.pos      := io.posRetry_s1
@@ -122,5 +120,5 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue-2)
+  // HardwareAssertion.placePipe(Int.MaxValue-2)
 }

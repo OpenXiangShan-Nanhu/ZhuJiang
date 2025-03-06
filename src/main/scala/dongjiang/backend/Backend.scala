@@ -7,6 +7,7 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
+import dongjiang.directory.DirEntry
 import xijiang.Node
 import xs.utils.debug.{DomainInfo, HardwareAssertion}
 
@@ -29,6 +30,16 @@ class Backend(implicit p: Parameters) extends DJModule {
     val cleanPosVec   = Vec(djparam.nrDirBank, Valid(new DJBundle with HasPosIndex {
       val isSnp       = Bool()
     }))
+    // Write Directory
+    val writeDir      = new DJBundle {
+      val llc         = Decoupled(new DirEntry("llc"))
+      val sf          = Decoupled(new DirEntry("sf"))
+    }
+    // Write Directory Resp
+    val respDir       = Input(new DJBundle {
+      val llc         = new DirEntry("llc")
+      val sf          = new DirEntry("sf")
+    })
     // Multicore Req running in LAN
     val multicore     = Bool()
   })

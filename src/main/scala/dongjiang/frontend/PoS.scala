@@ -37,7 +37,7 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
   })
 
   /*
-   * REG and Wire declaration
+   * Reg and Wire declaration
    */
   val tagTable    = Reg(Vec(posSets, Vec(posWays, UInt(posTagBits.W))))
   val ctrlTable   = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { 0.U.asTypeOf(new DJBundle {

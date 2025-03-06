@@ -8,6 +8,7 @@ import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
+import dongjiang.directory.DirEntry
 
 class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
@@ -23,7 +24,10 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val readDir_s1    = Decoupled(new Addr with HasDCID {
       val early       = Bool() // Early access to data
     })
-    val respDir_s3    = Input(Bool()) // TODO
+    val respDir_s3    = Input(new DJBundle {
+      val llc         = new DirEntry("llc")
+      val sf          = new DirEntry("sf")
+    })
     // DB Req/Resp
     val reqDB_s1      = Decoupled(new DJBundle with HasLLCTxnID {
       val double      = Bool()
@@ -54,7 +58,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val block       = Module(new Block(dirBank))
   // S2: Wait Directory Response
   val bufReg_s2   = RegInit(0.U.asTypeOf(block.io.task_s1.bits))
-  val shiftReg_s2 = RegInit(0.U(readDirLatency.W))
+  val shiftReg_s2 = RegInit(0.U.asTypeOf(new Shift(readDirLatency)))
 
   /*
    * Connect
@@ -109,16 +113,13 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   block.io.respDB_s1        := io.respDB_s1
   block.io.posRetry_s1      := posTable.io.full_s1 | posTable.io.sleep_s1
   block.io.posIdx_s1        := posTable.io.posIdx_s1
-  block.io.willUseBufNum    := 0.U + shiftReg_s2 // TODO
+  block.io.willUseBufNum    := 0.U + shiftReg_s2.s.orR // TODO
 
   // buffer [S2]
   bufReg_s2                 := Mux(block.io.task_s1.valid, block.io.task_s1.bits, bufReg_s2)
-  if(readDirLatency == 1) {
-    shiftReg_s2             := block.io.task_s1.valid
-  } else {
-    shiftReg_s2             := Cat(block.io.task_s1.valid, shiftReg_s2(readDirLatency-1, 1) >> 1)
-  }
-  HardwareAssertion(PopCount(shiftReg_s2) <= 1.U)
+  shiftReg_s2.input(block.io.task_s1.valid)
+  HardwareAssertion(PopCount(shiftReg_s2.s) <= 1.U)
+  HardwareAssertion(!shiftReg_s2.isValid) // TODO
 
 
 

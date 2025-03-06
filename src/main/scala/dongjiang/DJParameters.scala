@@ -97,7 +97,8 @@ trait HasParseZJParam extends HasZJParams {
   lazy val nrBank           = lanHnfNodes.length / nrHnfPort
   lazy val nrCcNode         = lanCcNodes.length
   lazy val nrCI             = 16 // TODO: parameterize
-  lazy val metaIdBits       = log2Ceil(nrCcNode + nrCI)
+  lazy val nrSfMetas        = nrCcNode + nrCI
+  lazy val metaIdBits       = log2Ceil(nrSfMetas)
 
   // ICN Number Per Bank
   lazy val nrLanIcn       = nrHnfPort
@@ -133,15 +134,6 @@ trait HasDJParam extends HasParseZJParam {
   lazy val ChiFwdTxnIdBits    = 12
   lazy val ChiReturnTxnIdBits = 12
   lazy val ChiSizeBits        = 3
-
-  // Data Parameters
-  lazy val DataBits         = djparam.CacheLine * 8
-  lazy val BeatBits         = djparam.BeatByte * 8
-  lazy val MaskBits         = djparam.BeatByte
-  lazy val ChiFullSize      = log2Ceil(djparam.CacheLine) // 6
-  lazy val ChiHalfSize      = log2Ceil(djparam.BeatByte)  // 5
-  require(MaskBits == zjParams.beBits)
-
 
   // Addr Parameters
   // [fullAddr] = [useAddr1] + [bankId] + [useAddr0] + [offset]
@@ -230,13 +222,23 @@ trait HasDJParam extends HasParseZJParam {
   def getDSBank   (a: UInt) = getUseAddr(a)(dsBank_ua_hi, dsBank_ua_lo)
 
 
-  // Frontend(Per dirBank) Parameters
+  // Data Parameters
+  lazy val DataBits         = djparam.CacheLine * 8
+  lazy val BeatBits         = djparam.BeatByte * 8
+  lazy val MaskBits         = djparam.BeatByte
+  lazy val ChiFullSize      = log2Ceil(djparam.CacheLine) // 6
+  lazy val ChiHalfSize      = log2Ceil(djparam.BeatByte) // 5
+  require(MaskBits == zjParams.beBits)
+
+
+  // Frontend(Per dirBank) and Directory Parameters
   lazy val nrReqTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
   lazy val nrSnpTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
   lazy val nrPoS            = djparam.nrPoS / djparam.nrDirBank
   lazy val posWays          = djparam.posWays
   lazy val posWayBits       = log2Ceil(posWays)
-  lazy val readDirLatency   = max(djparam.dirSetup, djparam.dirLatency) + (if(djparam.dirExtraHold) 1 else 0)
+  lazy val readDirLatency   = djparam.dirSetup + 1 + (if(djparam.dirExtraHold) 1 else 0)
+  lazy val llcWayBits       = log2Ceil(djparam.llcWays)
   // [S0(PoS/Block)] + [S1(ReadDir)] + [S2(Decode)] + Reserve for snp
   lazy val nrIssueBuf       = 8 // TODO: Need to argue for sufficient resources and no deadlocks
   lazy val issueBufBits     = log2Ceil(nrIssueBuf)

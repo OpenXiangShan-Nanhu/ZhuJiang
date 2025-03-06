@@ -12,10 +12,10 @@ import dongjiang.frontend.TaskState._
 
 object TaskState {
   val width   = 4
-  val FREE    = "b0001".U
-  val BESEND  = "b0010".U // -> S0
-  val WAIT    = "b0100".U // -> S1
-  val SLEEP   = "b1000".U
+  val FREE    = "b0001".U // 1
+  val BESEND  = "b0010".U // 2 // -> S0
+  val WAIT    = "b0100".U // 4 // -> S1
+  val SLEEP   = "b1000".U // 8
 }
 
 class CtrlEntry(sort: Boolean, nidBits: Int)(implicit p: Parameters) extends DJBundle {
@@ -46,15 +46,17 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
   dontTouch(io)
 
   /*
-   * REG and Wire declaration
+   * Reg and Wire declaration
    */
-  val taskIdBits        = log2Ceil(nrEntry)
-  val ctrlInit          = WireInit(0.U.asTypeOf(new CtrlEntry(sort, taskIdBits))); ctrlInit.state := FREE
-  val ctrlEntrys        = RegInit(VecInit(Seq.fill(nrEntry) { ctrlInit }))
-  val taskEntrys        = Reg(Vec(nrEntry, new ChiTask()))
-  val newTaskNID        = Wire(UInt(taskIdBits.W))
-  val willBeFreeReg_s1  = RegInit(0.U.asTypeOf(Valid(UInt(taskIdBits.W))))
-  val toBeFreeAddr_s1   = Wire(Valid(new Addr()))
+  val taskIdBits  = log2Ceil(nrEntry)
+  val ctrlInit    = WireInit(0.U.asTypeOf(new CtrlEntry(sort, taskIdBits))); ctrlInit.state := FREE
+  val ctrlEntrys  = RegInit(VecInit(Seq.fill(nrEntry) { ctrlInit }))
+  val taskEntrys  = Reg(Vec(nrEntry, new ChiTask()))
+  val newTaskNID  = Wire(UInt(taskIdBits.W))
+  // S1: toBeFree
+  val toBeFreeReg_s1        = RegInit(false.B)
+  val toBeFreeIdReg_s1      = Reg(UInt(taskIdBits.W))
+  val toBeFreeUseAddrReg_s1 = Reg(UInt(useAddrBits.W))
 
 
   /*
@@ -74,7 +76,7 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
   val matchVec      = taskValidVec.zip(addrMatchVec).map { case(a, b) => a & b }
   val matchNum      = PopCount(matchVec)
   if(sort) {
-    newTaskNID      := matchNum - (toBeFreeAddr_s1.valid & toBeFreeAddr_s1.bits.useAddr === io.chiTask.bits.useAddr)
+    newTaskNID      := matchNum - (toBeFreeReg_s1 & toBeFreeUseAddrReg_s1 === io.chiTask.bits.useAddr)
   } else {
     newTaskNID      := 0.U
     HardwareAssertion(!matchVec.reduce(_ | _))
@@ -94,14 +96,9 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
   io.req2Pos_s0.bits.isSnp  := taskEntrys(beSendId).isSnp
   io.req2Pos_s0.bits.addr   := taskEntrys(beSendId).addr
   // to be free in next cycle if not get ack
-  willBeFreeReg_s1.valid    := taskValid
-  willBeFreeReg_s1.bits     := beSendId
-
-  /*
-   * To Be Free
-   */
-  toBeFreeAddr_s1.valid  := willBeFreeReg_s1.valid & !io.retry_s1 & !io.sleep_s1
-  toBeFreeAddr_s1.bits   := taskEntrys(willBeFreeReg_s1.bits)
+  toBeFreeReg_s1            := taskValid
+  toBeFreeIdReg_s1          := beSendId
+  toBeFreeUseAddrReg_s1     := taskEntrys(beSendId).useAddr
 
   /*
    * Set Ctrl Entry
@@ -109,13 +106,13 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
   ctrlEntrys.zipWithIndex.foreach {
     case(ctrl, i) =>
       // hit
-      val recTaskHit0  = io.chiTask.fire  & freeId                      === i.U & newTaskNID === 0.U
-      val recTaskHit1  = io.chiTask.fire  & freeId                      === i.U & newTaskNID =/= 0.U
-      val sendTaskHit  = taskValid        & beSendId                    === i.U
-      val sleepHit     = io.sleep_s1      & willBeFreeReg_s1.bits       === i.U
-      val retryHit     = io.retry_s1      & willBeFreeReg_s1.bits       === i.U
-      val wakeupHit    = io.wakeup.valid  & io.wakeup.bits.useAddr      === taskEntrys(i).useAddr & ctrl.nid.getOrElse(0.U) === 0.U
-      val toFreeHit    = willBeFreeReg_s1.valid & willBeFreeReg_s1.bits === i.U
+      val recTaskHit0  = io.chiTask.fire  & freeId                  === i.U & newTaskNID === 0.U
+      val recTaskHit1  = io.chiTask.fire  & freeId                  === i.U & newTaskNID =/= 0.U
+      val sendTaskHit  = taskValid        & beSendId                === i.U
+      val sleepHit     = io.sleep_s1      & toBeFreeIdReg_s1        === i.U
+      val retryHit     = io.retry_s1      & toBeFreeIdReg_s1        === i.U
+      val wakeupHit    = io.wakeup.valid  & io.wakeup.bits.useAddr  === taskEntrys(i).useAddr & ctrl.nid.getOrElse(0.U) === 0.U
+      val toFreeHit    = toBeFreeReg_s1   & toBeFreeIdReg_s1        === i.U
       // state:
       // FREE   ---(NID=0)---> BESEND
       // FREE   ---(NID>0)---> SLEEP
@@ -136,7 +133,7 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
       ))
       // nid
       val recTaskHit  = io.chiTask.fire & freeId === i.U
-      val reduceHit   = toBeFreeAddr_s1.valid & toBeFreeAddr_s1.bits.useAddr === taskEntrys(i).useAddr
+      val reduceHit   = !ctrl.isFree & toBeFreeReg_s1 & toBeFreeIdReg_s1 =/= i.U & toBeFreeUseAddrReg_s1 === taskEntrys(i).useAddr
       val nextNID     = ctrl.nid.getOrElse(0.U) - reduceHit
       if(sort) {
         ctrl.nid.get  := Mux(recTaskHit, newTaskNID, nextNID)
@@ -155,7 +152,10 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
       HardwareAssertion.withEn(toFreeHit,       sleepHit,     desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       HardwareAssertion.withEn(toFreeHit,       retryHit,     desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       // assert NID
-      HardwareAssertion.withEn(ctrl.nid.getOrElse(0.U) > 0.U, reduceHit, desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
+      HardwareAssertion.withEn(ctrl.nid.getOrElse(0.U) === 0.U, recTaskHit | sendTaskHit | sleepHit | retryHit | toFreeHit,
+                                                              desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
+      HardwareAssertion.withEn(ctrl.nid.getOrElse(0.U) > 0.U, reduceHit,
+                                                              desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
   }
 
   /*
