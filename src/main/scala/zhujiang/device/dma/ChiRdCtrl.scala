@@ -43,7 +43,7 @@ class ChiRdCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
  * Reg/Wire Define
  */
   // AxiRd to ChiRd Entrys
-  private val chiEntrys = Reg(Vec(dmaParams.chiEntrySize, new CHIREntry))
+  private val chiEntrys = Reg(Vec(dmaParams.chiEntrySize, new CHIREntry(full = true)))
   // Pointer
   private val headPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val tailPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
@@ -56,25 +56,29 @@ class ChiRdCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
   private val dataTxnid  = io.chiDat.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0)
   private val txReqBdl   = WireInit(0.U.asTypeOf(new DmaReqFlit))
   private val txDatBdl   = WireInit(0.U.asTypeOf(io.rdDB.bits))
+  private val rdDBQBdl   = WireInit(0.U.asTypeOf(new CHIREntry(full = false)))
   // Vec define
   private val validVec   = WireInit(VecInit.fill(dmaParams.chiEntrySize){false.B})
   private val blockVec   = WireInit(VecInit.fill(dmaParams.chiEntrySize){false.B})
   private val sendVec    = WireInit(VecInit.fill(dmaParams.chiEntrySize){false.B})
   // Pipe Reg
-  private val arFireReg    = RegNext(io.axiAr.fire)
-  private val arBitsReg    = RegNext(io.axiAr.bits)
-  private val blkNumReg    = RegNext(PopCount(blockVec) + (io.axiAr.bits.user === arBitsReg.user && arFireReg).asUInt - (io.rdDB.fire & io.rdDB.bits.last & (io.rdDB.bits.originId === io.axiAr.bits.user)).asUInt)
-  private val selIdxReg    = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
+  private val selIdx       = WireInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
+  private val rdDBQueue    = Module(new Queue(gen = new CHIREntry(full = false), entries = 2, flow = false, pipe = false))
 
 /* 
  * Pointer logic
  */
-  headPtr  := Mux(arFireReg & !isFull(headPtr, tailPtr), headPtr + 1.U, headPtr)
+  headPtr  := Mux(io.axiAr.fire, headPtr + 1.U, headPtr)
   reqDBPtr := Mux(io.reqDB.fire, reqDBPtr + 1.U, reqDBPtr)
   txReqPtr := Mux(io.chiReq.fire, txReqPtr + 1.U, txReqPtr)
   rxRctPtr := Mux(rcvIsRct, rxRctPtr + 1.U, rxRctPtr)
-  tailPtr  := Mux(tailPtr =/= rxRctPtr & chiEntrys(tailPtr.value).sendComp, tailPtr + 1.U, tailPtr)
-  txDatPtr := Mux(!io.rdDB.bits.last & io.rdDB.fire, 1.U, 0.U)
+  tailPtr  := Mux(tailPtr =/= rxRctPtr & chiEntrys(tailPtr.value).sendComp.get, tailPtr + 1.U, tailPtr)
+
+  when(io.rdDB.fire & rdDBQueue.io.deq.valid & !io.rdDB.bits.last & rdDBQueue.io.deq.bits.double){
+    txDatPtr := 1.U
+  }.elsewhen(io.rdDB.fire & io.rdDB.bits.last){
+    txDatPtr := 0.U
+  }
 
 
   def fromDCT(x: UInt): Bool = {
@@ -97,47 +101,45 @@ class ChiRdCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
     }
   }
   
-  private val sameVec = chiEntrys.zipWithIndex.map{ case(c, i) => c.arId === io.axiAr.bits.user & !c.sendComp}
-  private val zeroNid = chiEntrys.map(c => c.nid === 0.U & !c.sendComp & c.rcvDatComp)
+  private val sameVec = chiEntrys.zipWithIndex.map{ case(c, i) => c.arId === io.axiAr.bits.user & !c.sendComp.get}
+  private val zeroNid = chiEntrys.map(c => c.nid.get === 0.U & !c.sendComp.get & c.rcvDatComp.get)
 
   blockVec           := validVec.zip(sameVec).map{case(i, j) => i & j}
   sendVec            := validVec.zip(zeroNid).map{case(i, j) => i & j}
-  when(io.rdDB.fire & io.rdDB.bits.last){
-    selIdxReg := StepRREncoder(sendVec, io.rdDB.fire & io.rdDB.bits.last)
-  }
-
+  selIdx             := StepRREncoder(sendVec, rdDBQueue.io.enq.ready)
 /* 
  * Assign logic
  */
   chiEntrys.zipWithIndex.foreach{
     case(e, i) =>
-      when(headPtr.value === i.U & arFireReg & !isFull(headPtr, tailPtr)){
-        e.ARMesInit(arBitsReg)
-        e.nid := blkNumReg - (io.rdDB.fire & io.rdDB.bits.last & io.rdDB.bits.originId === arBitsReg.user).asUInt
+      when(headPtr.value === i.U & io.axiAr.fire){
+        e.ARMesInit(io.axiAr.bits)
+        e.nid.get := PopCount(blockVec) - (rdDBQueue.io.enq.fire & (rdDBQueue.io.enq.bits.arId === io.axiAr.bits.user)).asUInt
       }.elsewhen(reqDBPtr.value === i.U & io.reqDB.fire){
         e.dbSite1    := io.respDB.bits.buf(0)
         e.dbSite2    := io.respDB.bits.buf(1)
-      }.elsewhen((!e.double & !e.fromDCT & (e.haveWrDB1 ^ e.haveWrDB2)) | (e.fromDCT | e.double) & e.haveWrDB1 & e.haveWrDB2){
-        e.rcvDatComp := true.B
+      }.elsewhen((!e.double & !e.fromDCT.get & (e.haveWrDB1.get =/= e.haveWrDB2.get)) | (e.fromDCT.get | e.double) & e.haveWrDB1.get & e.haveWrDB2.get){
+        e.rcvDatComp.get := true.B
+      }
+      when(rdDBQueue.io.enq.fire & (selIdx === i.U) & !(headPtr.value === i.U && io.axiAr.fire)){
+        e.sendComp.get := true.B
+      }
+      when(rdDBQueue.io.enq.fire & (rdDBQueue.io.enq.bits.arId === e.arId) & (e.nid.get =/= 0.U) & !(headPtr.value === i.U && io.axiAr.fire)){
+        e.nid.get := e.nid.get - 1.U
       }
       when(dataTxnid === i.U & io.wrDB.fire & io.chiDat.bits.DataID === 0.U){
-        e.haveWrDB1  := true.B
+        e.haveWrDB1.get  := true.B
       }
-      when(dataTxnid === i.U & io.wrDB.fire & io.chiDat.bits.DataID === 2.U){
-        e.haveWrDB2  := true.B
+      when(dataTxnid === i.U & io.wrDB.fire & io.chiDat.bits.DataID === 2.U) {
+        e.haveWrDB2.get  := true.B
       }
-      when(io.rdDB.fire & io.rdDB.bits.last & (io.rdDB.bits.originId === e.arId) & (e.nid =/= 0.U)){
-        e.nid        := e.nid - 1.U
-      }
-      when(io.chiDat.fire & fromDCT(io.chiDat.bits.SrcID) & dataTxnid === i.U){
-        e.fromDCT    := true.B
-      }
-      when(io.rdDB.fire & e.nid === 0.U & io.rdDB.bits.id === e.idx & io.rdDB.bits.last){
-        e.sendComp   := true.B
+      when(io.chiDat.fire & fromDCT(io.chiDat.bits.SrcID) & dataTxnid === i.U) {
+        e.fromDCT.get    := true.B
       }
   }
   txReqBdl.RReqInit(chiEntrys(txReqPtr.value), txReqPtr.value)
-  txDatBdl.SetBdl(chiEntrys(selIdxReg), txDatPtr)
+  rdDBQBdl.rdDBInit(chiEntrys(selIdx))
+  txDatBdl.SetBdl(rdDBQueue.io.deq.bits, txDatPtr)
 
 
 /* 
@@ -151,12 +153,16 @@ class ChiRdCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
   io.wrDB.bits.data  := io.chiDat.bits.Data
   io.wrDB.bits.set   := Mux(chiEntrys(dataTxnid).double & io.chiDat.bits.DataID === 2.U, chiEntrys(dataTxnid).dbSite2, chiEntrys(dataTxnid).dbSite1)
   io.wrDB.valid      := Mux(chiEntrys(dataTxnid).double, io.chiDat.valid, 
-                          Mux(fromDCT(io.chiDat.bits.SrcID), Mux(chiEntrys(dataTxnid).addr(5), io.chiDat.bits.DataID === 2.U & io.chiDat.valid, 
+                          Mux(fromDCT(io.chiDat.bits.SrcID), Mux(chiEntrys(dataTxnid).addr.get(5), io.chiDat.bits.DataID === 2.U & io.chiDat.valid, 
                             io.chiDat.valid & io.chiDat.bits.DataID === 0.U), io.chiDat.valid))
   io.chiDat.ready    := io.wrDB.ready
   io.chiRsp.ready    := true.B
   io.rdDB.bits       := txDatBdl
-  io.rdDB.valid      := RegNext(sendVec.reduce(_|_))
+  io.rdDB.valid      := rdDBQueue.io.deq.valid
+
+  rdDBQueue.io.deq.ready := io.rdDB.ready & io.rdDB.bits.last
+  rdDBQueue.io.enq.valid := sendVec.reduce(_|_)
+  rdDBQueue.io.enq.bits  := rdDBQBdl
   
 
 /* 
@@ -170,4 +176,10 @@ class ChiRdCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
  assert(txReqPtr <= reqDBPtr)
  assert(tailPtr <= rxRctPtr)
  assert(rxRctPtr <= txReqPtr)
+ when(io.rdDB.fire & io.rdDB.bits.last){
+  assert(io.rdDB.fire)
+ }
+ when(io.rdDB.fire & !io.rdDB.bits.last){
+  assert(!rdDBQueue.io.deq.ready & rdDBQueue.io.deq.valid)
+ }
 }

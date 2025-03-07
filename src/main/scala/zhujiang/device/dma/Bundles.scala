@@ -197,28 +197,36 @@ class respDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
   val last     = Bool()
 }
 
-class CHIREntry(implicit p : Parameters) extends ZJBundle {
+class CHIREntry(full : Boolean)(implicit p : Parameters) extends ZJBundle {
   val arId           = UInt(zjParams.dmaParams.idBits.W)
   val idx            = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
   val double         = Bool()
-  val addr           = UInt(raw.W)
-  val size           = UInt(3.W)
-  val nid            = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
+  val addr           = if(full) Some(UInt(raw.W)) else None
+  val size           = if(full) Some(UInt(3.W)) else None
+  val nid            = if(full) Some(UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)) else None
   val dbSite1        = UInt(log2Ceil(zjParams.dmaParams.bufferSize).W)
   val dbSite2        = UInt(log2Ceil(zjParams.dmaParams.bufferSize).W)
-  val haveWrDB1      = Bool()
-  val haveWrDB2      = Bool()
-  val sendComp       = Bool()
-  val fromDCT        = Bool()
-  val rcvDatComp     = Bool()
+  val haveWrDB1      = if(full) Some(Bool()) else None
+  val haveWrDB2      = if(full) Some(Bool()) else None
+  val sendComp       = if(full) Some(Bool()) else None
+  val fromDCT        = if(full) Some(Bool()) else None
+  val rcvDatComp     = if(full) Some(Bool()) else None
 
   def ARMesInit[T <: ARFlit](b: T): CHIREntry = {
-    this           := 0.U.asTypeOf(this)
-    this.double    := b.len(0).asBool
-    this.arId      := b.user
-    this.idx       := b.id
-    this.addr      := b.addr
-    this.size      := b.size
+    this               := 0.U.asTypeOf(this)
+    this.double        := b.len(0).asBool
+    this.arId          := b.user
+    this.idx           := b.id
+    this.addr.get      := b.addr
+    this.size.get      := b.size
+    this
+  }
+  def rdDBInit[T <: CHIREntry](b: T): CHIREntry = {
+    this.arId      := b.arId
+    this.idx       := b.idx
+    this.double    := b.double
+    this.dbSite1   := b.dbSite1
+    this.dbSite2   := b.dbSite2
     this
   }
 }
@@ -226,12 +234,12 @@ class CHIREntry(implicit p : Parameters) extends ZJBundle {
 class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
   def RReqInit[T <: CHIREntry](c : T, i : UInt): ReqFlit = {
     this          := 0.U.asTypeOf(this)
-    this.Addr     := c.addr
-    this.Opcode   := Mux(c.addr(raw - 1), ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
+    this.Addr     := c.addr.get
+    this.Opcode   := Mux(c.addr.get(raw - 1), ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
     this.SrcID    := 1.U
     this.Order    := "b11".U
     this.TxnID    := i
-    this.Size     := Mux(c.double, 6.U, c.size)
+    this.Size     := Mux(c.double, 6.U, c.size.get)
     this
   }
   def WReqInit[T <: CHIWEntry](c : T, i : UInt): ReqFlit = {
