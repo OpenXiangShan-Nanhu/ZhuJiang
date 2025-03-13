@@ -25,6 +25,8 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   require(node.nodeType == NodeType.RI)
   private val dmaParams = zjParams.dmaParams
   private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = dmaParams.idBits, attr = node.attr)
+  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(dmaParams.chiEntrySize), userBits = axiParams.idBits)
+  require(axiParams.idBits >= log2Ceil(dmaParams.chiEntrySize))
   val axi = IO(Flipped(new AxiBundle(axiParams)))
   val icn = IO(new DeviceIcnBundle(node))
 
@@ -34,16 +36,16 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
     dontTouch(icn)
   }
 
-  // //SubModule
-  private val axiSpilt    = Module(new AxiSpilt)
-  private val chiRdE      = Module(new ChiREntrys)
-  private val rdDB        = Module(new DataBufferForRead(axiParams, dmaParams.bufferSize, dmaParams.chiEntrySize))
-//Write Submodule 
-  private val chiWrE      = Module(new ChiWEntrys)
+//SubModule
+  private val axiRSpilt   = Module(new AxiRSpilt)
+  private val axiWSpilt   = Module(new AxiWSpilt)
+  private val chiRdE      = Module(new ChiRdCtrl)
+  private val rdDB        = Module(new DataBufferForRead(axiParamsUser, dmaParams.bufferSize, dmaParams.chiEntrySize))
+  private val chiWrE      = Module(new ChiWrCtrl)
   private val wrDB        = Module(new DataBufferForWrite(dmaParams.bufferSize, dmaParams.chiEntrySize))
 
-  axiSpilt.txAxi.ar <> chiRdE.io.axiAr
-  axiSpilt.txAxi.r  <> rdDB.io.axiR
+  axiRSpilt.io.dAxiAr <> chiRdE.io.axiAr
+  axiRSpilt.io.dAxiR  <> rdDB.io.axiR
 
   chiRdE.io.reqDB  <> rdDB.io.alloc
   chiRdE.io.respDB <> rdDB.io.allocRsp
@@ -52,8 +54,8 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   chiRdE.io.wrDB   <> rdDB.io.wrDB
   chiRdE.io.rdDB   <> rdDB.io.rdDB
 
-  axi.ar <> axiSpilt.rxAxi.ar
-  axi.r  <> axiSpilt.rxAxi.r
+  axi.ar <> axiRSpilt.io.uAxiAr
+  axi.r  <> axiRSpilt.io.uAxiR
 
   chiRdE.io.chiRsp.bits    := icn.rx.resp.get.bits
   chiWrE.io.chiRxRsp.bits  := icn.rx.resp.get.bits
@@ -64,9 +66,9 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
 // Write Logic Connection
   FastArbiter(VecInit(Seq(chiRdE.io.chiReq, chiWrE.io.chiReq)), icn.tx.req.get)
-  axiSpilt.txAxi.aw <> chiWrE.io.axiAw
-  axiSpilt.txAxi.w  <> chiWrE.io.axiW
-  axiSpilt.txAxi.b  <> chiWrE.io.axiB
+  axiWSpilt.io.dAxiAw <> chiWrE.io.axiAw
+  axiWSpilt.io.dAxiW  <> chiWrE.io.axiW
+  axiWSpilt.io.dAxiB  <> chiWrE.io.axiB
 
   chiWrE.io.chiTxRsp <> icn.tx.resp.get
   chiWrE.io.reqDB    <> wrDB.io.alloc
@@ -75,9 +77,9 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   chiWrE.io.rdDB     <> wrDB.io.rdDB
 
 
-  axi.aw <> axiSpilt.rxAxi.aw
-  axi.w  <> axiSpilt.rxAxi.w
-  axi.b  <> axiSpilt.rxAxi.b
+  axi.aw <> axiWSpilt.io.uAxiAw
+  axi.w  <> axiWSpilt.io.uAxiW
+  axi.b  <> axiWSpilt.io.uAxiB
 
   icn.tx.data.get <> wrDB.io.dData
 }

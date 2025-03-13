@@ -82,7 +82,7 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
   readDataPipe.io.enq.bits := DontCare
   readDataPipe.io.enq.bits.Data := Fill(dw / busDataBits, tl.d.bits.data)
   readDataPipe.io.enq.bits.Opcode := Mux(tl.d.bits.opcode === DOpcode.AccessAckData, DatOpcode.CompData, 0.U)
-  readDataPipe.io.enq.bits.DataID := 0.U
+  readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4)
   readDataPipe.io.enq.bits.TxnID := ctrlSel.txnId
   readDataPipe.io.enq.bits.SrcID := 0.U
   readDataPipe.io.enq.bits.TgtID := ctrlSel.srcId

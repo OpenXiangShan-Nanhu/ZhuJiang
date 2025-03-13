@@ -94,11 +94,11 @@ class AxiDataBufferRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Parame
     val readDataResp = Decoupled(new WFlit(axiParams))
     val stop = Input(Bool())
   })
-  private val maskRam = SyncReadMem(bufferSize, UInt(bew.W))
+  private val maskRam = Mem(bufferSize, UInt(bew.W))
   private val dataRam = Module(new SRAMTemplate(
     gen = UInt(dw.W),
     set = bufferSize,
-    singlePort = true,
+    singlePort = false,
     powerCtl = true,
     holdRead = true
   ))
@@ -126,7 +126,7 @@ class AxiDataBufferRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Parame
   readStage1Pipe.io.deq.ready := readStage2Pipe.io.enq.ready
   readStage2Pipe.io.enq.valid := readStage1Pipe.io.deq.valid
   readStage2Pipe.io.enq.bits := readStage1Pipe.io.deq.bits
-  readStage2Pipe.io.enq.bits.strb := maskRam.read(io.readDataReq.bits.set, io.readDataReq.fire)
+  readStage2Pipe.io.enq.bits.strb := maskRam.read(RegEnable(io.readDataReq.bits.set, io.readDataReq.fire))
   readStage2Pipe.io.enq.bits.data := dataRam.io.r.resp.data.asUInt
 
   io.readDataResp <> readStage2Pipe.io.deq

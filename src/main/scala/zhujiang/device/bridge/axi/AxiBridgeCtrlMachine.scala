@@ -54,8 +54,6 @@ class AxiBridgeCtrlMachine(
   when(icn.rx.data.valid) {
     when(payload.state.u.compAck) {
       assert(icn.rx.data.bits.Opcode === DatOpcode.NonCopyBackWriteData)
-    }.otherwise {
-      assert(icn.rx.data.bits.Opcode === DatOpcode.NCBWrDataCompAck)
     }
   }
 

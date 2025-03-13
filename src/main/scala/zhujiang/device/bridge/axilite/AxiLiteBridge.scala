@@ -75,7 +75,6 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
   icn.rx.req.get.ready := enqCtrl.valid
   icn.rx.resp.get.ready := true.B
   icn.rx.data.get.ready := true.B
-  axi.r.ready := true.B
   axi.b.ready := true.B
 
   for((cm, idx) <- cms.zipWithIndex) {
@@ -103,7 +102,7 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
   readDataPipe.io.enq.bits := DontCare
   readDataPipe.io.enq.bits.Data := Fill(dw / busDataBits, axi.r.bits.data)
   readDataPipe.io.enq.bits.Opcode := DatOpcode.CompData
-  readDataPipe.io.enq.bits.DataID := 0.U
+  readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4)
   readDataPipe.io.enq.bits.TxnID := ctrlSel.txnId
   readDataPipe.io.enq.bits.SrcID := 0.U
   readDataPipe.io.enq.bits.TgtID := ctrlSel.srcId

@@ -202,7 +202,7 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   txdat.bits.Data := Fill(segNum, task.data)
   txdat.bits.Opcode := DatOpcode.NonCopyBackWriteData
 //  txdat.bits.CCID := task.address(log2Ceil(chiDataBytes), log2Ceil(chiDataBytes) - 2 + 1)
-  txdat.bits.DataID := Cat(task.address(log2Ceil(chiDataBytes)), 0.U(1.W))
+  txdat.bits.DataID := task.address(5, 4)
   txdat.bits.Resp := 0.U
   txdat.bits.TxnID := rspDBID
 

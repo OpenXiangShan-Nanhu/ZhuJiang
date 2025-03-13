@@ -79,6 +79,7 @@ package object bridge {
     val returnNid = if(mem) Some(UInt(niw.W)) else None
     val returnTxnId = if(mem) Some(UInt(12.W)) else None
     val dwt = if(mem) Some(Bool()) else None
+    val ewa = Bool()
     val readCnt = UInt(8.W)
     val isSnooped = Bool() // This field indicates if this CM should be depended on by other CMs
   }
@@ -97,6 +98,7 @@ package object bridge {
       info.returnNid.foreach(_ := req.ReturnNID.get)
       info.returnTxnId.foreach(_ := req.ReturnTxnID.get)
       info.dwt.foreach(_  := req.Opcode =/= ReqOpcode.ReadNoSnp && req.DoDWT)
+      info.ewa := req.MemAttr(0)
       info.readCnt := 0.U
       info.isSnooped := true.B
       state.u.decode(req, valid)

@@ -85,8 +85,6 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule with HasPer
   private val enqCtrl = PickOneLow(busyEntries)
 
   icn.rx.req.get.ready := enqCtrl.valid
-  icn.rx.data.get.ready := true.B
-  axi.r.ready := true.B
   axi.b.ready := true.B
 
   for((cm, idx) <- cms.zipWithIndex) {
@@ -112,7 +110,7 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule with HasPer
   readDataPipe.io.enq.bits := DontCare
   readDataPipe.io.enq.bits.Data := axi.r.bits.data
   readDataPipe.io.enq.bits.Opcode := DatOpcode.CompData
-  readDataPipe.io.enq.bits.DataID := ctrlSel.readCnt << log2Ceil(dw / 128)
+  readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4) + (ctrlSel.readCnt << log2Ceil(dw / 128))
   readDataPipe.io.enq.bits.TxnID := ctrlSel.returnTxnId.get
   readDataPipe.io.enq.bits.SrcID := 0.U
   readDataPipe.io.enq.bits.TgtID := ctrlSel.returnNid.get

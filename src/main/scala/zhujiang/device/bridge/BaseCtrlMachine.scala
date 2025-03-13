@@ -117,12 +117,12 @@ abstract class BaseCtrlMachine[
   }
 
   private val dwt = payload.info.dwt.getOrElse(false.B)
-  private val owo = !payload.state.u.compAck
-  private val allowComp = Mux(owo, payload.state.d.issued, Mux(dwt, payload.state.u.wdata, true.B))
+  private val ewa = payload.info.ewa
+  private val allowComp = Mux(!ewa, payload.state.d.completed, Mux(dwt, payload.state.u.wdata, true.B))
   private val icnReadReceipt = payload.state.icnReadReceipt
   private val icnDBID = payload.state.icnDBID
   private val icnComp = allowComp && payload.state.icnComp
-  private val icnCompCmo = payload.state.icnCompCmo
+  private val icnCompCmo = payload.state.icnCompCmo && !payload.state.icnComp
   private val icnCompDBID = icnDBID && icnComp
   icn.tx.resp.valid := valid & (icnReadReceipt || icnDBID || icnComp || icnCompCmo)
   icn.tx.resp.bits := DontCare

@@ -10,6 +10,7 @@ import zhujiang.chi.DataFlit
 import xs.utils.sram.DualPortSramTemplate
 import zhujiang.chi.ReqOpcode
 import zhujiang.chi.DatOpcode
+import freechips.rocketchip.diplomacy.BufferParams.pipe
 
 class ChiDataBufferCtrlEntry(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
   val buf = Vec(512 / dw, UInt(log2Ceil(bufferSize).W))
@@ -31,7 +32,6 @@ class writeWrDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundl
   val data  = UInt(dw.W)
   val mask  = UInt(bew.W)
 }
-
 class ChiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private class ChiDataBufferFreelistPtr extends CircularQueuePtr[ChiDataBufferFreelistPtr](bufferSize)
   private object ChiDataBufferFreelistPtr {
@@ -81,17 +81,19 @@ class ChiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
 class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Parameters) extends ZJModule {
   val io = IO(new Bundle {
       val writeDataReq = Flipped(Decoupled(new writeRdDataBuffer(bufferSize)))
-      val readDataReq  = Flipped(Decoupled(new readRdDataBuffer(bufferSize)))
+      val readDataReq  = Flipped(Decoupled(new readRdDataBuffer(bufferSize, axiParams)))
       val readDataResp = Decoupled(new RFlit(axiParams))
+      val relSet       = Valid(UInt(log2Ceil(bufferSize).W))
   })
 
   private val dataRam = Module(new DualPortSramTemplate(
       gen = UInt(dw.W),
-      set = bufferSize
+      set = bufferSize,
+      bypassWrite = true
   ))
 
   private val wrRamQ = Module(new Queue(new writeRdDataBuffer(bufferSize), entries = 2, flow = false, pipe = false))
-  private val readRamStage1Pipe = Module(new Queue(new readRdDataBuffer(bufferSize), entries = 1, pipe = true))
+  private val readRamStage1Pipe = Module(new Queue(new readRdDataBuffer(bufferSize, axiParams), entries = 1, pipe = true))
   private val readRamStage2Pipe = Module(new Queue(new respDataBuffer(bufferSize), entries = 1, pipe = true))
   private val rFlitBdl    = WireInit(0.U.asTypeOf(new RFlit(axiParams)))
 
@@ -108,6 +110,7 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   readRamStage1Pipe.io.enq.bits.last     := io.readDataReq.bits.last
   readRamStage1Pipe.io.enq.bits.resp     := io.readDataReq.bits.resp
   readRamStage1Pipe.io.enq.bits.set      := io.readDataReq.bits.set
+  readRamStage1Pipe.io.enq.bits.originId := io.readDataReq.bits.originId
   readRamStage1Pipe.io.deq.ready         := readRamStage2Pipe.io.enq.ready
 
   readRamStage2Pipe.io.enq.valid         := readRamStage1Pipe.io.deq.valid
@@ -131,6 +134,8 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   io.readDataReq.ready   := readRamStage1Pipe.io.enq.ready
   io.readDataResp.valid  := readRamStage2Pipe.io.deq.valid
   io.readDataResp.bits   := rFlitBdl
+  io.relSet.valid        := readRamStage1Pipe.io.deq.fire
+  io.relSet.bits         := readRamStage1Pipe.io.deq.bits.set
 }
 
 
@@ -139,7 +144,7 @@ class DataBufferForRead(axiParams: AxiParams, bufferSize: Int, ctrlSize: Int)(im
     val alloc    = Flipped(Decoupled(Bool()))
     val axiR     = Decoupled(new RFlit(axiParams))
     val wrDB     = Flipped(Decoupled(new writeRdDataBuffer(bufferSize)))
-    val rdDB     = Flipped(Decoupled(new readRdDataBuffer(bufferSize)))
+    val rdDB     = Flipped(Decoupled(new readRdDataBuffer(bufferSize, axiParams)))
     val allocRsp = Valid(new ChiDataBufferCtrlEntry(bufferSize))
   })
 
@@ -148,8 +153,8 @@ class DataBufferForRead(axiParams: AxiParams, bufferSize: Int, ctrlSize: Int)(im
 
   freelist.io.req.valid     := io.alloc.valid
   freelist.io.req.bits      := io.alloc.bits
-  freelist.io.release.valid := dataBuffer.io.readDataReq.fire
-  freelist.io.release.bits  := dataBuffer.io.readDataReq.bits.set
+  freelist.io.release.valid := dataBuffer.io.relSet.valid
+  freelist.io.release.bits  := dataBuffer.io.relSet.bits
 
   dataBuffer.io.readDataReq  <> io.rdDB
   dataBuffer.io.writeDataReq <> io.wrDB
@@ -165,25 +170,34 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
     val writeDataReq = Flipped(Decoupled(new writeWrDataBuffer(bufferSize)))
     val readDataReq  = Flipped(Decoupled(new readWrDataBuffer(bufferSize)))
     val readDataResp = Decoupled(new DataFlit)
+    val relSet       = Valid(UInt(log2Ceil(bufferSize).W))
   })
 
   private val dataRam = Module(new DualPortSramTemplate(
     gen = UInt(8.W),
     set = bufferSize,
-    way = bew
+    way = bew,
   ))
 
   private val maskRam = RegInit(0.U.asTypeOf(Vec(zjParams.dmaParams.bufferSize, UInt(bew.W))))
 
 
   private val wrRamQ            = Module(new Queue(new writeWrDataBuffer(bufferSize), entries = 2, flow = false, pipe = false))
+  private val rdRamQ            = Module(new Queue(new readWrDataBuffer(bufferSize), entries = 2, flow = false, pipe = false))
   private val readRamState1Pipe = Module(new Queue(new readWrDataBuffer(bufferSize), entries = 1, pipe = true))
   private val readRamStage2Pipe = Module(new Queue(new DataFlit, entries = 1, pipe = true))
   private val wDataVec          = Wire(Vec(bew, UInt(8.W)))
-  private val releaseSet        = Reg(UInt(log2Ceil(zjParams.dmaParams.bufferSize).W))
 
   when(wrRamQ.io.deq.fire){
     maskRam(wrRamQ.io.deq.bits.set) := wrRamQ.io.deq.bits.mask | maskRam(wrRamQ.io.deq.bits.set)
+  }
+  maskRam.zipWithIndex.foreach{
+    case(m, i) =>
+      when(wrRamQ.io.deq.fire & wrRamQ.io.deq.bits.set === i.U){
+        m := wrRamQ.io.deq.bits.mask | m
+      }.elsewhen(readRamState1Pipe.io.deq.fire & readRamState1Pipe.io.deq.bits.set === i.U){
+        m := 0.U
+      }
   }
 
   wrRamQ.io.deq.ready  := dataRam.io.wreq.ready
@@ -196,29 +210,28 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
   dataRam.io.wreq.bits.mask.get := wrRamQ.io.deq.bits.mask
   dataRam.io.wreq.bits.addr     := wrRamQ.io.deq.bits.set
 
-  dataRam.io.rreq.valid         := io.readDataReq.valid & readRamState1Pipe.io.enq.ready
-  dataRam.io.rreq.bits          := io.readDataReq.bits.set
+  dataRam.io.rreq.valid         := rdRamQ.io.deq.fire & readRamState1Pipe.io.enq.ready
+  dataRam.io.rreq.bits          := rdRamQ.io.deq.bits.set
 
-  readRamState1Pipe.io.enq       <> io.readDataReq
+  rdRamQ.io.enq     <> io.readDataReq
+
+  readRamState1Pipe.io.enq       <> rdRamQ.io.deq
   readRamState1Pipe.io.deq.ready := readRamStage2Pipe.io.enq.ready
 
-  releaseSet := readRamState1Pipe.io.deq.bits.set
 
   readRamStage2Pipe.io.enq.valid       := readRamState1Pipe.io.deq.valid
   readRamStage2Pipe.io.enq.bits        := 0.U.asTypeOf(readRamStage2Pipe.io.enq.bits)
   readRamStage2Pipe.io.enq.bits.DataID := readRamState1Pipe.io.deq.bits.dataID
   readRamStage2Pipe.io.enq.bits.TxnID  := readRamState1Pipe.io.deq.bits.txnID
   readRamStage2Pipe.io.enq.bits.BE     := maskRam(readRamState1Pipe.io.deq.bits.set)
-  readRamStage2Pipe.io.enq.bits.Opcode := DatOpcode.NonCopyBackWriteData
+  readRamStage2Pipe.io.enq.bits.Opcode := Mux(readRamState1Pipe.io.deq.bits.withAck, DatOpcode.NCBWrDataCompAck, DatOpcode.NonCopyBackWriteData)
   readRamStage2Pipe.io.enq.bits.Data   := dataRam.io.rresp.bits.asTypeOf(UInt(dw.W))
   readRamStage2Pipe.io.enq.bits.SrcID  := 1.U
   readRamStage2Pipe.io.enq.bits.TgtID  := readRamState1Pipe.io.deq.bits.tgtId
 
   io.readDataResp <> readRamStage2Pipe.io.deq
-  when(io.readDataResp.fire){
-    maskRam(releaseSet) := 0.U
-  }
-  
+  io.relSet.valid   := readRamState1Pipe.io.deq.fire
+  io.relSet.bits    := readRamState1Pipe.io.deq.bits.set
 }
 
 class DataBufferForWrite(bufferSize: Int, ctrlSize: Int)(implicit p: Parameters) extends ZJModule {
@@ -236,8 +249,8 @@ class DataBufferForWrite(bufferSize: Int, ctrlSize: Int)(implicit p: Parameters)
 
   freelist.io.req.valid     := io.alloc.valid
   freelist.io.req.bits      := io.alloc.bits
-  freelist.io.release.valid    := dataBuffer.io.readDataReq.fire
-  freelist.io.release.bits     := dataBuffer.io.readDataReq.bits.set
+  freelist.io.release.valid    := dataBuffer.io.relSet.valid
+  freelist.io.release.bits     := dataBuffer.io.relSet.bits
 
   dataBuffer.io.readDataReq <> io.rdDB
   dataBuffer.io.writeDataReq <> io.wrDB
