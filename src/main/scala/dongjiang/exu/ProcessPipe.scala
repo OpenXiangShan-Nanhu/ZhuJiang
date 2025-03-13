@@ -16,7 +16,7 @@ import xs.utils.ParallelLookUp
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 import xs.utils.perf.HasPerfLogging
 import dongjiang.utils.StepRREncoderOH
-import xs.utils.debug.{DomainInfo, HardwareAssertion,awhen}
+import xs.utils.debug.{DomainInfo, HardwareAssertion, awhen}
 
 class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
 // --------------------- IO declaration ------------------------//
@@ -751,7 +751,7 @@ for (i <- 0 until 2) {
   // S4
   val cnt_s4_g  = RegInit(0.U(64.W))
   cnt_s4_g      := Mux(!valid_s4_g | canGo_s4, 0.U, cnt_s4_g + 1.U)
-  HardwareAssertion.checkTimeout(!valid_s4_g | canGo_s4, TIMEOUT_PIPEEXU, cf"ProcessPipe[0x${s4_g.task.taskMes.pipeID}] EXECUTE ADDR[0x${s4_g.task.fullAddr(io.dcuID, io.pcuID)}] OP[0x${s4_g.task.chiMes.opcode}] TIMEOUT", s4_g.task.taskMes.pipeID, s4_g.task.fullAddr(io.dcuID, io.pcuID), s4_g.task.chiMes.opcode)
+  HardwareAssertion.checkTimeout(!valid_s4_g | canGo_s4, TIMEOUT_PIPEEXU, cf"ProcessPipe[0x${s4_g.task.taskMes.pipeID}] EXECUTE ADDR[0x${s4_g.task.fullAddr(io.dcuID, io.pcuID)}] OP[0x${s4_g.task.chiMes.opcode}] TIMEOUT", s4_g.task.taskMes.pipeID, s4_g.task.chiMes.opcode)
 
   // Other
   HardwareAssertion(!valid_s4_g | !todo_s4.asUInt.asBools.zip(done_s4_g.asUInt.asBools).map { case(todo, done) => !todo & done }.reduce(_ | _))

@@ -269,16 +269,16 @@ for (i <- 0 until 16) {
           }.elsewhen(m.isFree) {
             m := 0.U.asTypeOf(m)
           }
-          HardwareAssertion(hwaFlags(0), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-          HardwareAssertion(hwaFlags(1), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-          HardwareAssertion(hwaFlags(2), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-          HardwareAssertion(hwaFlags(3), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+          HardwareAssertion(hwaFlags(0), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+          HardwareAssertion(hwaFlags(1), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+          HardwareAssertion(hwaFlags(2), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+          HardwareAssertion(hwaFlags(3), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
           HardwareAssertion(hwaFlags(4))
-          HardwareAssertion(hwaFlags(5), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+          HardwareAssertion(hwaFlags(5), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
           HardwareAssertion(hwaFlags(6))
-          HardwareAssertion(hwaFlags(7), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-          HardwareAssertion(hwaFlags(8), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-          HardwareAssertion(hwaFlags(9), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+          HardwareAssertion(hwaFlags(7), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+          HardwareAssertion(hwaFlags(8), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+          HardwareAssertion(hwaFlags(9), cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${m.fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${m.chiMes.channel}] OP[0x${m.chiMes.opcode}] STATE[0x${m.mshrMes.state}]", i.U, j.U, m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
         }
         HardwareAssertion.placePipe(1)
       
@@ -524,7 +524,7 @@ for (i <- 0 until 16) {
   // MSHR Timeout Check
   val cntMSHRReg = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { VecInit(Seq.fill(djparam.nrMSHRWays) { 0.U(64.W) }) }))
 
-  cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => HardwareAssertion.checkTimeout(mshrTableReg(i)(j).isFree, TIMEOUT_MSHR,cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${mshrTableReg(i)(j).fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${mshrTableReg(i)(j).chiMes.channel}] OP[0x${mshrTableReg(i)(j).chiMes.opcode}] STATE[0x${mshrTableReg(i)(j).mshrMes.state}] TIMEOUT", i.U, j.U, mshrTableReg(i)(j).fullAddr(i.U, io.dcuID, io.pcuID), mshrTableReg(i)(j).chiMes.channel, mshrTableReg(i)(j).chiMes.opcode, mshrTableReg(i)(j).mshrMes.state)  } }
+  cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => HardwareAssertion.checkTimeout(mshrTableReg(i)(j).isFree, TIMEOUT_MSHR,cf"MSHR[0x${i.U}][0x${j.U}] ADDR[0x${mshrTableReg(i)(j).fullAddr(i.U, io.dcuID, io.pcuID)}] CHANNEL[0x${mshrTableReg(i)(j).chiMes.channel}] OP[0x${mshrTableReg(i)(j).chiMes.opcode}] STATE[0x${mshrTableReg(i)(j).mshrMes.state}] TIMEOUT", i.U, j.U, mshrTableReg(i)(j).chiMes.opcode, mshrTableReg(i)(j).mshrMes.state)  } }
   HardwareAssertion.placePipe(2)
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
   require(djparam.nrMSHRWays >= 4 & djparam.nrMSHRWays % 4 == 0)

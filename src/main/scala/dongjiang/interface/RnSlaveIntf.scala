@@ -808,7 +808,7 @@ for (i <- 0 until 33) {
 
   HardwareAssertion(Mux(io.resp2Exu.fire & isSnpXFwd(entrys(entryResp2ExuID).chiMes.opcode) & entrys(entryResp2ExuID).chiMes.isSnp, entrys(entryResp2ExuID).entryMes.snpFwdSVal, true.B),
     cf"RNSLV ENTRY[0x${entryResp2ExuID}] STATE[0x${entrys(entryResp2ExuID).entryMes.state}] ADDR[0x${entrys(entryResp2ExuID).fullAddr(io.pcuID)}] CHANNEL[0x${entrys(entryResp2ExuID).chiMes.channel}] OP[0x${entrys(entryResp2ExuID).chiMes.opcode}] TIMEOUT", 
-    entryResp2ExuID, entrys(entryResp2ExuID).entryMes.state, entrys(entryResp2ExuID).fullAddr(io.pcuID), entrys(entryResp2ExuID).chiMes.channel, entrys(entryResp2ExuID).chiMes.opcode)
+    entryResp2ExuID, entrys(entryResp2ExuID).entryMes.state, entrys(entryResp2ExuID).chiMes.opcode)
 
 
 // ---------------------------  Assertion  -------------------------------- //
