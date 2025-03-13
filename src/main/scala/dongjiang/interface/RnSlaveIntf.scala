@@ -551,10 +551,10 @@ for (i <- 0 until 33) {
           hwaFlags(32) := nID + snp2IntfHitVec_g(i) >= snpResp2ExuHitVec_g(i).asTypeOf(UInt(2.W))  + reqAckHitVec_g(i)
         }
       }
-      HardwareAssertion(hwaFlags(29), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID)
-      HardwareAssertion(hwaFlags(30), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID)
-      HardwareAssertion(hwaFlags(31), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID)
-      HardwareAssertion(hwaFlags(32), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID)
+      HardwareAssertion(hwaFlags(29), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).state, nID)
+      HardwareAssertion(hwaFlags(30), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).state, nID)
+      HardwareAssertion(hwaFlags(31), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).state, nID)
+      HardwareAssertion(hwaFlags(32), cf"RNSLV ENTRY[0x${i.U}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] STATE[0x${entrys(i).state}] NID[0x${nID}]", i.U, entrys(i).state, nID)
   }
   HardwareAssertion.placePipe(2)
 

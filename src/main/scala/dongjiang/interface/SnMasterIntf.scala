@@ -223,14 +223,14 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
       }.elsewhen(entry.isFree) {
         entry               := 0.U.asTypeOf(entry)
       }
-      HardwareAssertion(hwaFlags(0), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-      HardwareAssertion(hwaFlags(1), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-      HardwareAssertion(hwaFlags(2), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-      HardwareAssertion(hwaFlags(3), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-      HardwareAssertion(hwaFlags(4), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-      HardwareAssertion(hwaFlags(5), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-      HardwareAssertion(hwaFlags(7), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-      HardwareAssertion(hwaFlags(8), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
+      HardwareAssertion(hwaFlags(0), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
+      HardwareAssertion(hwaFlags(1), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
+      HardwareAssertion(hwaFlags(2), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
+      HardwareAssertion(hwaFlags(3), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
+      HardwareAssertion(hwaFlags(4), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
+      HardwareAssertion(hwaFlags(5), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
+      HardwareAssertion(hwaFlags(7), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
+      HardwareAssertion(hwaFlags(8), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
       HardwareAssertion.placePipe(1)
   }
   HardwareAssertion.placePipe(2)
@@ -330,8 +330,8 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
       HardwareAssertion(hwaFlags(10))
       HardwareAssertion(hwaFlags(11))
       HardwareAssertion(hwaFlags(12))
-      HardwareAssertion(hwaFlags(13), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-      HardwareAssertion(hwaFlags(14), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
+      HardwareAssertion(hwaFlags(13), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
+      HardwareAssertion(hwaFlags(14), cf"SNMAS Intf[0x${i.U}] STATE[0x${entry.state}] OP[0x${entry.chiMes.opcode}] ADDR[0x${entry.fullAddr(io.pcuID)}]", i.U, entry.state, entry.chiMes.opcode)
       HardwareAssertion.placePipe(1)
   }
   HardwareAssertion.placePipe(2)
@@ -502,7 +502,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   val cntReg = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U(64.W) }))
   cntReg.zip(entrys).foreach { case (c, p) => c := Mux(p.isFree, 0.U, c + 1.U) }
 
-  cntReg.zip(entrys).zipWithIndex.foreach { case ((c, p), i) => HardwareAssertion.checkTimeout(p.isFree, TIMEOUT_SMINTF, cf"SNMAS Intf[0x${i.U}] STATE[0x${entrys(i).state}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] OP[0x${entrys(i).chiMes.opcode}] TIMEOUT", i.U, entrys(i).state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.opcode) }
+  cntReg.zip(entrys).zipWithIndex.foreach { case ((c, p), i) => HardwareAssertion.checkTimeout(p.isFree, TIMEOUT_SMINTF, cf"SNMAS Intf[0x${i.U}] STATE[0x${entrys(i).state}] ADDR[0x${entrys(i).fullAddr(io.pcuID)}] OP[0x${entrys(i).chiMes.opcode}] TIMEOUT", i.U, entrys(i).state, entrys(i).chiMes.opcode) }
   HardwareAssertion.placePipe(2)
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
   require(param.nrEntry >= 4 & param.nrEntry % 4 == 0)
