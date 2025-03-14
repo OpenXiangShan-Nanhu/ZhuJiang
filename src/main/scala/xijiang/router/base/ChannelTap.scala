@@ -6,11 +6,10 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
 import zhujiang.{ZJModule, ZJParametersKey}
-import zhujiang.chi.{Flit, NodeIdBundle}
+import zhujiang.chi.{Flit, NodeIdBundle, RingFlit}
 
-class SingleChannelTap[T <: Flit](gen: T, channel: String, node: Node)(implicit p: Parameters) extends ZJModule {
-  private val local = !node.csnNode
-  private val ringSize = if(local) p(ZJParametersKey).localRing.size else p(ZJParametersKey).csnRing.size
+class SingleChannelTap[T <: RingFlit](gen: T, channel: String)(implicit p: Parameters) extends ZJModule {
+  private val ringSize = p(ZJParametersKey).island.size
   private val timerBits = log2Ceil(ringSize + 1)
   val io = IO(new Bundle {
     val in = Input(new ChannelBundle(gen))
@@ -21,14 +20,7 @@ class SingleChannelTap[T <: Flit](gen: T, channel: String, node: Node)(implicit 
     val tapIdx = Input(UInt(nodeAidBits.W))
   })
 
-  private val c2c = node.nodeType == NodeType.C
-  private val modName = if(local) {
-    s"SingleChannelTapLocal$channel"
-  } else if(c2c) {
-    s"SingleChannelTapC2c$channel"
-  } else {
-    s"SingleChannelTapCsn$channel"
-  }
+  private val modName = s"SingleChannelTap$channel"
   override val desiredName = modName
   private val normalShift = 0
   private val injectRsvdShift = 1
@@ -93,18 +85,12 @@ class SingleChannelTap[T <: Flit](gen: T, channel: String, node: Node)(implicit 
   rsvdBReg.suggestName("rsvd_pipe_b")
 
   private val matcher = io.matchTag.asTypeOf(new NodeIdBundle)
-  if(local) {
-    io.eject.valid := io.in.flit.bits.tgt.asTypeOf(new NodeIdBundle).router === matcher.router && io.in.flit.valid
-  } else if(c2c) {
-    io.eject.valid := io.in.flit.bits.tgt.asTypeOf(new NodeIdBundle).chip === matcher.chip && io.in.flit.valid
-  } else {
-    io.eject.valid := io.in.flit.bits.tgt.asTypeOf(new NodeIdBundle) === matcher && io.in.flit.valid
-  }
+  io.eject.valid := io.in.flit.bits.tgt.asTypeOf(new NodeIdBundle).router === matcher.router && io.in.flit.valid
   io.eject.bits := io.in.flit.bits
 }
 
-class ChannelTap[T <: Flit](
-  val gen: T, channel: String,
+class ChannelTap[T <: RingFlit](
+  gen: T, channel: String,
   ejectBuf: Int, node: Node,
 )(implicit p: Parameters) extends ZJModule {
   val io = IO(new Bundle {
@@ -115,16 +101,8 @@ class ChannelTap[T <: Flit](
     val matchTag = Input(UInt(niw.W))
     val injectTapSelOH = Input(Vec(2, Bool()))
   })
-  private val local = !node.csnNode
-  private val c2c = node.nodeType == NodeType.C
-  override val desiredName = if(local) {
-    s"ChannelTapLocal$channel"
-  } else if(c2c) {
-    s"ChannelTapC2c$channel"
-  } else {
-    s"ChannelTapCsn$channel"
-  }
-  private val taps = Seq.fill(2)(Module(new SingleChannelTap(gen, channel, node)))
+  override val desiredName = s"ChannelTapLocal$channel"
+  private val taps = Seq.fill(2)(Module(new SingleChannelTap(gen, channel)))
   private val ejectArb = Module(new ResetRRArbiter(gen, 2))
   for(idx <- taps.indices) {
     taps(idx).io.in := io.rx(idx)

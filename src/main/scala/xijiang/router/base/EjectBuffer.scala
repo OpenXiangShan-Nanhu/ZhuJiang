@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xs.utils.PickOneLow
 import zhujiang.ZJModule
-import zhujiang.chi.Flit
+import zhujiang.chi.{Flit, NodeIdBundle, RingFlit}
 
 class VipTable[T <: Data](gen:T, size: Int) extends Module {
   val io = IO(new Bundle {
@@ -58,7 +58,7 @@ class VipTable[T <: Data](gen:T, size: Int) extends Module {
     } else {
       lowMaskVec(idx) := vipPtrOH(size - 1, idx + 1).orR
     }
-    assert(PopCount(Seq(highMaskVec(idx), lowMaskVec(idx), vipPtrOH(idx))) === 1.U)
+    assert(PopCount(Seq(highMaskVec(idx), lowMaskVec(idx), vipPtrOH(idx))) === 1.U, s"bit $idx is not covered by any mask!")
   }
 
   private val highValidMask = highMask & validMask
@@ -73,8 +73,11 @@ class VipTable[T <: Data](gen:T, size: Int) extends Module {
   }
 }
 
-class EjectBuffer[T <: Flit](gen: T, size: Int, chn: String)(implicit p: Parameters) extends ZJModule {
-  private def getTag(flit: Flit): UInt = if(chn == "DAT") Cat(flit.src, flit.txn, flit.tgt, flit.did) else Cat(flit.src, flit.txn, flit.tgt)
+class EjectBuffer[T <: RingFlit](gen: T, size: Int, chn: String)(implicit p: Parameters) extends ZJModule {
+  private def getTag(flit: RingFlit): UInt = {
+    val tgtAid = flit.tgt.asTypeOf(new NodeIdBundle).aid
+    if(chn == "DAT") Cat(flit.src, flit.txn, tgtAid, flit.did) else Cat(flit.src, flit.txn, tgtAid)
+  }
   require(size >= 3)
   val io = IO(new Bundle {
     val enq = Flipped(Decoupled(gen))
@@ -84,7 +87,7 @@ class EjectBuffer[T <: Flit](gen: T, size: Int, chn: String)(implicit p: Paramet
   private val flitTag = getTag(io.enq.bits)
   private val oqueue = Module(new Queue(gen, size - 1))
   private val ipipe = Module(new Queue(gen, 1, pipe = true))
-  private val vipTable = Module(new VipTable(UInt(flitTag.getWidth.W), zjParams.localRing.size))
+  private val vipTable = Module(new VipTable(UInt(flitTag.getWidth.W), zjParams.island.size))
   private val empties = RegInit(size.U(log2Ceil(size + 1).W))
 
   oqueue.io.enq <> ipipe.io.deq

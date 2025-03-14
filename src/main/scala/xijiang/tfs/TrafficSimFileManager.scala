@@ -20,10 +20,9 @@ object TrafficSimFileManager {
     FileRegisters.add("", "xmake.lua", compScr, true)
   }
 
-  private val localNodeTypes: String = allNodeTypeMap.filter(_._3 == "LOCAL_TGT_POOL").map(_._1.toUpperCase + "_TYPE").reduce((a: String, b: String) => s"$a, $b")
-  private val csnNodeTypes: String = allNodeTypeMap.filter(_._3 == "C2C_TGT_POOL").map(_._1.toUpperCase + "_TYPE").reduce((a: String, b: String) => s"$a, $b")
+  private val nodeTypeSeqStr: String = allNodeTypeMap.map(_._1.toUpperCase + "_TYPE").reduce((a: String, b: String) => s"$a, $b")
   private val ejectsArraysInitFn: String = allNodeTypeMap.map(
-    elm => s"  type_ejects_map[${elm._1.toUpperCase}_TYPE] = {${elm._4.reduce((a: String, b: String) => s"$a, $b")}};\n"
+    elm => s"  type_ejects_map[${elm._1.toUpperCase}_TYPE] = {${elm._3.reduce((a: String, b: String) => s"$a, $b")}};\n"
   ).reduce(_ + _)
 
   def header: String =
@@ -40,13 +39,15 @@ object TrafficSimFileManager {
        |
        |void tfs_get_rx_ready(short int node_id, char chn, svBit valid, svBit *ready, svBit reset);
        |
-       |void tfs_step();
+       |uint8_t tfs_step();
        |
        |void tfs_set_seed(unsigned int seed);
        |
        |void tfs_init();
        |
        |void tfs_verbose();
+       |
+       |void tfs_start();
        |
        |#ifdef __cplusplus
        |}
@@ -73,7 +74,6 @@ object TrafficSimFileManager {
        |#define TIME_OUT ${params.tfbParams.get.timeOut}
        |#define NODE_NID_BITS ${params.nodeNidBits}
        |#define NODE_AID_BITS ${params.nodeAidBits}
-       |#define NODE_NET_BITS ${params.nodeNetBits}
        |#define FLIT_BUF_SIZE ${(maxFlitSize + 7) / 8}
        |
        |$allNodeTypeDefs
@@ -84,11 +84,6 @@ object TrafficSimFileManager {
        |#define SNP ${ChannelEncodings.SNP}
        |#define ERQ ${ChannelEncodings.ERQ}
        |
-       |#define TYPE_NET_OFF ${NodeType.width}
-       |#define TYPE_NET_BITS 1
-       |
-       |#define NODE_AID_BITS ${params.nodeAidBits}
-       |#define NODE_NID_BITS ${params.nodeNidBits}
        |#define NODE_ID_BITS ${params.nodeIdBits}
        |#define TGT_ID_OFF 0
        |#define SRC_ID_OFF (TGT_ID_OFF + NODE_ID_BITS)
@@ -98,10 +93,6 @@ object TrafficSimFileManager {
        |
        |#define TXN_ID_BITS 12
        |#define TXN_ID_OFF (4 + NODE_ID_BITS + NODE_ID_BITS)
-       |
-       |#define LOCAL_TGT_POOL 0
-       |#define CSN_TGT_POOL 1
-       |#define C2C_TGT_POOL 2
        |
        |#define TFS_ERR(...)                  \\
        |  {                                   \\
@@ -125,7 +116,6 @@ object TrafficSimFileManager {
        |class NodeManager {
        |  public:
        |  uint16_t node_id;
-       |  uint16_t pool_type = 0;
        |  uint16_t txn_id = 0;
        |  bool csn = false;
        |  mt19937 random_gen;
@@ -133,25 +123,25 @@ object TrafficSimFileManager {
        |  unordered_map<uint8_t, array<uint8_t, FLIT_BUF_SIZE>> chn_tx_flit_map;
        |  unordered_map<uint8_t, uint32_t> chn_rx_ready_timer_map;
        |  unordered_map<uint8_t, uint32_t> chn_tx_valid_timer_map;
-       |  NodeManager(uint16_t nid, uint8_t nt);
+       |  NodeManager(uint16_t nid);
        |  void init();
        |  void step();
        |  void rx_fire(uint8_t chn);
        |  void tx_fire(uint8_t chn);
        |};
        |
-       |typedef vector<unordered_map<uint8_t, vector<uint16_t>>>
+       |typedef unordered_map<uint8_t, vector<uint16_t>>
        |  tgt_pool_t;
        |
        |class TrafficSim {
        |  private:
        |  TrafficSim();
-       |  bool initialized = false;
-       |  const uint8_t local_node_types[${allNodeTypeMap.count(_._3 == "LOCAL_TGT_POOL")}] = {$localNodeTypes};
-       |  const uint8_t csn_node_types[${allNodeTypeMap.count(_._3 == "C2C_TGT_POOL")}] = {$csnNodeTypes};
+       |  const uint8_t node_types[${allNodeTypeMap.size}] = {$nodeTypeSeqStr};
        |  unordered_map<uint8_t, vector<uint8_t>> type_ejects_map;
        |
        |  public:
+       |  bool initialized = false;
+       |  bool start = false;
        |  TrafficSim(const TrafficSim &) = delete;
        |  TrafficSim &operator=(const TrafficSim &) = delete;
        |  tgt_pool_t legal_tgt_pool;
@@ -167,7 +157,7 @@ object TrafficSimFileManager {
        |  }
        |  void init();
        |  void set_seed(uint32_t seed);
-       |  void step();
+       |  uint8_t step();
        |};
        |
        |TrafficSim::TrafficSim() {
@@ -183,23 +173,14 @@ object TrafficSimFileManager {
        |  return vec & clear;
        |}
        |
-       |NodeManager::NodeManager(uint16_t nid, uint8_t nt) {
+       |NodeManager::NodeManager(uint16_t nid) {
        |  node_id = nid;
        |  txn_id = 0;
-       |  bool c2c = nt == C2C_TYPE;
-       |  csn = get_field(nt, TYPE_NET_OFF, TYPE_NET_BITS) == 0x1;
-       |  if(c2c) {
-       |    pool_type = C2C_TGT_POOL;
-       |  } else if(csn) {
-       |    pool_type = CSN_TGT_POOL;
-       |  } else {
-       |    pool_type = LOCAL_TGT_POOL;
-       |  }
        |}
        |
        |void NodeManager::init() {
        |  const auto &tfs = TrafficSim::get_instance();
-       |  for(const auto &[k, v] : tfs.legal_tgt_pool.at(pool_type)) {
+       |  for(const auto &[k, v] : tfs.legal_tgt_pool) {
        |    legal_tgt_pool[k] = vector<uint16_t>();
        |    for(const auto &tgt : v) {
        |      if(tgt != node_id) legal_tgt_pool[k].push_back(tgt);
@@ -209,20 +190,19 @@ object TrafficSimFileManager {
        |  chn_tx_flit_map[RSP] = array<uint8_t, FLIT_BUF_SIZE>();
        |  chn_tx_flit_map[DAT] = array<uint8_t, FLIT_BUF_SIZE>();
        |  chn_tx_flit_map[SNP] = array<uint8_t, FLIT_BUF_SIZE>();
-       |  if(!csn) chn_tx_flit_map[ERQ] = array<uint8_t, FLIT_BUF_SIZE>();
+       |  chn_tx_flit_map[ERQ] = array<uint8_t, FLIT_BUF_SIZE>();
        |  for(auto &[chn, _]: chn_tx_flit_map) tx_fire(chn);
        |  chn_rx_ready_timer_map[REQ] = 0;
        |  chn_rx_ready_timer_map[RSP] = 0;
        |  chn_rx_ready_timer_map[DAT] = 0;
        |  chn_rx_ready_timer_map[SNP] = 0;
-       |  if(!csn) chn_rx_ready_timer_map[ERQ] = 0;
+       |  chn_rx_ready_timer_map[ERQ] = 0;
        |
        |  chn_tx_valid_timer_map[REQ] = 0;
        |  chn_tx_valid_timer_map[RSP] = 0;
        |  chn_tx_valid_timer_map[DAT] = 0;
        |  chn_tx_valid_timer_map[SNP] = 0;
-       |  if(!csn) chn_tx_valid_timer_map[ERQ] = 0;
-       |
+       |  chn_tx_valid_timer_map[ERQ] = 0;
        |
        |  printf("  node: 0x%x\\n", node_id);
        |  for(const auto &[k, v]: legal_tgt_pool) {
@@ -246,7 +226,7 @@ object TrafficSimFileManager {
        |
        |void NodeManager::rx_fire(uint8_t chn) {
        |  uniform_int_distribution<uint8_t> dist(0, RX_READY_MAX_DELAY);
-       |  if(chn > 5) {
+       |  if(chn > 4) {
        |    TFS_ERR("illegal channel type %d!\\n", chn);
        |  } else {
        |    chn_rx_ready_timer_map[chn] = dist(random_gen);
@@ -254,7 +234,7 @@ object TrafficSimFileManager {
        |}
        |
        |void NodeManager::tx_fire(uint8_t chn) {
-       |  if(chn > 5) {
+       |  if(chn > 4) {
        |    TFS_ERR("illegal channel type %d!\\n", chn);
        |    return;
        |  }
@@ -282,62 +262,28 @@ object TrafficSimFileManager {
        |
        |void TrafficSim::init() {
        |  if(initialized) return;
-       |  for(int i = 0; i < 3; i++) {
-       |    legal_tgt_pool.push_back(unordered_map<uint8_t, vector<uint16_t>>());
-       |    legal_tgt_pool[i][REQ] = vector<uint16_t>();
-       |    legal_tgt_pool[i][RSP] = vector<uint16_t>();
-       |    legal_tgt_pool[i][DAT] = vector<uint16_t>();
-       |    legal_tgt_pool[i][SNP] = vector<uint16_t>();
-       |    if(i == 0) legal_tgt_pool[i][ERQ] = vector<uint16_t>();
-       |  }
+       |  legal_tgt_pool[REQ] = vector<uint16_t>();
+       |  legal_tgt_pool[RSP] = vector<uint16_t>();
+       |  legal_tgt_pool[DAT] = vector<uint16_t>();
+       |  legal_tgt_pool[SNP] = vector<uint16_t>();
+       |  legal_tgt_pool[ERQ] = vector<uint16_t>();
+       |
        |  printf("tfs node manager target:\\n");
-       |  for(int i = 0; i < ${allNodeTypeMap.count(_._3 == "LOCAL_TGT_POOL")}; i++) {
-       |    const uint8_t node_type = local_node_types[i];
+       |  for(int i = 0; i < ${allNodeTypeMap.size}; i++) {
+       |    const uint8_t node_type = node_types[i];
        |    const uint8_t id_num = tfb_get_nodes_size(node_type);
        |    uint16_t *id_arr = new uint16_t[id_num];
        |    tfb_get_nodes(node_type, id_arr);
        |    for(int j = 0; j < id_num; j++) {
        |      const uint16_t node_id = id_arr[j];
        |      for(const auto &chn: type_ejects_map.at(node_type)) {
-       |        legal_tgt_pool[LOCAL_TGT_POOL][chn].push_back(node_id);
+       |        legal_tgt_pool[chn].push_back(node_id);
        |      }
-       |      node_mng_pool[node_id] = make_unique<NodeManager>(node_id, node_type);
-       |    }
-       |    delete[] id_arr;
-       |  }
-       |  for(int i = 0; i < ${allNodeTypeMap.count(_._3 == "C2C_TGT_POOL")}; i++) {
-       |    const uint8_t node_type = csn_node_types[i];
-       |    const uint8_t id_num = tfb_get_nodes_size(node_type);
-       |    uint16_t *id_arr = new uint16_t[id_num];
-       |    tfb_get_nodes(node_type, id_arr);
-       |    for(int j = 0; j < id_num; j++) {
-       |      const uint16_t node_id = id_arr[j];
-       |      for(const auto &chn: type_ejects_map.at(node_type)) {
-       |        legal_tgt_pool[C2C_TGT_POOL][chn].push_back(node_id);
-       |      }
-       |      node_mng_pool[node_id] = make_unique<NodeManager>(node_id, node_type);
+       |      node_mng_pool[node_id] = make_unique<NodeManager>(node_id);
        |    }
        |    delete[] id_arr;
        |  }
        |
-       |  uint8_t c2c_id_num = tfb_get_nodes_size(C2C_TYPE);
-       |  uint16_t *c2c_id_arr = new uint16_t[c2c_id_num];
-       |  tfb_get_nodes(C2C_TYPE, c2c_id_arr);
-       |  for(uint8_t i = 0; i < c2c_id_num; i++) {
-       |    const uint16_t c2c_node_id = c2c_id_arr[i];
-       |    const uint16_t chip = get_field(c2c_node_id, 0, NODE_AID_BITS);
-       |    const uint16_t net = 1 << (NODE_ID_BITS - 1);
-       |    const uint16_t max_nid = 1 << 4;
-       |    for(uint16_t nid = 0; nid < max_nid; nid++) {
-       |      uint16_t remote_node_id = net | (nid << NODE_AID_BITS) | chip;
-       |      legal_tgt_pool[CSN_TGT_POOL][REQ].push_back(remote_node_id);
-       |      legal_tgt_pool[CSN_TGT_POOL][RSP].push_back(remote_node_id);
-       |      legal_tgt_pool[CSN_TGT_POOL][DAT].push_back(remote_node_id);
-       |      legal_tgt_pool[CSN_TGT_POOL][SNP].push_back(remote_node_id);
-       |    }
-       |    node_mng_pool[c2c_node_id] = make_unique<NodeManager>(c2c_node_id, C2C_TYPE);
-       |  }
-       |  delete[] c2c_id_arr;
        |  for(const auto &[k, v]: node_mng_pool) v->init();
        |  initialized = true;
        |}
@@ -348,12 +294,12 @@ object TrafficSimFileManager {
        |  for(auto &[_, mng]: node_mng_pool) mng->random_gen.seed(dist(random_gen));
        |}
        |
-       |void TrafficSim::step() {
+       |uint8_t TrafficSim::step() {
        |  global_timer++;
-       |  tfb_step();
        |  for(auto &[_, v] : node_mng_pool) {
        |    v->step();
        |  }
+       |  return tfb_step();
        |}
        |
        |extern "C" {
@@ -361,7 +307,7 @@ object TrafficSimFileManager {
        |  auto &tfs = TrafficSim::get_instance();
        |  const auto mng_ptr = tfs.node_mng_pool[node_id].get();
        |  auto tx_flit_ptr = mng_ptr->chn_tx_flit_map[chn].data();
-       |  if(reset == 1) {
+       |  if(!tfs.start) {
        |    *valid = 0;
        |  } else {
        |    *valid = (mng_ptr->chn_tx_valid_timer_map[chn] == 0) ? 1 : 0;
@@ -371,8 +317,9 @@ object TrafficSimFileManager {
        |}
        |
        |void tfs_get_rx_ready(short int node_id, char chn, svBit valid, svBit *ready, svBit reset) {
+       |  auto &tfs = TrafficSim::get_instance();
        |  const auto mng_ptr = TrafficSim::get_instance().node_mng_pool[node_id].get();
-       |  if(reset == 1) {
+       |  if(!tfs.start) {
        |    *ready = 0;
        |  } else {
        |    *ready = (mng_ptr->chn_rx_ready_timer_map[chn] == 0) ? 1 : 0;
@@ -380,8 +327,8 @@ object TrafficSimFileManager {
        |  }
        |}
        |
-       |void tfs_step() {
-       |  TrafficSim::get_instance().step();
+       |uint8_t tfs_step() {
+       |  return TrafficSim::get_instance().step();
        |}
        |
        |void tfs_set_seed(unsigned int seed) {
@@ -395,6 +342,10 @@ object TrafficSimFileManager {
        |void tfs_verbose() {
        |  TrafficSim::get_instance().verbose = true;
        |  tfb_verbose();
+       |}
+       |
+       |void tfs_start() {
+       |  TrafficSim::get_instance().start = true;
        |}
        |}""".stripMargin
   }
@@ -460,6 +411,7 @@ object TrafficSimFileManager {
        |  VerilatedVcdC* waveform_dumper;
        |  argparse::ArgumentParser argparser;
        |  ~SimMain();
+       |  uint8_t kill = 0;
        |
        |  static SimMain &get_instance() {
        |    static SimMain instance;
@@ -484,6 +436,7 @@ object TrafficSimFileManager {
        |  int i = reset_cycle;
        |  while(i --> 0) step();
        |  ring_ptr->reset = 0;
+       |  while(ring_ptr->reset_state == 1) step();
        |}
        |
        |SimMain::SimMain() {
@@ -528,14 +481,16 @@ object TrafficSimFileManager {
        |    ring_ptr->trace(waveform_dumper, 0);
        |    waveform_dumper->open(wave_file.c_str());
        |  }
-       |  ring_ptr->reset = 1;
+       |  ring_ptr->reset = 0;
        |  ring_ptr->clock = 0;
+       |  ring_ptr->eval();
+       |  ring_ptr->reset = 1;
        |  ring_ptr->eval();
        |  tfs_init();
        |  tfs_set_seed(seed);
        |  if(verbose) tfs_verbose();
-       |
        |  reset();
+       |  tfs_start();
        |}
        |
        |void print_progress() {
@@ -554,7 +509,7 @@ object TrafficSimFileManager {
        |void SimMain::step() {
        |  ring_ptr->clock = 1;
        |  ring_ptr->eval();
-       |  tfs_step();
+       |  kill = tfs_step();
        |  global_timer++;
        |  if(dump_wave) waveform_dumper->dump(2 * global_timer);
        |  ring_ptr->clock = 0;
@@ -570,7 +525,7 @@ object TrafficSimFileManager {
        |int main(int argc, char *argv[]) {
        |  SimMain &sim_main = SimMain::get_instance();
        |  sim_main.parse(argc, argv);
-       |  while(!sim_main.time_out()) sim_main.step();
+       |  while(!sim_main.time_out() && sim_main.kill == 0) sim_main.step();
        |  printf("\\nSim End\\n");
        |  return 0;
        |}

@@ -84,8 +84,8 @@ class ChiRdCtrl(implicit p: Parameters) extends ZJModule with HasCircularQueuePt
   def fromDCT(x: UInt): Bool = {
   require(x.getWidth == niw)
   val fromCC = WireInit(false.B)
-  if(zjParams.localRing.filter(_.nodeType == NodeType.CC).nonEmpty){
-    fromCC := zjParams.localRing.filter(_.nodeType == NodeType.CC).map(_.nodeId.asUInt >> nodeAidBits === x >> nodeAidBits).reduce(_ | _)
+  if(zjParams.island.exists(_.nodeType == NodeType.CC)){
+    fromCC := zjParams.island.filter(_.nodeType == NodeType.CC).map(_.nodeId.asUInt >> nodeAidBits === x >> nodeAidBits).reduce(_ | _)
   }
   else {
     fromCC := false.B

@@ -10,32 +10,32 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 
 import scala.annotation.tailrec
 
-/**
- * CC----HF0----HF1----CC
- * |                    |
- * SMem                RI
- * |         Local      |
- * HI                  HI default
- * |                    |
- * CC----HF0----HF1----CC
- */
-
 class ZhujiangTopConfig extends Config((site, here, up) => {
   case ZJParametersKey => ZJParameters(
-    localNodeParams = Seq(
+    nodeParams = Seq(
+      NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 0),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
+      NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 0),
+      NodeParam(nodeType = NodeType.P),
+      NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 0),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
+      NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 0),
 
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2, splitFlit = true, outstanding = 8, attr = "nanhu", socket = "async"),
-      NodeParam(nodeType = NodeType.HF, bankId = 0, splitFlit = true, hfpId = 0),
-      NodeParam(nodeType = NodeType.HF, bankId = 1, splitFlit = true, hfpId = 0),
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2, splitFlit = true, outstanding = 8, attr = "nanhu", socket = "c2c"),
-      NodeParam(nodeType = NodeType.RI, attr = "main", splitFlit = true),
-      NodeParam(nodeType = NodeType.HI, defaultHni = true, splitFlit = true, attr = "main"),
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2, splitFlit = true, outstanding = 8, attr = "nanhu", socket = "async"),
-      NodeParam(nodeType = NodeType.HF, bankId = 1, splitFlit = true, hfpId = 1),
-      NodeParam(nodeType = NodeType.HF, bankId = 0, splitFlit = true, hfpId = 1),
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2, splitFlit = true, outstanding = 8, attr = "nanhu", socket = "c2c"),
-      NodeParam(nodeType = NodeType.HI, addressRange = (0x3803_0000, 0x3804_0000), splitFlit = true, attr = "ddr_cfg"),
-      NodeParam(nodeType = NodeType.S,  splitFlit = true, outstanding = 32, attr = "ddr_data")
+      NodeParam(nodeType = NodeType.RI, attr = "main"),
+      NodeParam(nodeType = NodeType.HI, defaultHni = true, attr = "main"),
+      NodeParam(nodeType = NodeType.P),
+
+      NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 1),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
+      NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 1),
+      NodeParam(nodeType = NodeType.P),
+      NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 1),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
+      NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 1),
+
+      NodeParam(nodeType = NodeType.S, bankId = 0),
+      NodeParam(nodeType = NodeType.S, bankId = 1),
+      NodeParam(nodeType = NodeType.P)
     )
   )
   case DebugOptionsKey => DebugOptions(EnablePerfDebug = false)

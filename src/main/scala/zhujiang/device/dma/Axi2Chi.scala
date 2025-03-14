@@ -10,6 +10,7 @@ import xs.utils.FastArbiter
 import zhujiang.axi._
 import zhujiang.chi._
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+import zhujiang.chi.FlitHelper.connIcn
 
 case class DmaParams(
   chiEntrySize: Int = 16,
@@ -49,28 +50,30 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
   chiRdE.io.reqDB  <> rdDB.io.alloc
   chiRdE.io.respDB <> rdDB.io.allocRsp
-  chiRdE.io.chiRsp <> icn.rx.resp.get
-  chiRdE.io.chiDat <> icn.rx.data.get
+  connIcn(chiRdE.io.chiRsp, icn.rx.resp.get)
+  connIcn(chiRdE.io.chiDat, icn.rx.data.get)
   chiRdE.io.wrDB   <> rdDB.io.wrDB
   chiRdE.io.rdDB   <> rdDB.io.rdDB
 
   axi.ar <> axiRSpilt.io.uAxiAr
   axi.r  <> axiRSpilt.io.uAxiR
 
-  chiRdE.io.chiRsp.bits    := icn.rx.resp.get.bits
-  chiWrE.io.chiRxRsp.bits  := icn.rx.resp.get.bits
+  chiRdE.io.chiRsp.bits    := icn.rx.resp.get.bits.asTypeOf(chiRdE.io.chiRsp.bits)
+  chiWrE.io.chiRxRsp.bits  := icn.rx.resp.get.bits.asTypeOf(chiWrE.io.chiRxRsp.bits)
   chiRdE.io.chiRsp.valid   := icn.rx.resp.get.valid
   chiWrE.io.chiRxRsp.valid := icn.rx.resp.get.valid
   
   icn.rx.resp.get.ready    := chiRdE.io.chiRsp.ready & chiWrE.io.chiRxRsp.ready
 
 // Write Logic Connection
-  FastArbiter(VecInit(Seq(chiRdE.io.chiReq, chiWrE.io.chiReq)), icn.tx.req.get)
+  private val arbOut = Wire(chiWrE.io.chiReq.cloneType)
+  connIcn(icn.tx.req.get, arbOut)
+  FastArbiter(Seq(chiRdE.io.chiReq, chiWrE.io.chiReq), arbOut)
   axiWSpilt.io.dAxiAw <> chiWrE.io.axiAw
   axiWSpilt.io.dAxiW  <> chiWrE.io.axiW
   axiWSpilt.io.dAxiB  <> chiWrE.io.axiB
 
-  chiWrE.io.chiTxRsp <> icn.tx.resp.get
+  connIcn(icn.tx.resp.get, chiWrE.io.chiTxRsp)
   chiWrE.io.reqDB    <> wrDB.io.alloc
   chiWrE.io.respDB   <> wrDB.io.allocRsp
   chiWrE.io.wrDB     <> wrDB.io.wrDB
@@ -81,5 +84,5 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   axi.w  <> axiWSpilt.io.uAxiW
   axi.b  <> axiWSpilt.io.uAxiB
 
-  icn.tx.data.get <> wrDB.io.dData
+  connIcn(icn.tx.data.get, wrDB.io.dData)
 }

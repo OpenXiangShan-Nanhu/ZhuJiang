@@ -6,7 +6,7 @@ import xs.utils.ResetRRArbiter
 import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 
 class C2cIcnBundle(implicit p:Parameters) extends ZJBundle {
-  val req = Decoupled(UInt(reqFlitBits.W))
+  val req = Decoupled(UInt(rreqFlitBits.W))
   val rsp = Decoupled(UInt(respFlitBits.W))
   val dat = Decoupled(UInt(dataFlitBits.W))
   val snp = Decoupled(UInt(snoopFlitBits.W))
@@ -14,7 +14,7 @@ class C2cIcnBundle(implicit p:Parameters) extends ZJBundle {
 
 class C2cTxDispatcher(implicit p:Parameters) extends ZJModule {
   private val chnInfoSeq = Seq(
-    C2cUtils.getSlotsAndDeq(reqFlitBits),
+    C2cUtils.getSlotsAndDeq(rreqFlitBits),
     C2cUtils.getSlotsAndDeq(respFlitBits),
     C2cUtils.getSlotsAndDeq(dataFlitBits),
     C2cUtils.getSlotsAndDeq(snoopFlitBits),
@@ -133,12 +133,12 @@ class C2cPacker(implicit p:Parameters) extends ZJModule {
     val c2c = new C2cBundle
   })
   private val dispatcher = Module(new C2cTxDispatcher)
-  private val txreq = Module(new TxQueue(UInt(reqFlitBits.W), C2cUtils.reqId))
+  private val txreq = Module(new TxQueue(UInt(rreqFlitBits.W), C2cUtils.reqId))
   private val txrsp = Module(new TxQueue(UInt(respFlitBits.W), C2cUtils.rspId))
   private val txdat = Module(new TxQueue(UInt(dataFlitBits.W), C2cUtils.datId))
   private val txsnp = Module(new TxQueue(UInt(snoopFlitBits.W), C2cUtils.snpId))
 
-  private val rxreq = Module(new RxQueue(UInt(reqFlitBits.W), C2cUtils.reqId, zjParams.c2cParams.reqRxSize))
+  private val rxreq = Module(new RxQueue(UInt(rreqFlitBits.W), C2cUtils.reqId, zjParams.c2cParams.reqRxSize))
   private val rxrsp = Module(new RxQueue(UInt(respFlitBits.W), C2cUtils.rspId, zjParams.c2cParams.rspRxSize))
   private val rxdat = Module(new RxQueue(UInt(dataFlitBits.W), C2cUtils.datId, zjParams.c2cParams.datRxSize))
   private val rxsnp = Module(new RxQueue(UInt(snoopFlitBits.W), C2cUtils.snpId, zjParams.c2cParams.snpRxSize))

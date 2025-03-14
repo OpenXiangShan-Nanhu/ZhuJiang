@@ -1,12 +1,10 @@
 package zhujiang.device.socket
 
 import chisel3._
-import chisel3.util.{Decoupled, DecoupledIO}
 import freechips.rocketchip.util.{AsyncBundle, AsyncQueueParams, AsyncQueueSink, AsyncQueueSource}
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.{BaseIcnMonoBundle, DeviceIcnBundle, IcnBundle}
-import zhujiang.chi.{DataFlit, Flit, ReqFlit, RespFlit, SnoopFlit}
 import zhujiang.{ZJBundle, ZJModule}
 
 import scala.collection.immutable.SeqMap
@@ -36,8 +34,10 @@ trait BaseAsyncIcnMonoBundle {
 class IcnTxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseAsyncIcnMonoBundle {
   private val illegal = node.ejects.contains("REQ") && node.ejects.contains("ERQ")
   require(!illegal)
-  val req = if(node.ejects.contains("REQ") || node.ejects.contains("ERQ") && !node.csnNode) {
-    Some(new AsyncBundle(UInt(reqFlitBits.W), AsyncUtils.params))
+  val req = if(node.ejects.contains("REQ")) {
+    Some(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params))
+  } else if(node.ejects.contains("ERQ")) {
+    Some(new AsyncBundle(UInt(hreqFlitBits.W), AsyncUtils.params))
   } else None
 
   val resp = if(node.ejects.contains("RSP")) {
@@ -56,8 +56,10 @@ class IcnTxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with
 class IcnRxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseAsyncIcnMonoBundle {
   private val illegal = node.injects.contains("REQ") && node.injects.contains("ERQ")
   require(!illegal)
-  val req = if(node.injects.contains("REQ") || node.injects.contains("ERQ") && !node.csnNode) {
-    Some(Flipped(new AsyncBundle(UInt(reqFlitBits.W), AsyncUtils.params)))
+  val req = if(node.injects.contains("REQ")) {
+    Some(Flipped(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params)))
+  } else if(node.injects.contains("ERQ")) {
+    Some(Flipped(new AsyncBundle(UInt(hreqFlitBits.W), AsyncUtils.params)))
   } else None
 
   val resp = if(node.injects.contains("RSP")) {
@@ -93,11 +95,11 @@ class DeviceIcnAsyncBundle(val node: Node)(implicit p: Parameters) extends ZJBun
 
 abstract class BaseIcnAsyncModule(node: Node, icnSide:Boolean)(implicit p: Parameters) extends ZJModule {
   private val flitBitsMap = Map[String, Int](
-    "REQ" -> reqFlitBits,
+    "REQ" -> rreqFlitBits,
     "RSP" -> respFlitBits,
     "DAT" -> dataFlitBits,
     "SNP" -> snoopFlitBits,
-    "ERQ" -> reqFlitBits
+    "ERQ" -> hreqFlitBits
   )
 
   def icnRxBundle: BaseIcnMonoBundle

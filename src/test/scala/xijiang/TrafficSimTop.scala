@@ -14,19 +14,30 @@ import scala.annotation.tailrec
 
 class TfsTopConfig extends Config((site, here, up) => {
   case ZJParametersKey => ZJParameters(
-    localNodeParams = Seq(
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2),
+    nodeParams = Seq(
       NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 0),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
       NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 0),
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2),
-      NodeParam(nodeType = NodeType.RI),
-      NodeParam(nodeType = NodeType.HI, defaultHni = true),
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2),
+      NodeParam(nodeType = NodeType.P),
+      NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 0),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
+      NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 0),
+
+      NodeParam(nodeType = NodeType.RI, attr = "main"),
+      NodeParam(nodeType = NodeType.HI, defaultHni = true, attr = "main"),
+      NodeParam(nodeType = NodeType.P),
+
+      NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 1),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
+      NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 1),
+      NodeParam(nodeType = NodeType.P),
       NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 1),
+      NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
       NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 1),
-      NodeParam(nodeType = NodeType.CC, cpuNum = 2),
-      NodeParam(nodeType = NodeType.HI, addressRange = (0x1000000, 0x10010000)),
-      NodeParam(nodeType = NodeType.S)
+
+      NodeParam(nodeType = NodeType.S, bankId = 0),
+      NodeParam(nodeType = NodeType.S, bankId = 1),
+      NodeParam(nodeType = NodeType.P)
     ),
     tfsParams = Some(TrafficSimParams())
   )
@@ -61,9 +72,11 @@ object TfsTopParser {
 
 class TrafficSimTop(implicit p: Parameters) extends ZJModule {
   require(p(ZJParametersKey).tfsParams.isDefined)
-  private val localRing = Module(new Ring(true))
-  localRing.io_chip := 0.U
+  private val reset_state = IO(Output(Bool()))
+  private val localRing = Module(new Ring)
+  localRing.io_ci := 0.U
   localRing.dfx_reset := DontCare
+  reset_state := localRing.reset_state.get
 }
 
 object TrafficSimTopMain extends App {

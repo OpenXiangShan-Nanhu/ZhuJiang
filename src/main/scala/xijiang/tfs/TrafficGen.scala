@@ -8,8 +8,7 @@ import zhujiang.ZJModule
 import zhujiang.chi.ChannelEncodings
 
 class TrafficGen(node: Node)(implicit p: Parameters) extends ZJModule {
-  private val csnStr = if(node.csnNode) "CSN" else "LOC"
-  override val desiredName = s"TrafficGen$csnStr${node.nodeStr}"
+  override val desiredName = s"TrafficGen${node.nodeStr}"
   val nodeId = IO(Input(UInt(niw.W)))
   val icn = IO(Flipped(new IcnBundle(node, true)))
 

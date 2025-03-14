@@ -51,7 +51,7 @@ case class DJParam(
   // Memblock
   lazy val nrDataBuf = dataBufSizeInByte / BeatByte
 
-  require(llcSizeInKiB >= 0)
+  require(llcSizeInKiB * 1024 >= CacheLine * llcWays, s"illegal llc size: ${llcSizeInKiB}B")
   require(sfSizeInKiB > 0)
   require(nrReqTaskBuf > 0)
   require(nrSnpTaskBuf >= 0)
@@ -68,10 +68,10 @@ case class DJParam(
 
 trait HasParseZJParam extends HasZJParams {
   // Get LAN Nodes
-  lazy val lanCcNodes       = zjParams.localRing.filter(_.nodeType == NodeType.CC)
-  lazy val lanRniNodes      = zjParams.localRing.filter(_.nodeType == NodeType.RI)
-  lazy val lanHnfNodes      = zjParams.localRing.filter(_.nodeType == NodeType.HF)
-  lazy val lanSnNodes       = zjParams.localRing.filter(_.nodeType == NodeType.S)
+  lazy val lanCcNodes       = zjParams.island.filter(_.nodeType == NodeType.CC)
+  lazy val lanRniNodes      = zjParams.island.filter(_.nodeType == NodeType.RI)
+  lazy val lanHnfNodes      = zjParams.island.filter(_.nodeType == NodeType.HF)
+  lazy val lanSnNodes       = zjParams.island.filter(_.nodeType == NodeType.S)
   lazy val ccNodeIdSeq      = lanCcNodes.map(_.nodeId)
   lazy val rniNodeIdSeq     = lanRniNodes.map(_.nodeId)
   lazy val snNodeIdSeq      = lanSnNodes.map(_.nodeId)
@@ -80,13 +80,7 @@ trait HasParseZJParam extends HasZJParams {
   require(lanSnNodes.nonEmpty)
 
   // Get BBN Nodes
-  lazy val bbnC2CNodes      = zjParams.csnRing.filter(_.nodeType == NodeType.C2C)
-  lazy val bbnHnxNodes      = zjParams.csnRing.filter(_.nodeType == NodeType.HX)
-  lazy val hasBBN           = zjParams.csnRing.nonEmpty
-  if(hasBBN) {
-    require(bbnC2CNodes.nonEmpty)
-    require(bbnHnxNodes.length == lanHnfNodes.length)
-  }
+  lazy val hasBBN           = zjParams.r2rPos.nonEmpty
 
   // Node ID
   lazy val nodeIdBits       = zjParams.nodeIdBits
@@ -165,14 +159,14 @@ trait HasDJParam extends HasParseZJParam {
   lazy val posSetBits       = log2Ceil(posSets)
   lazy val posTagBits       = addrBits - bankBits - posSetBits - dirBankBits - offsetBits
   // require [ci_lo] > [bankId_hi] > [bankId_lo] > [offset_hi]
-  require(addrBits - ciBits > bankOff + bankBits - 1)
-  require(bankOff > offsetBits)
+  require(addrBits - ciBits > hnxBankOff + bankBits - 1)
+  require(hnxBankOff > offsetBits)
   // useAddr
   lazy val useAddr_hi       = addrBits - 1
   lazy val useAddr_lo       = offsetBits
   // bankId
-  lazy val bankId_hi        = bankOff + bankBits - 1
-  lazy val bankId_lo        = bankOff
+  lazy val bankId_hi        = hnxBankOff + bankBits - 1
+  lazy val bankId_lo        = hnxBankOff
   // offset
   lazy val offset_hi        = offsetBits - 1
   lazy val offset_lo        = 0

@@ -6,7 +6,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.router._
 import xijiang.router.base.BaseRouter
 import zhujiang.ZJParametersKey
-import zhujiang.chi.{NodeIdBundle, ReqAddrBundle, SnpAddrBundle}
+import zhujiang.chi.{MemAttr, NodeIdBundle, ReqAddrBundle, SnpAddrBundle}
 
 object NodeType {
   val CC: Int = 0
@@ -14,9 +14,8 @@ object NodeType {
   val RI: Int = 2
   val HF: Int = 3
   val HI: Int = 4
-  val C: Int = 5
-  val S: Int = 6
-  val P: Int = 7
+  val S: Int = 5
+  val P: Int = 6
   def HX: Int = HF
   def C2C: Int = CC
   def width: Int = log2Ceil(P)
@@ -40,8 +39,7 @@ case class NodeParam(
 case class Node(
   attr: String = "",
   nodeType: Int = NodeType.P,
-  csnNode: Boolean = false,
-  nidBits: Int = 7,
+  nidBits: Int = 5,
   aidBits: Int = 3,
   ringSize: Int = 3,
   globalId: Int = 0,
@@ -59,9 +57,7 @@ case class Node(
 ) {
   require(NodeType.min <= nodeType && nodeType <= NodeType.max)
 
-  val net = if(csnNode) 1 else 0
-  private val netOff = nidBits + aidBits
-  val nodeId = (net << netOff) | (globalId << aidBits)
+  val nodeId = globalId << aidBits
 
   var leftNodes: Seq[Node] = Seq()
   var rightNodes: Seq[Node] = Seq()
@@ -73,7 +69,6 @@ case class Node(
       case NodeType.RI => Module(new RnRouter(this)(p))
       case NodeType.HF => Module(new BaseRouter(this)(p))
       case NodeType.HI => Module(new BaseRouter(this)(p))
-      case NodeType.C => Module(new ChipToChipRouter(this)(p))
       case NodeType.S => Module(new BaseRouter(this)(p))
       case _ => Module(new BaseRouter(this)(p))
     }
@@ -82,31 +77,26 @@ case class Node(
   }
 
   private lazy val routerName:String = {
-    val csnStr = if(csnNode && nodeType != NodeType.C) "c" else ""
     val nstr = nodeType match {
       case NodeType.CC => s"ccn_$domainId"
-      case NodeType.RF => s"rnf_pcu_$bankId"
-      case NodeType.RI => s"rni_$attr"
-      case NodeType.HF => s"hnf_pcu_$bankId"
-      case NodeType.HI => s"hni_$attr"
-      case NodeType.C => s"c2c_$domainId"
-      case NodeType.S => s"sn_$attr"
+      case NodeType.RF => if(attr == "") s"rnf" else s"rnf_$attr"
+      case NodeType.RI => if(attr == "") s"rni" else s"rni_$attr"
+      case NodeType.HF => s"hnf_$bankId"
+      case NodeType.HI => if(attr == "") s"hni" else s"hni_$attr"
+      case NodeType.S => if(attr == "") s"sn" else s"sn_$attr"
       case _ => "pip"
     }
-    s"$csnStr${nstr}_id_0x${nodeId.toHexString}"
+    s"ring_stop_${nstr}_id_0x${nodeId.toHexString}"
   }
 
-  private lazy val routerPrefixStr: String = if(csnNode) "Csn" else ""
-  private lazy val icnPrefixStr: String = if(csnNode) "csn_" else ""
-  private def icnStrGen(pfx: String, body: String) = s"$icnPrefixStr$pfx${body}_id_${nodeId.toHexString}"
-  private def routerStrGen(body: String) = s"Router$routerPrefixStr${body}_0x${nodeId.toHexString}"
+  private def icnStrGen(pfx: String, body: String) = s"$pfx${body}_id_${nodeId.toHexString}"
+  private def routerStrGen(body: String) = s"Router${body}_0x${nodeId.toHexString}"
   lazy val (routerStr, icnStr, nodeStr): (String, String, String) = nodeType match {
     case NodeType.CC => (routerStrGen("CpuCluster"), icnStrGen("", "ccn"), "CCN")
-    case NodeType.RF => (routerStrGen("RequestFull"), icnStrGen("", if(csnNode) s"rnf_bank_$bankId" else "rnf"), "RNF")
+    case NodeType.RF => (routerStrGen("RequestFull"), icnStrGen("", "rnf"), "RNF")
     case NodeType.RI => (routerStrGen("RequestIo"), icnStrGen("", "rni"), "RNI")
     case NodeType.HF => (routerStrGen("HomeFull"), icnStrGen("", s"hnf_bank_$bankId"), "HNF")
     case NodeType.HI => (routerStrGen("HomeIo"), icnStrGen("", "hni"), "HNI")
-    case NodeType.C => (routerStrGen("ChipToChip"), icnStrGen("", "c2c"), "C2C")
     case NodeType.S => (routerStrGen("Subordinate"), icnStrGen("", s"sn"), "SN")
     case _ => (routerStrGen("Pipeline"), icnStrGen("", "pip"), "PIP")
   }
@@ -118,7 +108,6 @@ case class Node(
       case NodeType.RI => (Seq("RSP", "DAT"), Seq("REQ", "RSP", "DAT"))
       case NodeType.HF => (Seq("REQ", "RSP", "DAT"), Seq("RSP", "DAT", "SNP", "ERQ"))
       case NodeType.HI => (Seq("REQ", "RSP", "DAT"), Seq("RSP", "DAT", "ERQ"))
-      case NodeType.C => (Seq("RSP", "DAT", "SNP", "REQ"), Seq("RSP", "DAT", "SNP", "REQ"))
       case NodeType.S => (Seq("ERQ", "DAT"), Seq("RSP", "DAT"))
       case _ => (Seq(), Seq())
     }
@@ -135,7 +124,7 @@ case class Node(
       case CC => chn match {
         case "REQ" => Seq(CC, HF, HI)
         case "RSP" => Seq(CC, HF, HI)
-        case "DAT" => Seq(CC, RF, RI, HF, HI) // if system has DMT, it should add S
+        case "DAT" => Seq(CC, RF, RI, HF, HI)
         case _ => Seq[Int]()
       }
       case RF => chn match {
@@ -147,7 +136,7 @@ case class Node(
       case RI => chn match {
         case "REQ" => Seq(CC, HF, HI)
         case "RSP" => Seq(CC, HF, HI)
-        case "DAT" => Seq(CC, HF, HI) // if system has DMT, it should add S
+        case "DAT" => Seq(CC, HF, HI)
         case _ => Seq[Int]()
       }
       case HF => chn match {
@@ -168,13 +157,6 @@ case class Node(
         case "DAT" => Seq(CC, RF, RI, HF, HI)
         case _ => Seq[Int]()
       }
-      case C => chn match {
-        case "REQ" => Seq(HF)
-        case "RSP" => Seq(RF, HF)
-        case "DAT" => Seq(RF, HF)
-        case "SNP" => Seq(RF)
-        case _ => Seq[Int]()
-      }
       case _ => Seq[Int]()
     }
     require(legalTgtTypeSeq.nonEmpty, s"node 0x${nodeId.toHexString} has no inject channel $chn")
@@ -193,47 +175,31 @@ case class Node(
     }
   }
 
-  private def hnfAddrCheck(addr: ReqAddrBundle): Bool = {
-    !addr.mmio && addr.checkBank(bankBits, bankId.U)
+  private def hnfAddrCheck(addr: ReqAddrBundle, memAttr:MemAttr, bankOff:Int): Bool = {
+    !memAttr.device && addr.checkBank(bankBits, bankId.U, bankOff)
   }
 
-  private def hniAddrCheck(addr: ReqAddrBundle, chip: UInt): Bool = {
+  private def hniAddrCheck(addr: ReqAddrBundle, ci: UInt, memAttr:MemAttr): Bool = {
     val addrMin = addressRange._1.U(addr.getWidth.W)(addr.devAddr.getWidth - 1, 0)
     val addrMax = addressRange._2.U(addr.getWidth.W)(addr.devAddr.getWidth - 1, 0)
     if(defaultHni) {
-      addr.mmio
+      memAttr.device
     } else {
-      addr.mmio && addr.chip === chip && addrMin <= addr.devAddr && addr.devAddr < addrMax
+      memAttr.device && addr.ci === ci && addrMin <= addr.devAddr && addr.devAddr < addrMax
     }
   }
 
-  def isReqCompleter(addr: ReqAddrBundle, chip: UInt): Bool = {
+  def isReqCompleter(addr: ReqAddrBundle, ci: UInt, memAttr:MemAttr, bankOff:Int): Bool = {
     import NodeType._
     nodeType match {
-      case CC => hniAddrCheck(addr, chip)
-      case HF => hnfAddrCheck(addr)
-      case HI => hniAddrCheck(addr, chip)
+      case CC => hniAddrCheck(addr, ci, memAttr)
+      case HF => hnfAddrCheck(addr, memAttr, bankOff)
+      case HI => hniAddrCheck(addr, ci, memAttr)
       case _ => false.B
     }
   }
 
   var friends = Seq[Node]()
-
-  def findSn(bank: UInt, check: Bool): UInt = {
-    require(nodeType == NodeType.HF)
-    val selOH = friends.map(n => n.bankId.U === bank)
-    val selBits = friends.map(n => n.nodeId.U((1 + nidBits + aidBits).W))
-    when(check) {
-      val legal = PopCount(selOH) === 1.U
-      assert(legal)
-    }
-    Mux1H(selOH, selBits)
-  }
-
-  def checkSnTgt(tgt: UInt): Bool = {
-    val tgtRouter = tgt & Cat(Fill(1 + nidBits, true.B), Fill(aidBits, false.B))
-    friends.map(_.nodeId.U((1 + nidBits + aidBits).W) === tgtRouter).reduce(_ || _)
-  }
 
   lazy val leftsStr = if(leftNodes.nonEmpty) leftNodes.map(e => "0x" + e.nodeId.toHexString).reduce((a: String, b: String) => s"$a, $b") else ""
   lazy val rightsStr = if(rightNodes.nonEmpty) rightNodes.map(e => "0x" + e.nodeId.toHexString).reduce((a: String, b: String) => s"$a, $b") else ""

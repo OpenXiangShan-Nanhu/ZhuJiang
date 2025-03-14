@@ -11,10 +11,12 @@ import xs.utils.debug.{DomainInfo, HardwareAssertion}
 import xs.utils.sram.SramBroadcastBundle
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.axi.{AxiBundle, ExtAxiBundle}
+import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.socket.{SocketIcnSide, SocketIcnSideBundle}
 import zhujiang.device.ddr.MemoryComplex
 import zhujiang.device.dma.Axi2Chi
+import zhujiang.device.home.HomeWrapper
 import zhujiang.device.reset.ResetDevice
 
 import scala.math.pow
@@ -40,10 +42,10 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
        |}
        |""".stripMargin)
 
-  private val localRing = Module(new Ring(true))
+  private val ring = Module(new Ring)
   private val dft = Wire(new DftWires)
-  localRing.dfx_reset := dft.reset
-  localRing.clock := clock
+  ring.dfx_reset := dft.reset
+  ring.clock := clock
 
   private def placeResetGen(name: String, icn: IcnBundle): AsyncReset = {
     val mst = Seq(NodeType.CC, NodeType.RI, NodeType.RF).map(_ == icn.node.nodeType).reduce(_ || _)
@@ -65,40 +67,44 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
     dev
   }
 
-  require(localRing.icnHis.get.count(_.node.attr == "ddr_cfg") == 1)
-  require(localRing.icnSns.get.count(_.node.attr == "ddr_data") == 1)
-  private val memCfgIcn = localRing.icnHis.get.filter(_.node.attr == "ddr_cfg").head
-  private val memDatIcn = localRing.icnSns.get.filter(_.node.attr == "ddr_data").head
-  private val memSubSys = Module(new MemoryComplex(memCfgIcn.node, memDatIcn.node))
-  memSubSys.io.icn.cfg <> memCfgIcn
-  memSubSys.io.icn.mem <> memDatIcn
-  memSubSys.reset := placeResetGen(s"ddr", memCfgIcn)
+  private val memDatIcns = ring.icnSns.get
+  private val memAxiPorts = for(icn <- memDatIcns) yield {
+    val nidStr = icn.node.nodeId.toHexString
+    val attrStr = if(icn.node.attr == "") "" else "_" + icn.node.attr
+    val bridge = Module(new AxiBridge(icn.node.copy(attr = s"0x$nidStr$attrStr")))
+    val nameStr = s"chi_bridge_mem_0x$nidStr"
+    bridge.suggestName(nameStr)
+    bridge.reset := placeResetGen(nameStr, icn)
+    bridge.icn <> icn
+    bridge.axi
+  }
 
-  require(localRing.icnHis.get.count(_.node.attr == "main") == 1)
-  require(localRing.icnRis.get.count(_.node.attr == "main") == 1)
-  require(localRing.icnHis.get.length == 2)
-
-  private val cfgIcnSeq = localRing.icnHis.get.filterNot(_.node.attr == "ddr_cfg")
+  private val cfgIcnSeq = ring.icnHis.get
   require(cfgIcnSeq.nonEmpty)
   require(cfgIcnSeq.count(_.node.defaultHni) == 1)
-  private val cfgDevSeq = cfgIcnSeq.zipWithIndex.map({case(icn, idx) =>
+  private val cfgAxiPorts = for(icn <- cfgIcnSeq) yield {
+    val nidStr = icn.node.nodeId.toHexString
     val default = icn.node.defaultHni
-    val pfxStr = if(default) "cfg_default" else s"cfg_$idx"
-    val cfg = Module(new AxiLiteBridge(icn.node, 64, 3))
+    val attrStr = if(icn.node.attr == "") "" else "_" + icn.node.attr
+    val nameStr = if(default) "chi_bridge_cfg_default" else s"chi_bridge_cfg_0x$nidStr"
+    val cfg = Module(new AxiLiteBridge(icn.node.copy(attr = s"0x$nidStr$attrStr"), 64, 3))
+    cfg.suggestName(nameStr)
     cfg.icn <> icn
-    cfg.reset := placeResetGen(pfxStr, icn)
-    cfg
-  })
+    cfg.reset := placeResetGen(nameStr, icn)
+    cfg.axi
+  }
 
-  private val dmaIcnSeq = localRing.icnRis.get
+  private val dmaIcnSeq = ring.icnRis.get
   require(dmaIcnSeq.nonEmpty)
-  private val dmaDevSeq = dmaIcnSeq.zipWithIndex.map({case(icn, idx) =>
-    val pfxStr = s"dma_$idx"
-    val dma = Module(new Axi2Chi(icn.node))
+  private val dmaAxiPorts = dmaIcnSeq.zipWithIndex.map({case(icn, idx) =>
+    val nidStr = icn.node.nodeId.toHexString
+    val attrStr = if(icn.node.attr == "") "" else "_" + icn.node.attr
+    val nameStr = s"chi_bridge_dma_0x$nidStr"
+    val dma = Module(new Axi2Chi(icn.node.copy(attr = s"0x$nidStr$attrStr")))
     dma.icn <> icn
-    dma.reset := placeResetGen(pfxStr, icn)
-    dma.suggestName(pfxStr)
-    dma
+    dma.reset := placeResetGen(nameStr, icn)
+    dma.suggestName(nameStr)
+    dma.axi
   })
 
   private val resetDev = Module(new ResetDevice)
@@ -108,24 +114,31 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
   defaultCfg.resetInject.get := resetDev.io.resetInject
   resetDev.io.resetState := defaultCfg.resetState.get
 
-  require(localRing.icnCcs.get.nonEmpty)
-  private val ccnIcnSeq = localRing.icnCcs.get
+  require(ring.icnCcs.get.nonEmpty)
+  private val ccnIcnSeq = ring.icnCcs.get
   private val ccnSocketSeq = ccnIcnSeq.map(icn => placeSocket("cc", icn, Some(icn.node.domainId)))
 
-  require(localRing.icnHfs.get.nonEmpty)
-  private val hfIcnSeq = localRing.icnHfs.get.sortBy(_.node.hfpId).groupBy(_.node.bankId).toSeq
-  private val hfDef = Definition(new DongJiang(hfIcnSeq.head._2.head.node)) // TODO: There's a risk here.
-  private val hfDevSeq = hfIcnSeq.map(is => Instance(hfDef))
+  require(ring.icnHfs.get.nonEmpty)
+  private val hfIcnSeq = ring.icnHfs.get.sortBy(_.node.hfpId).groupBy(_.node.bankId).toSeq
+  private val nrHfFrnd = ring.icnHfs.get.map(_.node.friends.size).max
+  private val hfDef = Definition(new HomeWrapper(hfIcnSeq.head._2.map(_.node), nrHfFrnd)) // TODO: There's a risk here.
+  private val hfDevSeq = Seq.tabulate(hfIcnSeq.size)(_ => Instance(hfDef))
   for(i <- hfIcnSeq.indices) {
     val bankId = hfIcnSeq(i)._1
-    if(hfIcnSeq(i)._2.length == 2) hfIcnSeq(i)._2.last <> DontCare
-    hfDevSeq(i).io.lan <> hfIcnSeq(i)._2.head
-    hfDevSeq(i).io.flushCache.req <> DontCare
-    hfDevSeq(i).io.config.closeLLC := false.B
-    hfDevSeq(i).io.config.ci := localRing.io_chip
-    hfDevSeq(i).io.config.bankId := bankId.U
+    val icnSeq = hfIcnSeq(i)._2
+    for(j <- icnSeq.indices) {
+      hfDevSeq(i).io.lans(j) <> icnSeq(j)
+      for(k <- 0 until nrHfFrnd) {
+        val frnds = icnSeq(j).node.friends.map(_.nodeId.U(niw.W))
+        if(k < frnds.size) hfDevSeq(i).io.friends(j)(k) := frnds(k)
+        else hfDevSeq(i).io.friends(j)(k) := frnds.last
+      }
+    }
+    hfDevSeq(i).io.ci := ring.io_ci
+    hfDevSeq(i).io.bank := bankId.U
     hfDevSeq(i).reset := placeResetGen(s"hnf_$bankId", hfIcnSeq(i)._2.head)
     hfDevSeq(i).clock := clock
+    hfDevSeq(i).io.dfx := dft
     hfDevSeq(i).suggestName(s"hnf_$bankId")
     HardwareAssertion.fromDomain(hfDevSeq(i).assertionOut, hfDevSeq(i).assertionInfo, level = 0, s"hnf $bankId")
     HardwareAssertion.placePipe(Int.MaxValue-1)
@@ -133,20 +146,22 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
 
   private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, true)
   val io = IO(new Bundle {
-    val chip = Input(UInt(nodeAidBits.W))
+    val ci = Input(UInt(ciIdBits.W))
     val onReset = Output(Bool())
     val assertionOut = assertionNode.assertion.cloneType
     val dft = Input(new DftWires)
+    val resetBypass = Output(AsyncReset())
   })
+  io.resetBypass := ResetGen(2, Some(io.dft.reset))
   dft := io.dft
-  val ddrDrv = memSubSys.io.ddr
-  val cfgDrv = cfgDevSeq.map(_.axi)
-  val dmaDrv = dmaDevSeq.map(_.axi)
+  val ddrDrv = memAxiPorts
+  val cfgDrv = cfgAxiPorts
+  val dmaDrv = dmaAxiPorts
   val ccnDrv = ccnSocketSeq.map(_.io.socket)
   runIOAutomation()
   io.assertionOut <> assertionNode.assertion
   io.onReset := resetDev.io.onReset
-  localRing.io_chip := io.chip
+  ring.io_ci := io.ci
   dontTouch(io.assertionOut)
   HardwareAssertion.setTopNode(assertionNode)
   val assertionInfo = DomainInfo(assertionNode.desc)
@@ -155,27 +170,27 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
 
 trait NocIOHelper {
   def p: Parameters
-  def ddrDrv: AxiBundle
+  def ddrDrv: Seq[AxiBundle]
   def cfgDrv: Seq[AxiBundle]
   def dmaDrv: Seq[AxiBundle]
   def ccnDrv: Seq[SocketIcnSideBundle]
 
-  lazy val ddrIO: ExtAxiBundle = IO(new ExtAxiBundle(ddrDrv.params))
+  lazy val ddrIO: Seq[ExtAxiBundle] = ddrDrv.map(drv => IO(new ExtAxiBundle(drv.params)))
   lazy val cfgIO: Seq[ExtAxiBundle] = cfgDrv.map(drv => IO(new ExtAxiBundle(drv.params)))
   lazy val dmaIO: Seq[ExtAxiBundle] = dmaDrv.map(drv => IO(Flipped(new ExtAxiBundle(drv.params))))
   lazy val ccnIO: Seq[SocketIcnSideBundle] = ccnDrv.map(drv => IO(new SocketIcnSideBundle(drv.node)(p)))
 
   def runIOAutomation():Unit = {
-    ddrIO <> ddrDrv
-    ddrIO.suggestName("m_axi_ddr")
+    ddrIO.zip(ddrDrv).zipWithIndex.foreach({ case((a, b), i) =>
+      a.suggestName(s"m_axi_mem_${b.params.attr}")
+      a <> b
+    })
     cfgIO.zip(cfgDrv).zipWithIndex.foreach({ case((a, b), i) =>
-      if(b.params.attr != "") a.suggestName(s"m_axi_cfg_${b.params.attr}")
-      else a.suggestName(s"m_axi_cfg_$i")
+      a.suggestName(s"m_axi_cfg_${b.params.attr}")
       a <> b
     })
     dmaIO.zip(dmaDrv).zipWithIndex.foreach({ case((a, b), i) =>
-      if(b.params.attr != "") a.suggestName(s"s_dma_${b.params.attr}")
-      else a.suggestName(s"s_axi_dma_$i")
+      a.suggestName(s"s_axi_dma_${b.params.attr}")
       a <> b
     })
     ccnIO.zip(ccnDrv).foreach({ case (a, b) =>

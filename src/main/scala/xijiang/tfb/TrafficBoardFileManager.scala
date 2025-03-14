@@ -21,29 +21,20 @@ object TrafficBoardFileManager {
     FileRegisters.add(src_dir, "traffic_board.cpp", source(p), dontCarePrefix = true)
   }
 
-  private def getEject(nt: Int, csn: Boolean) = {
-    if(csn) {
-      Node(nodeType = nt).ejects.filterNot(_ == "ERQ")
-    } else {
-      Node(nodeType = nt).ejects
-    }
-  }
+  private def getEject(nt: Int): Seq[String] = Node(nodeType = nt).ejects
 
-  val allNodeTypeMap: Seq[(String, Int, String, Seq[String])] = Seq(
-    ("lcc", NodeType.CC | (0 << NodeType.width), "LOCAL_TGT_POOL", getEject(NodeType.CC, false)),
-    ("lrf", NodeType.RF | (0 << NodeType.width), "LOCAL_TGT_POOL", getEject(NodeType.RF, false)),
-    ("lri", NodeType.RI | (0 << NodeType.width), "LOCAL_TGT_POOL", getEject(NodeType.RI, false)),
-    ("lhf", NodeType.HF | (0 << NodeType.width), "LOCAL_TGT_POOL", getEject(NodeType.HF, false)),
-    ("lhi", NodeType.HI | (0 << NodeType.width), "LOCAL_TGT_POOL", getEject(NodeType.HI, false)),
-    ("lsn", NodeType.S | (0 << NodeType.width), "LOCAL_TGT_POOL", getEject(NodeType.S, false)),
-    ("crf", NodeType.RF | (1 << NodeType.width), "C2C_TGT_POOL", getEject(NodeType.RF, true)),
-    ("chf", NodeType.HF | (1 << NodeType.width), "C2C_TGT_POOL", getEject(NodeType.HF, true)),
-    ("c2c", NodeType.C | (1 << NodeType.width), "CSN_TGT_POOL", getEject(NodeType.C, true)),
+  val allNodeTypeMap: Seq[(String, Int, Seq[String])] = Seq(
+    ("cc", NodeType.CC, getEject(NodeType.CC)),
+    ("rf", NodeType.RF, getEject(NodeType.RF)),
+    ("ri", NodeType.RI, getEject(NodeType.RI)),
+    ("hf", NodeType.HF, getEject(NodeType.HF)),
+    ("hi", NodeType.HI, getEject(NodeType.HI)),
+    ("sn", NodeType.S, getEject(NodeType.S)),
   )
 
-  val allNodeTypeDefs: String = allNodeTypeMap.map({ case (n, v, _, _) => s"#define ${n.toUpperCase}_TYPE $v\n" }).reduce(_ ++ _)
+  val allNodeTypeDefs: String = allNodeTypeMap.map({ case (n, v, _) => s"#define ${n.toUpperCase}_TYPE $v\n" }).reduce(_ ++ _)
 
-  private val nodePoolInitFn: String = allNodeTypeMap.map({ case (n, _, _, _) => s"  nodes_pool[${n.toUpperCase}_TYPE] = vector<uint16_t>();\n" }).reduce(_ ++ _)
+  private val nodePoolInitFn: String = allNodeTypeMap.map({ case (n, _, _) => s"  nodes_pool[${n.toUpperCase}_TYPE] = vector<uint16_t>();\n" }).reduce(_ ++ _)
 
   def header: String =
     """
@@ -94,7 +85,6 @@ object TrafficBoardFileManager {
        |#define TIME_OUT ${params.tfbParams.get.timeOut}
        |#define NODE_NID_BITS ${params.nodeNidBits}
        |#define NODE_AID_BITS ${params.nodeAidBits}
-       |#define NODE_NET_BITS ${params.nodeNetBits}
        |#define FLIT_BUF_SIZE ${(maxFlitSize + 7) / 8}
        |
        |$allNodeTypeDefs
@@ -102,13 +92,8 @@ object TrafficBoardFileManager {
        |#define REQ ${ChannelEncodings.REQ}
        |#define RSP ${ChannelEncodings.RSP}
        |#define DAT ${ChannelEncodings.DAT}
-       |#define SNP ${ChannelEncodings.SNP}
-       |#define ERQ ${ChannelEncodings.ERQ}
+       |#define HRQ ${ChannelEncodings.HRQ}
        |
-       |#define TYPE_NET_OFF ${NodeType.width}
-       |#define TYPE_NET_BITS 1
-       |
-       |#define NODE_AID_BITS ${params.nodeAidBits}
        |#define NODE_ID_BITS ${params.nodeIdBits}
        |#define TGT_ID_OFF 0
        |#define SRC_ID_OFF (TGT_ID_OFF + NODE_ID_BITS)
@@ -179,7 +164,6 @@ object TrafficBoardFileManager {
        |  void register_node(uint16_t node_id, uint16_t node_type);
        |  svBit add_record(uint16_t node_id, uint16_t node_type, uint8_t chn, const svBitVecVal *flit);
        |  bool match_record(uint16_t node_id, uint16_t node_type, uint8_t chn, const svBitVecVal *flit);
-       |  uint16_t get_tgt_c2c(uint16_t chip);
        |};
        |
        |TrafficBoard::TrafficBoard(){
@@ -200,14 +184,12 @@ object TrafficBoardFileManager {
        |  scoreboard[node_id][REQ] = list<unique_ptr<TrafficBoardEntry>>();
        |  scoreboard[node_id][RSP] = list<unique_ptr<TrafficBoardEntry>>();
        |  scoreboard[node_id][DAT] = list<unique_ptr<TrafficBoardEntry>>();
-       |  scoreboard[node_id][SNP] = list<unique_ptr<TrafficBoardEntry>>();
-       |  scoreboard[node_id][ERQ] = list<unique_ptr<TrafficBoardEntry>>();
+       |  scoreboard[node_id][HRQ] = list<unique_ptr<TrafficBoardEntry>>();
        |  locks[node_id] = unordered_map<uint8_t, unique_ptr<mutex>>();
        |  locks[node_id][REQ] = make_unique<mutex>();
        |  locks[node_id][RSP] = make_unique<mutex>();
        |  locks[node_id][DAT] = make_unique<mutex>();
-       |  locks[node_id][SNP] = make_unique<mutex>();
-       |  locks[node_id][ERQ] = make_unique<mutex>();
+       |  locks[node_id][HRQ] = make_unique<mutex>();
        |  nodes_pool[node_type].push_back(node_id);
        |}
        |
@@ -217,30 +199,16 @@ object TrafficBoardFileManager {
        |    return 1;                  \\
        |  }
        |
-       |uint16_t TrafficBoard::get_tgt_c2c(uint16_t chip) {
-       |  for(const auto &c2c: nodes_pool[C2C_TYPE]) if(get_field(c2c, 0, NODE_AID_BITS) == chip) return c2c;
-       |  return 0;
-       |}
-       |
        |svBit TrafficBoard::add_record(uint16_t node_id, uint16_t node_type, uint8_t chn, const svBitVecVal *flit) {
        |  MONITOR_ERR(scoreboard.count(node_id) == 0, "node 0x%x is sampled before registered!\\n", node_id);
        |  uint16_t tgt_id = get_field(*((const uint64_t *)flit), TGT_ID_OFF, NODE_ID_BITS);
        |  uint16_t src_id = get_field(*((const uint64_t *)flit), SRC_ID_OFF, NODE_ID_BITS);
-       |  bool c2c = node_type == C2C_TYPE;
-       |  bool csn = get_field(node_type, TYPE_NET_OFF, TYPE_NET_BITS) == 0x1;
        |  const uint16_t router_aid_mask = (1 << NODE_AID_BITS) - 1;
        |  const uint16_t router_match_mask = ~router_aid_mask;
        |  uint16_t final_tgt_id = tgt_id & router_match_mask;
        |  if(verbose) {
        |    string &&flit_str = get_flit_str((const uint8_t *)flit);
        |    TFB_INFO("node_id 0x%x inject flit with src_id: 0x%x tgt_id: 0x%x on chn %d flit:\\n%s\\n", node_id, src_id, tgt_id, chn, flit_str.c_str());
-       |  }
-       |  if(csn && !c2c) {
-       |    uint16_t src_chip = get_field(node_id, 0, NODE_AID_BITS);
-       |    uint16_t tgt_chip = get_field(tgt_id, 0, NODE_AID_BITS);
-       |    final_tgt_id = get_tgt_c2c(tgt_chip);
-       |    MONITOR_ERR(src_chip == tgt_chip, "csn node 0x%x injects illegal flit with tgt_id: 0x%x, target chip_id cannot be chip_id of itself!\\n", node_id, tgt_id);
-       |    MONITOR_ERR(final_tgt_id == 0, "csn node 0x%x injects illegal flit with tgt_id: 0x%x tgt_chip: 0x%x, target c2c cannot be found!\\n", node_id, tgt_id, tgt_chip);
        |  }
        |  MONITOR_ERR(scoreboard.count(final_tgt_id) == 0, "node 0x%x injected flit target node 0x%x is not registered on chn %d!\\n", node_id, tgt_id, chn);
        |  auto entry = make_unique<TrafficBoardEntry>();
@@ -249,8 +217,7 @@ object TrafficBoardFileManager {
        |  entry->timer = 0;
        |  mutex *lock = locks[final_tgt_id][chn].get();
        |  lock_guard lg(*lock);
-       |  auto &record_list = scoreboard[final_tgt_id][chn];
-       |  record_list.push_back(std::move(entry));
+       |  scoreboard[final_tgt_id][chn].push_back(std::move(entry));
        |  return 0;
        |}
        |
@@ -285,7 +252,8 @@ object TrafficBoardFileManager {
        |      for(auto &d: v1) {
        |        d->timer++;
        |        if(d->timer > TIME_OUT) {
-       |          TFB_ERR("node 0x%x chn %d inject time %lu time out!\\n", k0, k1, d->inject_time);
+       |          string &&flit_str = get_flit_str((const uint8_t *)d->flit);
+       |          TFB_ERR("node 0x%x chn %d inject time %lu time out! flit:\\n%s\\n", k0, k1, d->inject_time, flit_str.c_str());
        |          time_out = true;
        |        }
        |      }

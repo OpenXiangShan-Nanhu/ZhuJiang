@@ -1,15 +1,11 @@
 package zhujiang.chi
 
 import chisel3._
-import chisel3.util.Cat
+import chisel3.util.{Cat, DecoupledIO}
 import org.chipsalliance.cde.config.Parameters
 import zhujiang.{ZJBundle, ZJParametersKey}
 
 class Flit(implicit p: Parameters) extends Bundle {
-  def src = elements("SrcID").asInstanceOf[UInt]
-  def tgt = elements("TgtID").asInstanceOf[UInt]
-  def txn = elements("TxnID").asInstanceOf[UInt]
-  def did = elements("DataID").asInstanceOf[UInt]
   lazy val zjParams = p(ZJParametersKey)
   lazy val M = zjParams.M
   lazy val PB = zjParams.PB
@@ -22,6 +18,7 @@ class Flit(implicit p: Parameters) extends Bundle {
   lazy val niw = zjParams.nodeIdBits
   lazy val dw = zjParams.dataBits
   lazy val bew = zjParams.beBits
+  def src = elements("SrcID")
 }
 
 class ReqFlit(dmt:Boolean = false)(implicit p: Parameters) extends Flit {
@@ -30,44 +27,46 @@ class ReqFlit(dmt:Boolean = false)(implicit p: Parameters) extends Flit {
   val MECID = UInt(E.max(R).W)
   val PBHA = UInt(PB.W)
   val MPAM = UInt(M.W)
-//  val TraceTag = UInt(1.W)
-//  val TagOp = UInt(2.W)
+  //  val TraceTag = UInt(1.W)
+  //  val TagOp = UInt(2.W)
   val ExpCompAck = Bool()
   val Excl = Bool()
-//  val PGroupID = UInt(8.W)
+  //  val PGroupID = UInt(8.W)
   val SnpAttr = Bool()
   val MemAttr = UInt(4.W)
-//  val PCrdType = UInt(4.W)
+  //  val PCrdType = UInt(4.W)
   val Order = UInt(2.W)
-//  val AllowRetry = Bool()
-//  val LikelyShared = Bool()
-//  val NSE = Bool()
-//  val NS = Bool()
+  //  val AllowRetry = Bool()
+  //  val LikelyShared = Bool()
+  //  val NSE = Bool()
+  //  val NS = Bool()
   val Addr = UInt(raw.W)
   val Size = UInt(3.W)
   val Opcode = UInt(7.W)
   val ReturnTxnID = if(dmt) Some(UInt(12.W)) else None
-//  val StashNIDValid = Bool()
+  //  val StashNIDValid = Bool()
   val ReturnNID = if(dmt) Some(UInt(niw.W)) else None
   val TxnID = UInt(12.W)
   val SrcID = UInt(niw.W)
   val TgtID = UInt(niw.W)
-//  val QoS = UInt(4.W)
+  //  val QoS = UInt(4.W)
 
   def StreamID = MECID
   def SnoopMe = Excl
-//  def CAH = Excl
-//  def StashGroupID = PGroupID
-//  def TagGroupID = PGroupID
-//  def LPID = PGroupID
+  //  def CAH = Excl
+  //  def StashGroupID = PGroupID
+  //  def TagGroupID = PGroupID
+  //  def LPID = PGroupID
   def DoDWT = SnpAttr
-//  def Endian = StashNIDValid
-//  def Deep = StashNIDValid
-//  def PrefetchTgtHint = StashNIDValid
+  //  def Endian = StashNIDValid
+  //  def Deep = StashNIDValid
+  //  def PrefetchTgtHint = StashNIDValid
   def StashNID = ReturnNID.get
   def DataTarget = ReturnNID.get
   def fullSize = Size === 6.U
 }
+class RReqFlit(implicit p: Parameters) extends ReqFlit(false)
+class HReqFlit(implicit p: Parameters) extends ReqFlit(true)
 
 class RespFlit(implicit p: Parameters) extends Flit {
 //  val TraceTag = UInt(1.W)
@@ -143,62 +142,71 @@ class DataFlit(implicit p: Parameters) extends Flit {
   def FwdState = DataSource
 }
 
+class RingFlit(width:Int)(implicit p: Parameters) extends ZJBundle {
+  val Payload = UInt((width - niw - niw - 12).W)
+  val TxnID = UInt(12.W)
+  val SrcID = UInt(niw.W)
+  val TgtID = UInt(niw.W)
+  //  val QoS = UInt(4.W)
+
+  def tgt:UInt = TgtID
+  def src:UInt = SrcID
+  def txn:UInt = TxnID
+  def did:UInt = this.asTypeOf(new DataFlit).DataID
+}
+
 object ChannelEncodings {
   def REQ: Int = 0
   def RSP: Int = 1
   def DAT: Int = 2
   def SNP: Int = 3
   def ERQ: Int = 4
+  def HRQ: Int = 5
 
   val encodingsMap = Map[String, Int](
     "REQ" -> REQ,
     "RSP" -> RSP,
     "DAT" -> DAT,
     "SNP" -> SNP,
-    "ERQ" -> ERQ
+    "ERQ" -> ERQ,
+    "HRQ" -> HRQ
   )
 }
 
-class Credit[T <: Flit](gen: T) extends Bundle {
-  val flitpend = Output(Bool())
-  val flit = Output(gen)
-  val flitv = Output(Bool())
-  val lcrdv = Input(Bool())
-}
-
-object Credit {
-  def apply[T <: Flit](gen: T): Credit[T] = {
-    new Credit(gen)
-  }
-}
-
 class ReqAddrBundle(implicit p: Parameters) extends ZJBundle {
-  val mmio = Bool()
-  val chip = UInt(nodeAidBits.W)
-  val tag = UInt((raw - 1 - nodeAidBits - 6).W)
+  val ci = UInt(ciIdBits.W)
+  val tag = UInt((raw - ciIdBits - 6).W)
   val offset = UInt(6.W)
-  def checkBank(width: Int, bankId: UInt): Bool = {
+  def checkBank(width: Int, bankId: UInt, bankOffset:Int): Bool = {
     if(width == 0) true.B
-    else tag(bankOff + width - 7, bankOff - 6) === bankId
+    else tag(bankOffset + width - 7, bankOffset - 6) === bankId
   }
   def devAddr: UInt = Cat(tag, offset)
+  require(this.getWidth == raw)
 }
 
 class SnpAddrBundle(implicit p: Parameters) extends ZJBundle {
-  val mmio = Bool()
-  val chip = UInt(nodeAidBits.W)
-  val tag = UInt((raw - 1 - nodeAidBits - 3).W)
+  val ci = UInt(ciIdBits.W)
+  val tag = UInt((raw - ciIdBits - 3).W)
   val offset = UInt(3.W)
-  def checkBank(width: Int, bankId: UInt): Bool = {
+  def checkBank(width: Int, bankId: UInt, bankOffset:Int): Bool = {
     if(width == 0) true.B
-    else tag(bankOff + width - 7, bankOff - 6) === bankId
+    else tag(bankOffset + width - 7, bankOffset - 6) === bankId
   }
+  require(this.getWidth == raw)
 }
 
 class NodeIdBundle(implicit p: Parameters) extends ZJBundle {
-  val net = Bool()
   val nid = UInt(nodeNidBits.W)
   val aid = UInt(nodeAidBits.W)
   def chip: UInt = aid
-  def router: UInt = Cat(net, nid, 0.U(aid.getWidth.W))
+  def router: UInt = Cat(nid, 0.U(aid.getWidth.W))
+}
+
+object FlitHelper {
+  def connIcn(sink:DecoupledIO[Data], src:DecoupledIO[Data]):Unit = {
+    sink.valid := src.valid
+    src.ready := sink.ready
+    sink.bits := src.bits.asTypeOf(sink.bits)
+  }
 }

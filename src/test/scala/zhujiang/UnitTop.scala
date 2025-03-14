@@ -6,7 +6,7 @@ import circt.stage.{ChiselStage, FirtoolOption}
 import xijiang.c2c.C2cLoopBack
 import xijiang.router.base.{EjectBuffer, SingleChannelTap}
 import zhujiang.UnitTop.firtoolOpts
-import zhujiang.chi.SnoopFlit
+import zhujiang.chi.{RingFlit, SnoopFlit}
 import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.bridge.chi.ChiSnBridge
@@ -14,6 +14,7 @@ import zhujiang.device.bridge.tlul.TLULBridge
 import zhujiang.device.tlu2chi.TLUL2ChiBridge
 import zhujiang.device.dma.Axi2Chi
 import zhujiang.device.ddr.MemoryComplex
+import zhujiang.device.home.HomeWrapper
 import zhujiang.tilelink.TilelinkParams
 
 object UnitTop {
@@ -83,10 +84,11 @@ object MemCxTop extends App {
 
 object SctTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
-  val ccNode = Node(nodeType = NodeType.C)
   (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
     ChiselGeneratorAnnotation(() => {
-      new SingleChannelTap(new SnoopFlit()(config), "SNP", ccNode)(config)
+      val hrf = new SnoopFlit()(config)
+      val ringf = new RingFlit(hrf.getWidth)(config)
+      new SingleChannelTap(ringf, "SNP")(config)
     })
   ))
 }
@@ -95,7 +97,9 @@ object EbTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
     ChiselGeneratorAnnotation(() => {
-      new EjectBuffer(new SnoopFlit()(config), 5, "SNP")(config)
+      val hrf = new SnoopFlit()(config)
+      val ringf = new RingFlit(hrf.getWidth)(config)
+      new EjectBuffer(ringf, 5, "SNP")(config)
     })
   ))
 }

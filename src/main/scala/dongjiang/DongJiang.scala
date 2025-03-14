@@ -2,7 +2,6 @@ package dongjiang
 
 
 import chisel3._
-import chisel3.experimental.hierarchy.{instantiable, public}
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
@@ -14,8 +13,7 @@ import dongjiang.directory._
 import dongjiang.data._
 import xijiang._
 import xijiang.router.base.DeviceIcnBundle
-import xs.utils.ResetRRArbiter
-import xs.utils.debug.{DomainInfo, HardwareAssertion}
+import zhujiang.chi.FlitHelper.connIcn
 
 
 class DJConfigIO(implicit p: Parameters) extends DJBundle {
@@ -24,13 +22,12 @@ class DJConfigIO(implicit p: Parameters) extends DJBundle {
   val bankId        = Input(UInt(bankBits.W))
 }
 
-@instantiable
-class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Parameters) extends DJRawModule
+class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Parameters) extends DJModule
   with ImplicitClock with ImplicitReset {
   /*
    * IO declaration
    */
-  @public val io  = IO(new Bundle {
+  val io  = IO(new Bundle {
     // Flush LLC
     val flushCache  = new DJBundle {
       val req       = Input(Valid(UInt(nrCcNode.W)))
@@ -43,10 +40,6 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
     val lan         = new DeviceIcnBundle(lanNode)
     val bbnOpt      = if(hasBBN) Some(new DeviceIcnBundle(bbnNode.get)) else None
   })
-  @public val reset = IO(Input(AsyncReset()))
-  @public val clock = IO(Input(Clock()))
-  val implicitClock = clock
-  val implicitReset = reset
 
   // TODO
   io.flushCache.ack := DontCare
@@ -122,42 +115,42 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    * Connect IO CHI
    */
   // [frontends].rxReq <-> [ChiXbar] <-> io.chi.rxReq
-  chiXbar.io.rxReq.inVec.zip(icnVec.map(_.rx.req.get)).foreach { case(a, b) => a <> b }
+  chiXbar.io.rxReq.inVec.zip(icnVec.map(_.rx.req.get)).foreach { case(a, b) => connIcn(a, b) }
   chiXbar.io.rxReq.outVec.zip(frontends.map(_.io.rxReq)).foreach { case(a, b) => a <> b }
 
   // [frontends].rxSnp <-> [ChiXbar] <-> io.chi.rxSnp
   if(hasBBN) {
-    chiXbar.io.rxSnp.in <> icnVec.last.rx.snoop.get
+    connIcn(chiXbar.io.rxSnp.in, icnVec.last.rx.snoop.get)
   } else {
     chiXbar.io.rxSnp.in <> DontCare
   }
   chiXbar.io.rxSnp.outVec.zip(frontends.map(_.io.rxSnp)).foreach { case(a, b) => a <> b }
 
   // [backend].rxRsp <-> io.chi.rxRsp
-  backend.io.rxRspVec.zip(icnVec.map(_.rx.resp.get)).foreach { case(a, b) => a <> b }
+  backend.io.rxRspVec.zip(icnVec.map(_.rx.resp.get)).foreach { case(a, b) => connIcn(a, b) }
 
   // [dataCtrl].rxDat <-> io.chi.rxDat
   // [backend].rxDat  <-- io.chi.rxDat
   val rxDat = fastArb(icnVec.map(_.rx.data.get))
-  dataCtrl.io.rxDat      <> rxDat
+  connIcn(dataCtrl.io.rxDat, rxDat)
   backend.io.rxDat.valid := rxDat.fire
-  backend.io.rxDat.bits  := rxDat.bits
+  backend.io.rxDat.bits  := rxDat.bits.asTypeOf(backend.io.rxDat.bits)
 
   // [backend].txReq <-> [ChiXbar] <-> io.chi.txReq
   chiXbar.io.txReq.inVec.zip(backend.io.txReqVec).foreach { case (a, b) => a <> b }
-  chiXbar.io.txReq.outVec.zip(icnVec.map(_.tx.req.get)).foreach { case (a, b) => a <> b }
+  chiXbar.io.txReq.outVec.zip(icnVec.map(_.tx.req.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // [backend].txSnp <-> [ChiXbar] <-> io.chi.txSnp
   chiXbar.io.txSnp.inVec.zip(backend.io.txSnpVec).foreach { case (a, b) => a <> b }
-  chiXbar.io.txSnp.outVec.zip(icnVec.map(_.tx.snoop.get)).foreach { case (a, b) => a <> b }
+  chiXbar.io.txSnp.outVec.zip(icnVec.map(_.tx.snoop.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // [backend].txRsp <-> [ChiXbar] <-> io.chi.txRsp
   chiXbar.io.txRsp.inVec.zip(backend.io.txRspVec).foreach { case (a, b) => a <> b }
-  chiXbar.io.txRsp.outVec.zip(icnVec.map(_.tx.resp.get)).foreach { case (a, b) => a <> b }
+  chiXbar.io.txRsp.outVec.zip(icnVec.map(_.tx.resp.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // [dataCtrl].txDat <-> [ChiXbar] <-> io.chi.txDat
   chiXbar.io.txDat.inVec.zip(dataCtrl.io.txDatVec).foreach { case (a, b) => a <> b }
-  chiXbar.io.txDat.outVec.zip(icnVec.map(_.tx.data.get)).foreach { case (a, b) => a <> b }
+  chiXbar.io.txDat.outVec.zip(icnVec.map(_.tx.data.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // Set CBusy in CHIXbar
   // TODO: Need to argue reasonableness
@@ -191,16 +184,4 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    * Connect DataCtrl
    */
   dataCtrl.io.hitMesVec.zip(directory.io.rHitMesVec).foreach     { case(a, b) => a <> b }
-
-  /*
-   * Hardware Assertion Node And IO
-   */
-  HardwareAssertion(true.B)
-  private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, true)
-  @public
-  val assertionOut = IO(assertionNode.assertion.cloneType)
-  @public
-  val assertionInfo = DomainInfo(assertionNode.desc)
-  assertionOut <> assertionNode.assertion
-
 }

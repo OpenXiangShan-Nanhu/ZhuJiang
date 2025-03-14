@@ -92,22 +92,17 @@ class AxiDataBufferRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Parame
     val writeData = Flipped(Decoupled(new DataFlit))
     val readDataReq = Flipped(Decoupled(new AxiDataBufferReadReq(axiParams, bufferSize)))
     val readDataResp = Decoupled(new WFlit(axiParams))
-    val stop = Input(Bool())
   })
   private val maskRam = Mem(bufferSize, UInt(bew.W))
   private val dataRam = Module(new SRAMTemplate(
     gen = UInt(dw.W),
     set = bufferSize,
-    singlePort = false,
-    powerCtl = true,
-    holdRead = true
+    singlePort = false
   ))
   when(io.writeData.valid) {
     maskRam.write(io.writeData.bits.TxnID(log2Ceil(bufferSize) - 1, 0), io.writeData.bits.BE)
   }
 
-  dataRam.io.pwctl.get.ret := false.B
-  dataRam.io.pwctl.get.stop := io.stop
   dataRam.io.w.req.valid := io.writeData.valid
   dataRam.io.w.req.bits.setIdx := io.writeData.bits.TxnID(log2Ceil(bufferSize) - 1, 0)
   dataRam.io.w.req.bits.data := io.writeData.bits.Data.asTypeOf(dataRam.io.w.req.bits.data)
@@ -203,14 +198,6 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implic
   dataBuffer.io.readDataReq.bits.set := ctrlSelReg.buf(txReqCntReg(log2Ceil(ctrlSelReg.buf.length) - 1, 0))
   dataBuffer.io.readDataReq.bits.flit := txReqBitsReg.flit
   dataBuffer.io.readDataReq.bits.flit.last := txReqCntReg === ctrlSelReg.recvMax
-
-  private val ramStop = RegInit(true.B)
-  when(freelist.io.resp.valid) {
-    ramStop := false.B
-  }.elsewhen(io.axi.fire && io.axi.bits.last && freelist.io.idle) {
-    ramStop := true.B
-  }
-  dataBuffer.io.stop := ramStop
 
   io.axi <> dataBuffer.io.readDataResp
 

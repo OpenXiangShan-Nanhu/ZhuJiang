@@ -25,9 +25,9 @@ class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
   private val illegal = node.ejects.contains("REQ") && node.ejects.contains("ERQ")
   require(!illegal)
   val req = if(node.ejects.contains("REQ")) {
-    if(node.splitFlit) Some(Decoupled(new ReqFlit(false))) else Some(Decoupled(UInt(reqFlitBits.W)))
-  } else if(node.ejects.contains("ERQ") && !node.csnNode) {
-    if(node.splitFlit) Some(Decoupled(new ReqFlit(true))) else Some(Decoupled(UInt(reqDmtFlitBits.W)))
+    if(node.splitFlit) Some(Decoupled(new RReqFlit)) else Some(Decoupled(UInt(rreqFlitBits.W)))
+  } else if(node.ejects.contains("ERQ")) {
+    if(node.splitFlit) Some(Decoupled(new HReqFlit)) else Some(Decoupled(UInt(hreqFlitBits.W)))
   } else None
 
   val resp = if(node.ejects.contains("RSP")) {
@@ -43,13 +43,26 @@ class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
   } else None
 
   def getBundle(chn: String): Option[DecoupledIO[Data]] = {
+    val ej = node.ejects
     chn match {
-      case "REQ" => if(node.ejects.contains("REQ")) req else None
+      case "REQ" => if(ej.contains("REQ")) req else None
       case "RSP" => resp
       case "DAT" => data
       case "SNP" => snoop
-      case "ERQ" => if(node.ejects.contains("ERQ")) req else None
+      case "ERQ" => if(ej.contains("ERQ")) req else None
+      case "HRQ" => if(ej.contains("ERQ")) req else if(ej.contains("SNP")) snoop else None
       case _ => None
+    }
+  }
+  def testBundle(chn: String):Boolean = {
+    chn match {
+      case "REQ" => node.ejects.contains("REQ")
+      case "RSP" => node.ejects.contains("RSP")
+      case "DAT" => node.ejects.contains("DAT")
+      case "SNP" => node.ejects.contains("SNP")
+      case "ERQ" => node.ejects.contains("ERQ")
+      case "HRQ" => node.ejects.contains("SNP") || node.ejects.contains("ERQ")
+      case _ => false
     }
   }
 }
@@ -58,9 +71,9 @@ class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
   private val illegal = node.injects.contains("REQ") && node.injects.contains("ERQ")
   require(!illegal)
   val req = if(node.injects.contains("REQ")){
-    if(node.splitFlit) Some(Flipped(Decoupled(new ReqFlit(false)))) else Some(Flipped(Decoupled(UInt(reqFlitBits.W))))
-  } else if(node.injects.contains("ERQ") && !node.csnNode) {
-    if(node.splitFlit) Some(Flipped(Decoupled(new ReqFlit(true)))) else Some(Flipped(Decoupled(UInt(reqDmtFlitBits.W))))
+    if(node.splitFlit) Some(Flipped(Decoupled(new RReqFlit))) else Some(Flipped(Decoupled(UInt(rreqFlitBits.W))))
+  } else if(node.injects.contains("ERQ")) {
+    if(node.splitFlit) Some(Flipped(Decoupled(new HReqFlit))) else Some(Flipped(Decoupled(UInt(hreqFlitBits.W))))
   } else None
 
   val resp = if(node.injects.contains("RSP")) {
@@ -76,13 +89,27 @@ class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
   } else None
 
   def getBundle(chn: String): Option[DecoupledIO[Data]] = {
+    val ij = node.injects
     chn match {
-      case "REQ" => if(node.injects.contains("REQ")) req else None
+      case "REQ" => if(ij.contains("REQ")) req else None
       case "RSP" => resp
       case "DAT" => data
       case "SNP" => snoop
       case "ERQ" => if(node.injects.contains("ERQ")) req else None
+      case "HRQ" => if(ij.contains("ERQ")) req else if(ij.contains("SNP")) snoop else None
       case _ => None
+    }
+  }
+
+  def testBundle(chn: String):Boolean = {
+    chn match {
+      case "REQ" => node.injects.contains("REQ")
+      case "RSP" => node.injects.contains("RSP")
+      case "DAT" => node.injects.contains("DAT")
+      case "SNP" => node.injects.contains("SNP")
+      case "ERQ" => node.injects.contains("ERQ")
+      case "HRQ" => node.injects.contains("SNP") || node.injects.contains("ERQ")
+      case _ => false
     }
   }
 }
