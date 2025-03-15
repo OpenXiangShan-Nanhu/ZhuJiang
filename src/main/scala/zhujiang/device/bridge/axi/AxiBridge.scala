@@ -76,7 +76,7 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule with HasPer
 
   private val shouldBeWaited = cms.map(cm => cm.io.info.valid && !cm.io.wakeupOut.valid && cm.io.info.bits.isSnooped)
   private val cmAddrSeq = cms.map(cm => cm.io.info.bits.addr)
-  private val req = icn.rx.req.get.bits.asTypeOf(new ReqFlit)
+  private val req = icn.rx.req.get.bits.asTypeOf(new ReqFlit(true))
   private val reqTagMatchVec = VecInit(shouldBeWaited.zip(cmAddrSeq).map(elm => elm._1 && compareTag(elm._2, req.Addr)))
   private val reqTagMatchVecReg = RegEnable(reqTagMatchVec, icn.rx.req.get.fire)
   private val waitNum = PopCount(reqTagMatchVecReg)
