@@ -17,6 +17,7 @@ import zhujiang.chi.FlitHelper.connIcn
 import xs.utils.ResetRRArbiter
 import xs.utils.debug.{DomainInfo, HardwareAssertion}
 import dongjiang.frontend.decode.Decode._
+import zhujiang.chi
 
 
 class DJConfigIO(implicit p: Parameters) extends DJBundle {
@@ -51,6 +52,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   /*
    * Requirement LAN and BBN
    */
+  // Get hnNodeSeq
   var hnNodeSeq = Seq(lanNode)
   if(hasBBN) {
     require(bbnNode.nonEmpty)
@@ -60,9 +62,19 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
     require(bbnNode.isEmpty)
   }
   require(lanNode.nodeType == NodeType.HF)
-  val icnVec  = Wire(MixedVec(hnNodeSeq.map(n => new DeviceIcnBundle(n))))
+  // Get icnVec
+  val icnVec = Wire(MixedVec(hnNodeSeq.map(n => new DeviceIcnBundle(n))))
   icnVec.head <> io.lan
-  if(hasBBN)  icnVec.last <> io.bbnOpt.get
+  NocType.setRx(icnVec.head.rx.req.get.bits.asTypeOf(new ReqFlit(false)), LAN)
+  NocType.setRx(icnVec.head.rx.resp.get.bits.asTypeOf(new RespFlit()), LAN)
+  NocType.setRx(icnVec.head.rx.data.get.bits.asTypeOf(new DataFlit()), LAN)
+  if(hasBBN) {
+    icnVec.last <> io.bbnOpt.get
+    NocType.setRx(icnVec.last.rx.req.get.bits.asTypeOf(new ReqFlit(false)), BBN)
+    NocType.setRx(icnVec.last.rx.snoop.get.bits.asTypeOf(new SnoopFlit()), BBN)
+    NocType.setRx(icnVec.last.rx.resp.get.bits.asTypeOf(new RespFlit()), BBN)
+    NocType.setRx(icnVec.last.rx.data.get.bits.asTypeOf(new DataFlit()), BBN)
+  }
 
   /*
    * Print message
@@ -131,7 +143,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   chiXbar.io.rxSnp.outVec.zip(frontends.map(_.io.rxSnp)).foreach { case(a, b) => a <> b }
 
   // [backend].rxRsp <-> io.chi.rxRsp
-  backend.io.rxRspVec.zip(icnVec.map(_.rx.resp.get)).foreach { case(a, b) => connIcn(a, b) }
+  connIcn(backend.io.rxRsp, fastArb(icnVec.map(_.rx.resp.get)))
 
   // [dataCtrl].rxDat <-> io.chi.rxDat
   // [backend].rxDat  <-- io.chi.rxDat
@@ -141,19 +153,19 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   backend.io.rxDat.bits  := rxDat.bits.asTypeOf(backend.io.rxDat.bits)
 
   // [backend].txReq <-> [ChiXbar] <-> io.chi.txReq
-  chiXbar.io.txReq.inVec.zip(backend.io.txReqVec).foreach { case (a, b) => a <> b }
+  chiXbar.io.txReq.in <> backend.io.txReq
   chiXbar.io.txReq.outVec.zip(icnVec.map(_.tx.req.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // [backend].txSnp <-> [ChiXbar] <-> io.chi.txSnp
-  chiXbar.io.txSnp.inVec.zip(backend.io.txSnpVec).foreach { case (a, b) => a <> b }
+  chiXbar.io.txSnp.in <> backend.io.txSnp
   chiXbar.io.txSnp.outVec.zip(icnVec.map(_.tx.snoop.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // [backend].txRsp <-> [ChiXbar] <-> io.chi.txRsp
-  chiXbar.io.txRsp.inVec.zip(backend.io.txRspVec).foreach { case (a, b) => a <> b }
+  chiXbar.io.txRsp.in <> backend.io.txRsp
   chiXbar.io.txRsp.outVec.zip(icnVec.map(_.tx.resp.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // [dataCtrl].txDat <-> [ChiXbar] <-> io.chi.txDat
-  chiXbar.io.txDat.inVec.zip(dataCtrl.io.txDatVec).foreach { case (a, b) => a <> b }
+  chiXbar.io.txDat.in <> dataCtrl.io.txDat
   chiXbar.io.txDat.outVec.zip(icnVec.map(_.tx.data.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // Set CBusy in CHIXbar

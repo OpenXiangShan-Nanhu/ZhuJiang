@@ -4,7 +4,36 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import dongjiang._
-import zhujiang.chi.MemAttr
+import zhujiang.chi._
+
+/*
+ * NoC Type
+ */
+object NocType {
+  val LAN = 1.U
+  val BBN = 0.U
+
+  def setRx(filt: ReqFlit,   t: Int) = filt.TgtID := t.U << filt.TgtID.getWidth
+  def setRx(filt: SnoopFlit, t: Int) = filt.TgtID := t.U
+  def setRx(filt: RespFlit,  t: Int) = filt.TgtID := t.U
+  def setRx(filt: DataFlit,  t: Int) = filt.TgtID := t.U
+
+  def rxIs(filt: ReqFlit,    t: Int) = filt.TgtID === t.U
+  def rxIs(filt: SnoopFlit,  t: Int) = filt.TgtID === t.U
+  def rxIs(filt: RespFlit,   t: Int) = filt.TgtID === t.U
+  def rxIs(filt: DataFlit,   t: Int) = filt.TgtID === t.U
+
+  def setTx(filt: ReqFlit,   t: Int) = filt.SrcID := t.U
+  def setTx(filt: SnoopFlit, t: Int) = filt.SrcID := t.U
+  def setTx(filt: RespFlit,  t: Int) = filt.SrcID := t.U
+  def setTx(filt: DataFlit,  t: Int) = filt.SrcID := t.U
+
+  def txIs(filt: ReqFlit,    t: Int) = filt.SrcID === t.U
+  def txIs(filt: SnoopFlit,  t: Int) = filt.SrcID === t.U
+  def txIs(filt: RespFlit,   t: Int) = filt.SrcID === t.U
+  def txIs(filt: DataFlit,   t: Int) = filt.SrcID === t.U
+}
+
 
 /*
  * Addr

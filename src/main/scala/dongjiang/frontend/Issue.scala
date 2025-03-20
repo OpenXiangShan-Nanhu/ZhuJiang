@@ -65,9 +65,12 @@ class Issue(implicit p: Parameters) extends DJModule {
   /*
    * [S3] Receive task and trans to commit
    */
-  io.commit_s3.valid    := io.task_s3.valid
-  io.commit_s3.bits     := io.task_s3.bits.asTypeOf(io.commit_s3.bits)
-  io.commit_s3.bits.ops := io.task_s3.bits.code
+  io.commit_s3.valid          := io.task_s3.valid
+  io.commit_s3.bits.chi       := io.task_s3.bits.chi
+  io.commit_s3.bits.pos       := io.task_s3.bits.pos
+  io.commit_s3.bits.dir       := io.task_s3.bits.dir
+  io.commit_s3.bits.alrDeqDB  := io.task_s3.bits.alrDeqDB
+  io.commit_s3.bits.ops       := io.task_s3.bits.code
 
 
   /*

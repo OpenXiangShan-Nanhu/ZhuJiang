@@ -33,7 +33,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
   val req       = io.rxReq.bits
   val task      = io.chiTask.bits
   task.addr     := req.Addr
-  task.fromLAN  := true.B // TODO
+  task.fromLAN  := NocType.rxIs(req, LAN)
   task.nodeId   := req.SrcID
   task.channel  := REQ
   task.opcode   := req.Opcode
@@ -57,8 +57,8 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     // QoS
     // TgtID
     // SrcID
-    HardwareAssertion.withEn(task.fromCcRnf | task.fromCcRni | task.fromRniDma, task.fromLAN)
-    HardwareAssertion.withEn(task.toLAN(io.config.ci), task.fromBBN)
+    HardwareAssertion.withEn(task.fromCcRnf | task.fromCcRni | task.fromRniDma, task.fromLAN, cf"SrcID => [${task.nodeId}]")
+    HardwareAssertion.withEn(task.toLAN(io.config.ci), task.fromBBN, cf"SrcID => [${task.nodeId}]")
     // TxnID
     // ReturnNID
     // StashNID

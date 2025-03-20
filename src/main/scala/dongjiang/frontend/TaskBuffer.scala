@@ -62,14 +62,15 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
   /*
    * Receive ChiTask
    */
-  val freelist    = ctrlEntrys.map(_.isFree)
-  val freeId      = PriorityEncoder(freelist)
-  // Store chi task
-  io.chiTaskIn.ready  := freelist.reduce(_ | _)
+  val freeVec     = ctrlEntrys.map(_.isFree)
+  val freeId      = PriorityEncoder(freeVec)
+  val freeNum     = PopCount(freeVec)
+  // Store chi task, reserve an extra entry for the snp task
+  io.chiTaskIn.ready  := Mux(io.chiTaskIn.bits.isSnp, freeVec.reduce(_ | _), freeNum > 1.U)
   taskEntrys(freeId)  := io.chiTaskIn.bits
 
   /*
-   * Count NID:
+   * Count NID
    */
   val taskValidVec  = ctrlEntrys.map(!_.isFree)
   val addrMatchVec  = taskEntrys.map(_.useAddr === io.chiTaskIn.bits.useAddr)
@@ -85,9 +86,9 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
   /*
    * Send Task And PosReq
    */
-  val beSendList    = ctrlEntrys.map(_.isBeSend)
-  val taskValid     = beSendList.reduce(_ | _)
-  val beSendId      = StepRREncoder(beSendList, taskValid)
+  val beSendVec     = ctrlEntrys.map(_.isBeSend)
+  val taskValid     = beSendVec.reduce(_ | _)
+  val beSendId      = StepRREncoder(beSendVec, taskValid)
   // task to block
   io.chiTask_s0.valid  := taskValid
   io.chiTask_s0.bits   := taskEntrys(beSendId)

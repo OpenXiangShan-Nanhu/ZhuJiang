@@ -214,6 +214,7 @@ class NodeIdBundle(implicit p: Parameters) extends ZJBundle {
 
 object FlitHelper {
   def connIcn(sink:DecoupledIO[Data], src:DecoupledIO[Data]):Unit = {
+    require(sink.getWidth == src.getWidth)
     sink.valid := src.valid
     src.ready := sink.ready
     sink.bits := src.bits.asTypeOf(sink.bits)

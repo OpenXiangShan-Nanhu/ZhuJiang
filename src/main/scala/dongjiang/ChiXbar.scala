@@ -7,7 +7,6 @@ import zhujiang.chi._
 import dongjiang.bundle._
 import dongjiang.utils._
 
-
 // TODO: modify it
 class ChiXbar(implicit p: Parameters) extends DJModule {
   /*
@@ -26,27 +25,28 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     }
     // txReq
     val txReq = new Bundle {
-      val inVec   = Vec(nrIcn, Flipped(Decoupled(new ReqFlit(true))))
+      val in      = Flipped(Decoupled(new ReqFlit(true)))
       val outVec  = Vec(nrIcn, Decoupled(new ReqFlit(true)))
     }
     // txSnp
     val txSnp = new Bundle {
-      val inVec   = Vec(nrIcn, Flipped(Decoupled(new SnoopFlit())))
+      val in      = Flipped(Decoupled(new SnoopFlit()))
       val outVec  = Vec(nrIcn, Decoupled(new SnoopFlit()))
     }
     // txRsp
     val txRsp = new Bundle {
-      val inVec   = Vec(nrIcn, Flipped(Decoupled(new RespFlit())))
+      val in      = Flipped(Decoupled(new RespFlit()))
       val outVec  = Vec(nrIcn, Decoupled(new RespFlit()))
     }
     // txDat
     val txDat = new Bundle {
-      val inVec   = Vec(nrIcn, Flipped(Decoupled(new DataFlit())))
+      val in      = Flipped(Decoupled(new DataFlit()))
       val outVec  = Vec(nrIcn, Decoupled(new DataFlit()))
     }
     // cBusy
     val cBusy     = Input(UInt(3.W))
   })
+  dontTouch(io)
   require(nrIcn <= 3)
   require(nrLanIcn <= 2)
 
@@ -96,74 +96,32 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
   /*
    * Connect txReq, txSnp, txRsp and txDat
    */
-  // init
-  io.txReq.inVec.zip(io.txReq.outVec).foreach { case(a, b) => a <> b }
-  io.txSnp.inVec.zip(io.txSnp.outVec).foreach { case(a, b) => a <> b }
-  io.txRsp.inVec.zip(io.txRsp.outVec).foreach { case(a, b) => a <> b }
-  io.txDat.inVec.zip(io.txDat.outVec).foreach { case(a, b) => a <> b }
-  /*
-   * Select network: (*: Priority)
-   * 1. in_0(!valid) & in_1(!valid):
-   *    in_0 ------> out0
-   *    in_1 ------> out1
-   *
-   * 2. in_0(valid) & in_1(!valid):
-   *    in_0 -----> out_0(*)
-   *         \
-   *          ----> out_1
-   *    in_1(DontCare)
-   *
-   * 3. in_0(valid) & in_1(!valid):
-   *    in_0(DontCare)
-   *          ----> out_0
-   *         /
-   *    in_1 -----> out_1(*)
-   *
-   * 4. in_0(valid) & in_1(valid):
-   *    in_0 ------> out0
-   *    in_1 ------> out1
-   */
-  def selectNetwork[T <: Bundle](inVec: Seq[DecoupledIO[T]], outVec: Seq[DecoupledIO[T]]): Unit = {
-    require(inVec.size == 2 & outVec.size == 2, s"in.size = ${inVec.size} out.size = ${outVec.size}")
-    val inOH    = Cat(inVec(1).valid, inVec(0).valid)
-    val outOH0  = PriorityEncoderOH(Cat(outVec(1).ready, outVec(0).ready)).asBools
-    val outOH1  = PriorityEncoderOH(Cat(outVec(0).ready, outVec(1).ready)).asBools
-    switch(inOH) {
-      is("b00".U) {
-        inVec.zip(outVec).foreach { case(a, b) => a <> b }
-      }
-      is("b01".U) {
-        inVec(0).ready  := outVec.map(_.ready).reduce(_ | _)
-        outVec.zip(outOH0).foreach {
-          case(out, valid) =>
-            out.valid   := valid
-            out.bits    := inVec(0).bits
-        }
-      }
-      is("b10".U) {
-        inVec(1).ready  := outVec.map(_.ready).reduce(_ | _)
-        outVec.zip(outOH1).foreach {
-          case (out, valid) =>
-            out.valid   := valid
-            out.bits    := inVec(1).bits
-        }
-      }
-      is("b11".U) {
-        inVec.zip(outVec).foreach { case(a, b) => a <> b }
-      }
-    }
-  }
-
-  // LAN 2to2 select network
-  if(nrLanIcn == 2) {
-    // tx req
-    selectNetwork(io.txReq.inVec.take(2), io.txReq.outVec.take(2))
-    // tx snp
-    selectNetwork(io.txSnp.inVec.take(2), io.txSnp.outVec.take(2))
-    // tx rsp
-    selectNetwork(io.txRsp.inVec.take(2), io.txRsp.outVec.take(2))
-    // tx dat
-    selectNetwork(io.txDat.inVec.take(2), io.txDat.outVec.take(2))
+  if(nrIcn == 1) {
+    io.txReq.outVec.head <> io.txReq.in
+    io.txSnp.outVec.head <> io.txSnp.in
+    io.txRsp.outVec.head <> io.txRsp.in
+    io.txDat.outVec.head <> io.txDat.in
+  } else {
+    // lan valid
+    io.txReq.outVec.head.valid := io.txReq.in.valid & NocType.txIs(io.txReq.in.bits, LAN)
+    io.txSnp.outVec.head.valid := io.txReq.in.valid & NocType.txIs(io.txSnp.in.bits, LAN)
+    io.txRsp.outVec.head.valid := io.txReq.in.valid & NocType.txIs(io.txRsp.in.bits, LAN)
+    io.txDat.outVec.head.valid := io.txReq.in.valid & NocType.txIs(io.txDat.in.bits, LAN)
+    // bbn valid
+    io.txReq.outVec.last.valid := io.txReq.in.valid & NocType.txIs(io.txReq.in.bits, BBN)
+    io.txSnp.outVec.last.valid := io.txReq.in.valid & NocType.txIs(io.txSnp.in.bits, BBN)
+    io.txRsp.outVec.last.valid := io.txReq.in.valid & NocType.txIs(io.txRsp.in.bits, BBN)
+    io.txDat.outVec.last.valid := io.txReq.in.valid & NocType.txIs(io.txDat.in.bits, BBN)
+    // ready
+    io.txReq.in.ready := Mux(NocType.txIs(io.txReq.in.bits, LAN), io.txReq.outVec.head.ready, io.txReq.outVec.last.ready)
+    io.txSnp.in.ready := Mux(NocType.txIs(io.txSnp.in.bits, LAN), io.txSnp.outVec.head.ready, io.txSnp.outVec.last.ready)
+    io.txRsp.in.ready := Mux(NocType.txIs(io.txRsp.in.bits, LAN), io.txRsp.outVec.head.ready, io.txRsp.outVec.last.ready)
+    io.txDat.in.ready := Mux(NocType.txIs(io.txDat.in.bits, LAN), io.txDat.outVec.head.ready, io.txDat.outVec.last.ready)
+    // bits
+    io.txReq.outVec.foreach(_.bits := io.txReq.in.bits)
+    io.txSnp.outVec.foreach(_.bits := io.txSnp.in.bits)
+    io.txRsp.outVec.foreach(_.bits := io.txRsp.in.bits)
+    io.txDat.outVec.foreach(_.bits := io.txDat.in.bits)
   }
 
   // Set CBusy

@@ -19,11 +19,11 @@ class Backend(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // CHI TX
-    val txReqVec      = Vec(nrIcn, Decoupled(new ReqFlit(true)))
-    val txSnpVec      = Vec(nrIcn, Decoupled(new SnoopFlit()))
-    val txRspVec      = Vec(nrIcn, Decoupled(new RespFlit()))
+    val txReq         = Decoupled(new ReqFlit(true))
+    val txSnp         = Decoupled(new SnoopFlit())
+    val txRsp         = Decoupled(new RespFlit())
     // CHI RX
-    val rxRspVec      = Vec(nrIcn, Flipped(Decoupled(new RespFlit())))
+    val rxRsp         = Flipped(Decoupled(new RespFlit()))
     val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
     // CHI RESP From Frontend
     val fastResp      = Flipped(Decoupled(new RespFlit()))

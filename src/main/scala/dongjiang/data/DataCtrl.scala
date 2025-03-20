@@ -15,7 +15,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // CHI TX/RX DAT
-    val txDatVec    = Vec(nrIcn, Decoupled(new DataFlit()))
+    val txDat       = Decoupled(new DataFlit())
     val rxDat       = Flipped(Decoupled(new DataFlit())) // Only use rxDat.Data/DataID/BE in DataCtrl
     // Read LLC Hit Message
     val hitMesVec   = Vec(djparam.nrDirBank, Flipped(Decoupled(new DJBundle with HasPosIndex {
