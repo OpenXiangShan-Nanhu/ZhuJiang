@@ -9,7 +9,7 @@ import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
 import dongjiang.directory.{DirEntry, DirMsg}
-import dongjiang.frontend.decode.Operations
+import dongjiang.frontend.decode.{CommitCode, Operations}
 
 class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
@@ -27,8 +27,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     })
     // From Directory
     val respDir_s3    = Flipped(Valid(new DJBundle {
-      val llc         = new DirEntry("llc")
-      val sf          = new DirEntry("sf")
+      val dir         = new DirMsg()
       val alrDeqDB    = Bool()
     }))
     // To Backend
@@ -36,8 +35,9 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
       val chi         = new ChiTask
       val pos         = new PosIndex()
       val dir         = new DirMsg()
-      val ops         = new Operations()
       val alrDeqDB    = Bool()
+      val hasOps      = Bool()
+      val commit      = new CommitCode()
     })
     val cmAlloc_s4    = new DJBundle {
       val recOps      = Input(new Operations())

@@ -5,6 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import dongjiang._
 import zhujiang.chi._
+import dongjiang.frontend.decode._
 
 /*
  * NoC Type
@@ -107,13 +108,29 @@ trait HasLLCTxnID extends DJBundle { this: DJBundle =>
 /*
  * ChiTask
  */
-class ChiTask(implicit p: Parameters) extends DJBundle with HasNodeId with HasChiChannel
-  with HasChiOp with HasChiOrderAndExpCompAck with HasChiSnpField with HasChiSize  {
+trait HasChiTask { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
+  with HasChiOrderAndExpCompAck with HasChiSnpField with HasChiSize =>
   // REQ
-  val txnID       = UInt(ChiTxnIdBits.W)
-  val memAttr     = new MemAttr()
+  val txnID     = UInt(ChiTxnIdBits.W)
+  val memAttr   = new MemAttr()
   // SNP
-  val fwdNID      = UInt(nodeIdBits.W)
-  val fwdTxnID    = UInt(ChiFwdTxnIdBits.W)
-  val retToSrc    = Bool()
+  val fwdNID    = UInt(nodeIdBits.W)
+  val fwdTxnID  = UInt(ChiFwdTxnIdBits.W)
+  val retToSrc  = Bool()
+}
+
+class ChiTask(implicit p: Parameters) extends DJBundle with HasNodeId with HasChiChannel
+  with HasChiOp with HasChiOrderAndExpCompAck with HasChiSnpField with HasChiSize with HasChiTask
+
+trait HasFastChiInst { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
+  with HasChiOrderAndExpCompAck with HasChiSnpField with HasChiSize with HasChiTask with HasAddr =>
+  def getInst(ci: UInt): ChiInst = {
+    val inst = Wire(new ChiInst)
+    inst.channel    := channel
+    inst.fromLAN    := fromLAN
+    inst.toLAN      := toLAN(ci)
+    inst.opcode     := opcode
+    inst.expCompAck := expCompAck
+    inst
+  }
 }

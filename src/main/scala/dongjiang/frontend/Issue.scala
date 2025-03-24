@@ -26,6 +26,7 @@ class Issue(implicit p: Parameters) extends DJModule {
       val dir       = new DirMsg()
       val alrDeqDB  = Bool()
       val code      = new TaskCode()
+      val commit    = new CommitCode()
     }))
     // Out
     val commit_s3   = Valid(new DJBundle {
@@ -33,7 +34,8 @@ class Issue(implicit p: Parameters) extends DJModule {
       val pos       = new PosIndex()
       val dir       = new DirMsg()
       val alrDeqDB  = Bool()
-      val ops       = new Operations()
+      val hasOps    = Bool()
+      val commit    = new CommitCode()
     })
     val cmAlloc_s4  = new DJBundle {
       val recOps    = Input(new Operations())
@@ -70,7 +72,8 @@ class Issue(implicit p: Parameters) extends DJModule {
   io.commit_s3.bits.pos       := io.task_s3.bits.pos
   io.commit_s3.bits.dir       := io.task_s3.bits.dir
   io.commit_s3.bits.alrDeqDB  := io.task_s3.bits.alrDeqDB
-  io.commit_s3.bits.ops       := io.task_s3.bits.code
+  io.commit_s3.bits.hasOps    := io.task_s3.bits.code.valid
+  io.commit_s3.bits.commit    := io.task_s3.bits.commit
 
 
   /*
@@ -87,8 +90,9 @@ class Issue(implicit p: Parameters) extends DJModule {
   cmTask_s3.chi.expCompAck  := task_s3.code.expCompAck
   cmTask_s3.chi.retToSrc    := task_s3.code.retToSrc
   // snp tgt vec
-  allVec_s3 := task_s3.dir.sf.metaVec.map(_.state.asBool)
-  othVec_s3 := task_s3.dir.sf.metaVec.map(_.state.asBool).zipWithIndex.map { case(m, i) => m & task_s3.chi.metaId =/= i.U }
+  val metaId_s3 = task_s3.chi.metaId
+  allVec_s3 := task_s3.dir.sf.allVec
+  othVec_s3 := task_s3.dir.sf.othVec(metaId_s3)
   oneVec_s3 := PriorityEncoderOH(othVec_s3)
   cmTask_s3.snpVec := PriorityMux(Seq(
     task_s3.code.snpAll -> allVec_s3,

@@ -11,7 +11,7 @@ import dongjiang.directory.DirEntry
 import xijiang.Node
 import xs.utils.debug.{DomainInfo, HardwareAssertion}
 import dongjiang.directory.{DirEntry, DirMsg}
-import dongjiang.frontend.decode.Operations
+import dongjiang.frontend.decode._
 
 class Backend(implicit p: Parameters) extends DJModule {
   /*
@@ -38,21 +38,22 @@ class Backend(implicit p: Parameters) extends DJModule {
       val sf          = Decoupled(new DirEntry("sf")  with HasPosIndex)
     }
     // Write Directory Resp
-    val respDir       = Flipped(Valid(new DJBundle {
-      val llc         = new DirEntry("llc")
-      val sf          = new DirEntry("sf")
-    }))
+    val respDir       = new DJBundle {
+      val llc         = Flipped(Valid(new DirEntry("llc")))
+      val sf          = Flipped(Valid(new DirEntry("sf")))
+    }
     // Clean Signal to Directory
     val unlockVec2    = Vec(djparam.nrDirBank, Vec(2, Valid(new PosIndex())))
     // Multicore Req running in LAN
     val multicore     = Bool()
-    // From Frontend
+    // Task From Frontend
     val commitVec     = Vec(djparam.nrDirBank, Flipped(Valid(new DJBundle {
       val chi         = new ChiTask
       val pos         = new PosIndex()
       val dir         = new DirMsg()
-      val ops         = new Operations()
       val alrDeqDB    = Bool()
+      val hasOps      = Bool()
+      val commit      = new CommitCode()
     })))
     val cmAllocVec    = Vec(djparam.nrDirBank, Flipped(new DJBundle {
       val recOps      = Input(new Operations())
@@ -68,6 +69,12 @@ class Backend(implicit p: Parameters) extends DJModule {
   })
   io <> DontCare
   HardwareAssertion(!io.commitVec.map(_.valid).reduce(_ | _))
+
+
+  /*
+   * Module declaration
+   */
+
 
   /*
    * HardwareAssertion placePipe

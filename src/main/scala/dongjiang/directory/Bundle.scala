@@ -5,6 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import dongjiang._
 import dongjiang.bundle._
+import dongjiang.frontend.decode._
 
 trait HasDirParam extends DJBundle { this: DJBundle =>
   def paramType: String
@@ -25,6 +26,12 @@ trait HasDirBaseMsg extends DJBundle { this: DJBundle with HasDirParam =>
   val wayOH   = UInt(ways.W)
   val hit     = Bool()
   val metaVec = Vec(nrMetas, new ChiState(paramType))
+
+  def allVec: Seq[Bool] = metaVec.map(_.state.asBool)
+  def othVec(metaId: UInt): Seq[Bool] = metaVec.map(_.state.asBool).zipWithIndex.map { case (m, i) => m & metaId =/= i.U }
+
+  def srcHit(metaId: UInt): Bool = hit & metaVec(metaId).state.asBool
+  def othHit(metaId: UInt): Bool = hit & othVec(metaId).reduce(_ | _)
 }
 
 // Without Addr
@@ -39,13 +46,20 @@ trait HasDirMsg extends DJBundle { this: DJBundle =>
 
 class DirMsg(implicit p: Parameters) extends DJBundle with HasDirMsg
 
+trait HasFastStateInst { this: DJBundle with HasDirMsg =>
+  def getInst(metaId: UInt): StateInst = {
+    val inst = Wire(new StateInst)
+    inst.valid    := true.B
+    inst.srcHit   := sf.srcHit(metaId)
+    inst.othHit   := sf.othHit(metaId)
+    inst.llcState := Mux(llc.hit, llc.metaVec.head.state, ChiState.I)
+    inst
+  }
+}
+
 // With Addr
-class DirEntry(dirType: String)(implicit p: Parameters) extends DJBundle with HasDirParam with HasAddr {
+class DirEntry(dirType: String)(implicit p: Parameters) extends DJBundle with HasDirParam with HasAddr with HasDirBaseMsg {
   override def paramType: String = dirType
   override def addrType : String = dirType
-
-  val wayOH   = UInt(ways.W)
-  val hit     = Bool()
-  val metaVec = Vec(nrMetas, new ChiState(dirType))
 }
 

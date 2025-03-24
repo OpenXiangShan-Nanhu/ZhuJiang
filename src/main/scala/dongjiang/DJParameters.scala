@@ -252,11 +252,9 @@ trait HasDJParam extends HasParseZJParam {
 
   // Backend Parameters
   lazy val nrReplaceCM      = djparam.nrPoS / 2
-  lazy val nrRetryBuf       = djparam.nrPoS / 4
   lazy val nrSnoopCM        = djparam.nrPoS / 4
   lazy val nrReadCM         = djparam.nrPoS / 4
   lazy val nrDatalessCM     = djparam.nrPoS / 4
-  require(nrRetryBuf >= 4)
 
 
   // TIMEOUT CHECK CNT VALUE

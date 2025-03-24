@@ -95,7 +95,8 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * Resp to Node
    */
-  needRespReg_s1              := (io.chiTask_s0.bits.isWrite & !io.chiTask_s0.bits.reqIs(WriteEvictOrEvict)) | (io.chiTask_s0.bits.isRead & io.chiTask_s0.bits.isEO)
+  // needRespReg_s1 is associated with dbid2Rn of Commit.
+  needRespReg_s1              := io.chiTask_s0.bits.isAtomic | (io.chiTask_s0.bits.isWrite & !io.chiTask_s0.bits.reqIs(WriteEvictOrEvict)) | (io.chiTask_s0.bits.isRead & io.chiTask_s0.bits.isEO)
   io.fastResp_s1.valid        := validReg_s1 & needRespReg_s1 & (block_s1.rsvd | block_s1.pos | block_s1.dir)
   io.fastResp_s1.bits         := DontCare
   io.fastResp_s1.bits.TgtID   := taskReg_s1.nodeId

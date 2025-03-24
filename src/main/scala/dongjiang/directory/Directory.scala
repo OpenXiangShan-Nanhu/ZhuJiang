@@ -21,8 +21,7 @@ class Directory(implicit p: Parameters) extends DJModule {
     })))
     // Resp to frontends
     val rRespVec    = Vec(djparam.nrDirBank, Valid(new DJBundle {
-      val llc       = new DirEntry("llc") with HasPosIndex
-      val sf        = new DirEntry("sf")  with HasPosIndex
+      val dir       = new DirMsg()
       val alrDeqDB  = Bool() // Already Req DataBuffer
     }))
     // Write From backend
@@ -31,10 +30,10 @@ class Directory(implicit p: Parameters) extends DJModule {
       val sf        = Flipped(Decoupled(new DirEntry("sf")  with HasPosIndex))
     }
     // Resp to backend
-    val wResp       = Valid(new DJBundle {
-      val llc       = new DirEntry("llc")
-      val sf        = new DirEntry("sf")
-    })
+    val wResp       = new DJBundle {
+      val llc       = Valid(new DirEntry("llc"))
+      val sf        = Valid(new DirEntry("sf"))
+    }
     // Read LLC Hit Message to Data
     val rHitMesVec  = Vec(djparam.nrDirBank, Decoupled(new DJBundle with HasPosIndex {
       val set       = UInt(llcSetBits.W)
@@ -96,10 +95,10 @@ class Directory(implicit p: Parameters) extends DJModule {
    * Connect IO
    */
   // Read Resp
-  io.rRespVec.map(_.valid).zip(llcs.map(_.io.resp)).foreach    { case(a, b) => a := b.valid }
-  io.rRespVec.map(_.bits.alrDeqDB).zip(io.rHitMesVec).foreach  { case(a, b) => a := b.fire }
-  io.rRespVec.map(_.bits.llc).zip(llcs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
-  io.rRespVec.map(_.bits.sf ).zip( sfs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
+  io.rRespVec.map(_.valid).zip(llcs.map(_.io.resp)).foreach        { case(a, b) => a := b.valid }
+  io.rRespVec.map(_.bits.alrDeqDB).zip(io.rHitMesVec).foreach      { case(a, b) => a := b.fire }
+  io.rRespVec.map(_.bits.dir.llc).zip(llcs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
+  io.rRespVec.map(_.bits.dir.sf ).zip( sfs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
 
   // Store Write LLC Resp DirBank
   wriLLCBankPipe.io.enq.valid := io.write.llc.fire
@@ -116,15 +115,18 @@ class Directory(implicit p: Parameters) extends DJModule {
   io.wResp <> DontCare
   llcs.zip(sfs).zipWithIndex.foreach {
     case ((llc, sf), i) =>
-      io.wResp.valid      := llc.io.resp.valid
       // LLC wResp
+      io.wResp.llc.valid  := llc.io.resp.valid & wriLLCBankPipe.io.deq.valid
       when(wriLLCBankPipe.io.deq.bits === i.U) {
-        io.wResp.bits.llc := llc.io.resp.bits
+        io.wResp.llc.bits := llc.io.resp.bits
       }
+      // TODO: HA
       // SF wResp
+      io.wResp.sf.valid   := llc.io.resp.valid & wriSFBankPipe.io.deq.valid
       when(wriSFBankPipe.io.deq.bits === i.U) {
-        io.wResp.bits.sf  := sf.io.resp.bits
+        io.wResp.sf.bits  := sf.io.resp.bits
       }
+      // TODO: HA
       // Hit Resp
       io.rHitMesVec(i).valid        := earlyShiftRegVec(i).isValid & llc.io.resp.bits.hit
       io.rHitMesVec(i).bits.pos     := llc.io.resp.bits.pos
