@@ -31,7 +31,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
       val alrDeqDB    = Bool()
     }))
     // To Backend
-    val commit_s3     = Valid(new DJBundle {
+    val cmtAlloc_s3   = Valid(new DJBundle {
       val chi         = new ChiTask
       val pos         = new PosIndex()
       val dir         = new DirMsg()
@@ -39,17 +39,13 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
       val hasOps      = Bool()
       val commit      = new CommitCode()
     })
-    val cmAlloc_s4    = new DJBundle {
-      val recOps      = Input(new Operations())
-      val ops         = Output(new Operations())
-      val task        = new DJBundle {
-        val chi       = new ChiTask with HasAddr
-        val pos       = new PosIndex()
-        val ops       = new Operations()
-        val alrDeqDB  = Bool()
-        val snpVec    = Vec(nrSfMetas, Bool())
-      }
-    }
+    val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new DJBundle {
+      val chi         = new ChiTask with HasAddr
+      val txnID       = new LLCTxnID
+      val needDB      = Bool()
+      val alrReqDB    = Bool()
+      val snpVec      = Vec(nrSfMetas, Bool())
+    }))
     // Update PoS Message
     val updPosTag     = Input(Valid(new Addr with HasPosIndex))
     val cleanPos      = Input(Valid(new DJBundle with HasPosIndex {
@@ -79,7 +75,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // S3: Receive DirResp and Decode
   val decode      = Module(new Decode())
   // S4: Issue Task to Backend
-  val issue       = Module(new Issue())
+  val issue       = Module(new Issue(dirBank))
 
   /*
    * Connect
@@ -95,8 +91,8 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.readDir_s1             <> block.io.readDir_s1
   io.fastResp               <> fastDecoupledQueue(block.io.fastResp_s1) // TODO: queue size = nrDirBank
   io.posBusy                := posTable.io.busy
-  io.commit_s3              := issue.io.commit_s3
-  io.cmAlloc_s4             <> issue.io.cmAlloc_s4
+  io.cmtAlloc_s3            := issue.io.cmtAlloc_s3
+  io.cmAllocVec_s4          <> issue.io.cmAllocVec_s4
 
   // req2Task
   req2Task.io.rxReq         <> io.rxReq

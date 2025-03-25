@@ -14,25 +14,13 @@ object NocType {
   val LAN = 1.U
   val BBN = 0.U
 
-  def setRx(filt: ReqFlit,   t: Int) = filt.TgtID := t.U << filt.TgtID.getWidth
-  def setRx(filt: SnoopFlit, t: Int) = filt.TgtID := t.U
-  def setRx(filt: RespFlit,  t: Int) = filt.TgtID := t.U
-  def setRx(filt: DataFlit,  t: Int) = filt.TgtID := t.U
+  def setRx(filt: Flit, t: Int) : Unit = filt.tgt := t.U
+  def setRx(filt: Flit, t: UInt): Unit = filt.tgt := t
+  def rxIs (filt: Flit, t: Int) : Bool = filt.tgt === t.U
 
-  def rxIs(filt: ReqFlit,    t: Int) = filt.TgtID === t.U
-  def rxIs(filt: SnoopFlit,  t: Int) = filt.TgtID === t.U
-  def rxIs(filt: RespFlit,   t: Int) = filt.TgtID === t.U
-  def rxIs(filt: DataFlit,   t: Int) = filt.TgtID === t.U
-
-  def setTx(filt: ReqFlit,   t: Int) = filt.SrcID := t.U
-  def setTx(filt: SnoopFlit, t: Int) = filt.SrcID := t.U
-  def setTx(filt: RespFlit,  t: Int) = filt.SrcID := t.U
-  def setTx(filt: DataFlit,  t: Int) = filt.SrcID := t.U
-
-  def txIs(filt: ReqFlit,    t: Int) = filt.SrcID === t.U
-  def txIs(filt: SnoopFlit,  t: Int) = filt.SrcID === t.U
-  def txIs(filt: RespFlit,   t: Int) = filt.SrcID === t.U
-  def txIs(filt: DataFlit,   t: Int) = filt.SrcID === t.U
+  def setTx(filt: Flit, t: Int) : Unit = filt.src := t.U
+  def setTx(filt: Flit, t: UInt): Unit = filt.src := t
+  def txIs (filt: Flit, t: Int) : Bool = filt.src === t.U
 }
 
 
@@ -54,8 +42,9 @@ trait HasAddr extends DJBundle { this: DJBundle =>
   def posTag    = getPosTag(addr)
   def posSet    = getPosSet(addr)
 
-  def toLAN(selfCI: UInt) = ci === selfCI
-  def toBBN(selfCI: UInt) = ci =/= selfCI
+  def toLAN(selfCI: UInt)  = ci === selfCI
+  def toBBN(selfCI: UInt)  = ci =/= selfCI
+  def getNoC(selfCI: UInt) = Mux(toLAN(selfCI), NocType.LAN, NocType.BBN)
 
   def catByX(bank: UInt, tag: UInt, tagBits: Int, set: UInt, setBits: Int, dirBank: UInt, offset: UInt = 0.U(offsetBits.W)) = {
     require(bank.getWidth    == bankBits,    s"bankBits:    ${bank.getWidth} =/= ${bankBits}")
@@ -100,10 +89,12 @@ trait HasPosIndex extends DJBundle { this: DJBundle =>
 }
 
 trait HasLLCTxnID extends DJBundle { this: DJBundle =>
-  val pos       = new PosIndex()
-  val dirBank   = UInt(dirBankBits.W)
-  def llcTxnID  = pos.getLLCTxnID(dirBank)
+  val pos     = new PosIndex()
+  val dirBank = UInt(dirBankBits.W)
+  def get     = pos.getLLCTxnID(dirBank)
 }
+
+class LLCTxnID(implicit p: Parameters) extends DJBundle with HasLLCTxnID
 
 /*
  * ChiTask

@@ -29,6 +29,9 @@ class Backend(implicit p: Parameters) extends DJModule {
     val fastResp      = Flipped(Decoupled(new RespFlit()))
     // Update PoS Message
     val updPosTagVec  = Vec(djparam.nrDirBank, Valid(new Addr with HasPosIndex))
+    val updPosNestVec = Vec(djparam.nrDirBank, Valid(new DJBundle with HasPosIndex {
+      val canNest     = Bool()
+    }))
     val cleanPosVec   = Vec(djparam.nrDirBank, Valid(new DJBundle with HasPosIndex {
       val isSnp       = Bool()
     }))
@@ -44,10 +47,10 @@ class Backend(implicit p: Parameters) extends DJModule {
     }
     // Clean Signal to Directory
     val unlockVec2    = Vec(djparam.nrDirBank, Vec(2, Valid(new PosIndex())))
-    // Multicore Req running in LAN
+    // Multicore Req running in LAN // TODO
     val multicore     = Bool()
     // Task From Frontend
-    val commitVec     = Vec(djparam.nrDirBank, Flipped(Valid(new DJBundle {
+    val cmtAllocVec   = Vec(djparam.nrDirBank, Flipped(Valid(new DJBundle {
       val chi         = new ChiTask
       val pos         = new PosIndex()
       val dir         = new DirMsg()
@@ -55,20 +58,16 @@ class Backend(implicit p: Parameters) extends DJModule {
       val hasOps      = Bool()
       val commit      = new CommitCode()
     })))
-    val cmAllocVec    = Vec(djparam.nrDirBank, Flipped(new DJBundle {
-      val recOps      = Input(new Operations())
-      val ops         = Output(new Operations())
-      val task        = new DJBundle {
+    val cmAllocVec2   = Vec(djparam.nrDirBank, Vec(nrTaskCM, Flipped(Decoupled(new DJBundle {
       val chi         = new ChiTask with HasAddr
-      val pos         = new PosIndex()
-      val ops         = new Operations()
-      val alrDeqDB    = Bool()
+      val txnID       = new LLCTxnID
+      val needDB      = Bool()
+      val alrReqDB    = Bool()
       val snpVec      = Vec(nrSfMetas, Bool())
-      }
-    }))
+    }))))
   })
   io <> DontCare
-  HardwareAssertion(!io.commitVec.map(_.valid).reduce(_ | _))
+  HardwareAssertion(!io.cmtAllocVec.map(_.valid).reduce(_ | _))
 
 
   /*

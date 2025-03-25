@@ -19,6 +19,7 @@ class Flit(implicit p: Parameters) extends Bundle {
   lazy val dw = zjParams.dataBits
   lazy val bew = zjParams.beBits
   def src = elements("SrcID")
+  def tgt = elements("TgtID")
 }
 
 class ReqFlit(dmt:Boolean = false)(implicit p: Parameters) extends Flit {

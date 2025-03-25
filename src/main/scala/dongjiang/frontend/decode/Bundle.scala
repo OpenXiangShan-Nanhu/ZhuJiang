@@ -10,7 +10,7 @@ import xs.utils.ParallelLookUp
 import dongjiang.frontend.decode.DecodeCHI._
 import math.max
 import dongjiang.bundle.ChiChannel._
-
+import xs.utils.debug._
 
 /*
  * (UInt, Seq[(UInt, )])
@@ -52,13 +52,28 @@ class TaskInst extends Bundle {
   val fwdResp     = UInt(ChiResp.width.W)
 }
 
+object CMID {
+  lazy val SNP  = 0
+  lazy val READ = 1
+  lazy val DL   = 2
+  lazy val WOA  = 3
+}
+
 trait HasOperations { this: Bundle =>
   val snoop       = Bool()
   val read        = Bool()
   val dataless    = Bool()
   val wriOrAtm    = Bool() // Write or Atomic
   def valid       = snoop | read | dataless | wriOrAtm
-  def invalid      = !valid
+  def invalid     = !valid
+  def cmid: UInt  = {
+    PriorityMux(Seq(
+      snoop    -> CMID.SNP.U,
+      read     -> CMID.READ.U,
+      dataless -> CMID.DL.U,
+      wriOrAtm -> CMID.WOA.U,
+    ))
+  }
 }
 
 class Operations(implicit p: Parameters) extends Bundle with HasOperations
@@ -90,7 +105,17 @@ trait HasTaskCode { this: Bundle with HasOperations =>
 
 class TaskCode extends Bundle with HasOperations with HasTaskCode
 
-trait HasCommitCode { this: Bundle =>
+trait HasWriDirCode { this: Bundle =>
+  // Write Directory
+  val wriSF       = UInt(SnpTgt.width.W)
+  val wriLLC      = Bool()
+  val srcValid    = Bool()
+  val llcState    = UInt(ChiState.width.W)
+}
+
+class WriDirCode  extends Bundle with HasWriDirCode
+
+trait HasCommitCode { this: Bundle with HasWriDirCode =>
   // Need wait second task done
   val waitSecDone = Bool()
 
@@ -102,17 +127,11 @@ trait HasCommitCode { this: Bundle =>
   val resp        = UInt(ChiResp.width.W)
   val fwdResp     = UInt(ChiResp.width.W)
 
-  // Write Directory
-  val wriSF       = UInt(SnpTgt.width.W)
-  val wriLLC      = Bool()
-  val srcValid    = Bool()
-  val llcState    = UInt(ChiState.width.W)
-
   // Not Need Commit
   val noCmt       = Bool()
 }
 
-class CommitCode extends Bundle with HasCommitCode
+class CommitCode extends Bundle with HasWriDirCode with HasCommitCode
 
 object DecodeCHI {
   val width = ChiResp.width
@@ -304,6 +323,7 @@ object Decode {
     val secInstVec3_0     = ParallelLookUp(chi.asUInt,    chiInstVec.map(_.asUInt).zip(secInstVec4))
     val cmtCodeVec3_0     = ParallelLookUp(chi.asUInt,    chiInstVec.map(_.asUInt).zip(commitCodeVec4))
     val cmtCodeVec_0      = cmtCodeVec3_0.map(_.head.head)
+
     // Second Input StateInst
     val taskCode_1        = ParallelLookUp(state.asUInt,  stateInstVec_0.map(_.asUInt).zip(taskCodeVec_0))
 
@@ -321,7 +341,6 @@ object Decode {
 
     // Fourth Input SecTaskInst
     val cmtCode_3         = ParallelLookUp(secTask.asUInt, secInstVec_2.map(_.asUInt).zip(cmtCodeVec_2))
-
 
     ((stateInstVec_0, taskCodeVec_0, cmtCodeVec_0), (taskInstVec_1, secCodeVec_1), (secInstVec_2, cmtCodeVec_2), (taskCode_1, secCode_2, cmtCode_3), (l_ci, l_si ,l_ti, l_sti))
   }

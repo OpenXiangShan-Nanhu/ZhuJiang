@@ -12,83 +12,82 @@ import xs.utils.debug._
 
 import dongjiang.frontend.decode._
 
-class Issue(implicit p: Parameters) extends DJModule {
+class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
   val io = IO(new Bundle {
     // Configuration
-    val config      = new DJConfigIO()
+    val config        = new DJConfigIO()
     // In
-    val task_s3     = Flipped(Valid(new DJBundle {
-      val chi       = new ChiTask with HasAddr
-      val pos       = new PosIndex()
-      val dir       = new DirMsg()
-      val alrDeqDB  = Bool()
-      val code      = new TaskCode()
-      val commit    = new CommitCode()
+    val task_s3       = Flipped(Valid(new DJBundle {
+      val chi         = new ChiTask with HasAddr
+      val pos         = new PosIndex()
+      val dir         = new DirMsg()
+      val alrDeqDB    = Bool()
+      val code        = new TaskCode()
+      val commit      = new CommitCode()
     }))
     // Out
-    val commit_s3   = Valid(new DJBundle {
-      val chi       = new ChiTask
-      val pos       = new PosIndex()
-      val dir       = new DirMsg()
-      val alrDeqDB  = Bool()
-      val hasOps    = Bool()
-      val commit    = new CommitCode()
+    val cmtAlloc_s3   = Valid(new DJBundle {
+      val chi         = new ChiTask
+      val pos         = new PosIndex()
+      val dir         = new DirMsg()
+      val alrDeqDB    = Bool()
+      val hasOps      = Bool()
+      val commit      = new CommitCode()
     })
-    val cmAlloc_s4  = new DJBundle {
-      val recOps    = Input(new Operations())
-      val ops       = Output(new Operations())
-      val task      = new DJBundle {
-        val chi     = new ChiTask with HasAddr
-        val pos     = new PosIndex()
-        val ops     = new Operations()
-        val alrDeqDB= Bool()
-        val snpVec  = Vec(nrSfMetas, Bool())
-      }
-    }
-    val alrUseBuf   = Output(UInt((issueBufBits+1).W))
+    val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new DJBundle {
+      val chi         = new ChiTask with HasAddr
+      val txnID       = new LLCTxnID
+      val needDB      = Bool()
+      val alrReqDB    = Bool()
+      val snpVec      = Vec(nrSfMetas, Bool())
+    }))
+    val alrUseBuf     = Output(UInt((issueBufBits+1).W))
   })
   dontTouch(io)
 
   /*
    * Module and Reg declaration
    */
+  // s3
   val allVec_s3         = Wire(Vec(nrSfMetas, Bool()))
   val othVec_s3         = Wire(Vec(nrSfMetas, Bool()))
   val oneVec_s3         = Wire(Vec(nrSfMetas, Bool()))
-  val cmTask_s3         = Wire(chiselTypeOf(io.cmAlloc_s4.task))
-  val cmTaskBufReg_s4   = Reg(Vec(nrIssueBuf, chiselTypeOf(io.cmAlloc_s4.task)))
-  val taskOpsVecReg_s4  = RegInit(VecInit(Seq.fill(nrIssueBuf) { 0.U.asTypeOf(new Operations()) }))
+  val cmTask_s3         = Wire(chiselTypeOf(io.cmAllocVec_s4.head.bits))
+  // s4
+  val taskOpsVecReg_s4  = RegInit(VecInit(Seq.fill(nrIssueBuf) { 0.U.asTypeOf(Valid(new Operations())) }))
   val taskNidVecReg_s4  = RegInit(VecInit(Seq.fill(nrIssueBuf) { 0.U(issueBufBits.W) }))
+  val cmTaskBufReg_s4   = Reg(Vec(nrIssueBuf, chiselTypeOf(io.cmAllocVec_s4.head.bits)))
 
 
   /*
    * [S3] Receive task and trans to commit
    */
-  io.commit_s3.valid          := io.task_s3.valid
-  io.commit_s3.bits.chi       := io.task_s3.bits.chi
-  io.commit_s3.bits.pos       := io.task_s3.bits.pos
-  io.commit_s3.bits.dir       := io.task_s3.bits.dir
-  io.commit_s3.bits.alrDeqDB  := io.task_s3.bits.alrDeqDB
-  io.commit_s3.bits.hasOps    := io.task_s3.bits.code.valid
-  io.commit_s3.bits.commit    := io.task_s3.bits.commit
+  io.cmtAlloc_s3.valid          := io.task_s3.valid
+  io.cmtAlloc_s3.bits.chi       := io.task_s3.bits.chi
+  io.cmtAlloc_s3.bits.pos       := io.task_s3.bits.pos
+  io.cmtAlloc_s3.bits.dir       := io.task_s3.bits.dir
+  io.cmtAlloc_s3.bits.alrDeqDB  := io.task_s3.bits.alrDeqDB
+  io.cmtAlloc_s3.bits.hasOps    := io.task_s3.bits.code.valid
+  io.cmtAlloc_s3.bits.commit    := io.task_s3.bits.commit
 
 
   /*
    * [S3] Receive task and trans to cmTask
    */
   val task_s3               = io.task_s3.bits
-  cmTask_s3.pos             := task_s3.pos
-  cmTask_s3.ops             := task_s3.code
-  cmTask_s3.alrDeqDB        := task_s3.alrDeqDB
+  cmTask_s3.txnID.pos       := task_s3.pos
+  cmTask_s3.txnID.dirBank   := dirBank.U
   cmTask_s3.chi             := task_s3.chi
+  cmTask_s3.alrReqDB        := task_s3.alrDeqDB
   // set by decode
   cmTask_s3.chi.channel     := Mux(task_s3.code.snoop, ChiChannel.SNP, ChiChannel.REQ)
   cmTask_s3.chi.opcode      := task_s3.code.opcode
   cmTask_s3.chi.expCompAck  := task_s3.code.expCompAck
   cmTask_s3.chi.retToSrc    := task_s3.code.retToSrc
+  cmTask_s3.needDB          := task_s3.code.needDB & !task_s3.alrDeqDB
   // snp tgt vec
   val metaId_s3 = task_s3.chi.metaId
   allVec_s3 := task_s3.dir.sf.allVec
@@ -105,31 +104,55 @@ class Issue(implicit p: Parameters) extends DJModule {
   /*
    * [S4] Save cmTask
    */
-  val freeVec_s4  = taskOpsVecReg_s4.map(!_.asUInt.orR)
-  val freeId_s4   = PriorityEncoder(freeVec_s4)
-  val deqOpHit_s4 = io.cmAlloc_s4.recOps.asUInt === cmTask_s3.ops.asUInt
-  val nid_s4      = PopCount(taskOpsVecReg_s4.map(ops => ops.asUInt === cmTask_s3.ops.asUInt))
-  HardwareAssertion.withEn(freeVec_s4.reduce(_ | _), io.task_s3.valid)
-  HardwareAssertion.withEn(nid_s4 > 0.U, deqOpHit_s4)
+  val freeVec_s3  = taskOpsVecReg_s4.map(!_.asUInt.orR)
+  val freeId_s3   = PriorityEncoder(freeVec_s3)
+  val deqOpHit_s3 = io.cmAllocVec_s4.zipWithIndex.map { case(alloc, i) => alloc.fire & task_s3.code.cmid === i.U }.reduce(_ | _)
+  val nid_s3      = PopCount(taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === task_s3.code.cmid))
+  HardwareAssertion.withEn(freeVec_s3.reduce(_ | _), io.task_s3.valid)
+  HardwareAssertion.withEn(nid_s3 > 0.U, deqOpHit_s3)
 
   when(io.task_s3.valid) {
-    taskOpsVecReg_s4(freeId_s4) := cmTask_s3.ops
-    cmTaskBufReg_s4(freeId_s4)  := cmTask_s3
-    taskNidVecReg_s4(freeId_s4) := nid_s4 - deqOpHit_s4
+    taskOpsVecReg_s4(freeId_s3).bits  := task_s3.code
+    taskNidVecReg_s4(freeId_s3)       := nid_s3 - deqOpHit_s3
+    cmTaskBufReg_s4(freeId_s3)        := cmTask_s3
   }
 
   /*
    * Select Buffer to Output
    */
-  val canRec_s4       = io.cmAlloc_s4.recOps.asUInt.orR
-  val selVec_s4       = taskOpsVecReg_s4.zip(taskNidVecReg_s4).map { case(ops, id) => ops.asUInt === io.cmAlloc_s4.recOps.asUInt & id === 0.U }
-  val selId_s4        = PriorityEncoder(selVec_s4)
-  io.cmAlloc_s4.ops   := taskOpsVecReg_s4.map(_.asUInt).reduce(_ | _).asTypeOf(new Operations())
-  io.cmAlloc_s4.task  := cmTaskBufReg_s4(selId_s4)
-  HardwareAssertion.withEn(selVec_s4.reduce(_ | _), canRec_s4)
-
-  when(canRec_s4) {
-    taskOpsVecReg_s4(selId_s4)  := 0.U.asTypeOf(new Operations())
+  // vec
+  val snpVec_s4   = taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === CMID.SNP.U)
+  val readVec_s4  = taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === CMID.READ.U)
+  val dlVec_s4    = taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === CMID.DL.U)
+  val woaVec_s4   = taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === CMID.WOA.U)
+  val zeroVec_s4  = taskNidVecReg_s4.map(_ === 0.U)
+  // id
+  val snpId_s4  = PriorityEncoder(snpVec_s4.zip(zeroVec_s4).map (a => a._1 & a._2))
+  val readId_s4 = PriorityEncoder(readVec_s4.zip(zeroVec_s4).map(a => a._1 & a._2))
+  val dlId_s4   = PriorityEncoder(dlVec_s4.zip(zeroVec_s4).map  (a => a._1 & a._2))
+  val woaId_s4  = PriorityEncoder(woaVec_s4.zip(zeroVec_s4).map (a => a._1 & a._2))
+  // valid
+  io.cmAllocVec_s4(CMID.SNP).valid  := snpVec_s4.reduce(_ | _)
+  io.cmAllocVec_s4(CMID.READ).valid := readVec_s4.reduce(_ | _)
+  io.cmAllocVec_s4(CMID.DL).valid   := dlVec_s4.reduce(_ | _)
+  io.cmAllocVec_s4(CMID.WOA).valid  := woaVec_s4.reduce(_ | _)
+  // bits
+  io.cmAllocVec_s4(CMID.SNP).bits   := cmTaskBufReg_s4(snpId_s4)
+  io.cmAllocVec_s4(CMID.READ).bits  := cmTaskBufReg_s4(snpId_s4)
+  io.cmAllocVec_s4(CMID.DL).bits    := cmTaskBufReg_s4(snpId_s4)
+  io.cmAllocVec_s4(CMID.WOA).bits   := cmTaskBufReg_s4(snpId_s4)
+  // invalid
+  taskOpsVecReg_s4.zipWithIndex.foreach {
+    case(ops, i) =>
+      val toBeValid   = io.task_s3.valid & freeId_s3 === i.U
+      val toBeInvalid = io.cmAllocVec_s4(ops.bits.cmid).ready & taskNidVecReg_s4(i) === 0.U
+      ops.valid := PriorityMux(Seq(
+        toBeValid   -> true.B,
+        toBeInvalid -> false.B,
+        true.B      -> ops.valid
+      ))
+      HardwareAssertion.withEn(!ops.valid, toBeValid)
+      HardwareAssertion.withEn(ops.valid, toBeInvalid)
   }
 
   /*
