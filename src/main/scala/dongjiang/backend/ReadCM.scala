@@ -9,8 +9,10 @@ import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
 import dongjiang.directory.{DirEntry, DirMsg}
+import dongjiang.frontend._
 import dongjiang.frontend.decode._
 import zhujiang.chi.RspOpcode._
+import dongjiang.backend._
 import dongjiang.backend.read.State._
 
 object State {
@@ -47,29 +49,17 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   val io = IO(new Bundle {
     val config      = new DJConfigIO()
     // Commit Task In
-    val alloc       = Flipped(Decoupled(new DJBundle {
-      val chi       = new ChiTask with HasAddr
-      val txnID     = new LLCTxnID
-      val ops       = new Operations()
-      val needDB    = Bool()
-      val alrReqDB  = Bool()
-      val snpVec    = Vec(nrSfMetas, Bool())
-    }))
+    val alloc       = Flipped(Decoupled(new CMTask))
     // CHI
     val txReq       = Decoupled(new ReqFlit(true))
     val txRsp       = Decoupled(new RespFlit())
     val rxDat       = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
     // Update PoS Message
-    val updPosNest  = Decoupled(new DJBundle with HasLLCTxnID {
-      val canNest   = Bool()
-    })
+    val updPosNest  = Decoupled(new PackLLCTxnID with HasNest)
     // Resp To Commit
-    val respCmt     = Decoupled(new DJBundle with HasLLCTxnID {
-      val inst      = new TaskInst()
-      val alrReqDB  = Bool()
-    })
+    val respCmt     = Decoupled(new RespToCmt)
     // Req To Data
-    val reqDB       = Decoupled(new DJBundle with HasLLCTxnID with HasChiSize)
+    val reqDB       = Decoupled(new PackLLCTxnID with HasChiSize)
   })
   HardwareAssertion(!io.alloc.valid)
 
@@ -77,34 +67,13 @@ class ReadCM(implicit p: Parameters) extends DJModule {
    * Reg and Wire declaration
    */
   val cmRegVec    = RegInit(VecInit(Seq.fill(nrReadCM) { 0.U.asTypeOf(new CMState) }))
-  val msgRegVec   = Reg(Vec(nrReadCM, new DJBundle {
-    val chi       = new ChiTask with HasAddr
-    val txnID     = new LLCTxnID
-    val alrReqDB  = Bool()
-    val inst      = new TaskInst()
-    val doDMT     = Bool()
-  }))
-  val msg_rec     = WireInit(0.U.asTypeOf(msgRegVec.head))
-  val cm_rec      = Wire(new CMState())
-
+  val msgRegVec   = Reg(Vec(nrReadCM, new CMTask with HasPackTaskInst))
 
   /*
    * [REC] Receive Task IO
    */
   val cmVec_rec     = cmRegVec.map(!_.valid) // Free Vec
   val cmId_rec      = PriorityEncoder(cmVec_rec)
-  val alloc_rec     = io.alloc.bits
-
-  msg_rec.chi       := alloc_rec.chi
-  msg_rec.txnID     := alloc_rec.txnID
-  msg_rec.alrReqDB  := alloc_rec.alrReqDB
-  msg_rec.inst      := DontCare
-  msg_rec.doDMT     := !alloc_rec.needDB
-  cm_rec.valid      := true.B
-  cm_rec.state      := Mux(alloc_rec.needDB & alloc_rec.alrReqDB, ReqDB, SendReq)
-  cm_rec.cantNest   := false.B
-  cm_rec.respCmt    := false.B
-
 
   /*
    * ReqDB
@@ -112,8 +81,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   val cmVec_reqDB       = cmRegVec.map(_.isReqDB)
   val cmId_reqDB        = StepRREncoder(cmVec_reqDB, io.reqDB.fire)
   io.reqDB.valid        := cmVec_reqDB.reduce(_ | _)
-  io.reqDB.bits.pos     := msgRegVec(cmId_reqDB).txnID.pos
-  io.reqDB.bits.dirBank := msgRegVec(cmId_reqDB).txnID.dirBank
+  io.reqDB.bits.llcTxnID:= msgRegVec(cmId_reqDB).llcTxnID
 
   /*
    * SendReq
@@ -130,9 +98,9 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   io.txReq.bits.Addr            := msg_sReq.chi.order
   io.txReq.bits.Size            := msg_sReq.chi.size
   io.txReq.bits.Opcode          := msg_sReq.chi.opcode
-  io.txReq.bits.ReturnTxnID.get := Mux(msg_sReq.doDMT, msg_sReq.chi.txnID,  msg_sReq.txnID.get)
+  io.txReq.bits.ReturnTxnID.get := Mux(msg_sReq.doDMT, msg_sReq.chi.txnID,  msg_sReq.llcTxnID.get)
   io.txReq.bits.ReturnNID.get   := Mux(msg_sReq.doDMT, msg_sReq.chi.nodeId, Fill(io.txReq.bits.ReturnNID.get.getWidth, 1.U)) // If set RetrunNID max value, it will be remap in SAM
-  io.txReq.bits.TxnID           := msg_sReq.txnID.get
+  io.txReq.bits.TxnID           := msg_sReq.llcTxnID.get
   io.txReq.bits.SrcID           := DontCare // remap in SAM
   // set tgt noc type
   NocType.setTx(io.txReq.bits, msg_sReq.chi.getNoC(io.config.ci))
@@ -163,8 +131,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   // valid
   io.updPosNest.valid := cmVec_nest.reduce(_ | _)
   // bits
-  io.updPosNest.bits.dirBank  := msg_nest.txnID.dirBank
-  io.updPosNest.bits.pos      := msg_nest.txnID.pos
+  io.updPosNest.bits.llcTxnID := msg_nest.llcTxnID
   io.updPosNest.bits.canNest  := false.B
 
   /*
@@ -176,9 +143,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   // valid
   io.respCmt.valid := cmVec_resp.reduce(_ | _)
   // bits
-  io.respCmt.bits.dirBank       := msg_resp.txnID.dirBank
-  io.respCmt.bits.pos           := msg_resp.txnID.pos
-  io.respCmt.bits.alrReqDB      := msg_resp.alrReqDB
+  io.respCmt.bits.llcTxnID      := msg_resp.llcTxnID
   io.respCmt.bits.inst.valid    := true.B
   io.respCmt.bits.inst.fwdValid := false.B
   io.respCmt.bits.inst.channel  := ChiChannel.DAT
@@ -194,18 +159,19 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       val allocHit    = io.alloc.fire      & i.U === cmId_rec
       val reqDBHit    = io.reqDB.fire      & i.U === cmId_reqDB
       val sendReqHit  = io.txReq.fire      & i.U === cmId_sReq
-      val recDataHit  = io.rxDat.fire      & msg.txnID.get === io.rxDat.bits.TxnID
+      val recDataHit  = io.rxDat.fire      & msg.llcTxnID.get === io.rxDat.bits.TxnID
       val sendAckHit  = io.txRsp.fire      & i.U === cmId_sAck
       val updNestHit  = io.updPosNest.fire & i.U === cmId_nest
       val respCmtHit  = io.respCmt.fire    & i.U === cmId_resp
 
       // Store Msg From Frontend
       when(allocHit) {
-        msg := msg_rec
+        msg      := io.alloc.bits
+        msg.inst := DontCare
       // Store AlrReqDB
       }.elsewhen(reqDBHit) {
-        cm.cantNest  := true.B
-        msg.alrReqDB := true.B
+        cm.cantNest    := true.B
+        msg.alrDB.reqs := true.B
       // Store Message
       }.elsewhen(recDataHit) {
         // chi
@@ -217,7 +183,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
 
       // Get Next State
       val nxtState = PriorityMux(Seq(
-        allocHit    -> cm_rec.state,
+        allocHit    -> Mux(io.alloc.bits.needDB & !io.alloc.bits.alrDB.reqs, ReqDB, SendReq),
         reqDBHit    -> SendReq,
         sendReqHit  -> Mux(!msg.doDMT, WaitData0, Free),
         recDataHit  -> Mux(msg.chi.isNotFullSize, Mux(msg.chi.expCompAck, SendCompAck, Free), Mux(cm.isWaitData0, WaitData0, WaitData1)),

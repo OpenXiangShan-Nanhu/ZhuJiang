@@ -5,10 +5,12 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
+import dongjiang.backend.{CMTask, CommitTask}
 import dongjiang.utils._
 import dongjiang.bundle._
+import dongjiang.data.DataTask
 import xs.utils.debug._
-import dongjiang.directory.{DirEntry, DirMsg}
+import dongjiang.directory.{DirEntry, DirMsg, PackDirMsg}
 import dongjiang.frontend.decode.{CommitCode, Operations}
 
 class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
@@ -21,40 +23,24 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // CHI REQ/SNP
     val rxReq         = Flipped(Decoupled(new ReqFlit(false)))
     val rxSnp         = Flipped(Decoupled(new SnoopFlit()))
+    // To Data
+    val reqDB_s1      = Decoupled(new PackLLCTxnID with HasChiSize)
+    val fastData_s3   = Decoupled(new DataTask)
     // DIR Read/Resp
-    val readDir_s1    = Decoupled(new DJBundle with HasAddr with HasPosIndex {
-      val early       = Bool() // Early access to data
-    })
-    // From Directory
-    val respDir_s3    = Flipped(Valid(new DJBundle {
-      val dir         = new DirMsg()
-      val alrDeqDB    = Bool()
-    }))
+    val readDir_s1    = Decoupled(new Addr with HasPackPosIndex)
+    val respDir_s3    = Flipped(Valid(new PackDirMsg))
     // To Backend
-    val cmtAlloc_s3   = Valid(new DJBundle {
-      val chi         = new ChiTask
-      val pos         = new PosIndex()
-      val dir         = new DirMsg()
-      val alrDeqDB    = Bool()
-      val hasOps      = Bool()
-      val commit      = new CommitCode()
-    })
-    val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new DJBundle {
-      val chi         = new ChiTask with HasAddr
-      val txnID       = new LLCTxnID
-      val needDB      = Bool()
-      val alrReqDB    = Bool()
-      val snpVec      = Vec(nrSfMetas, Bool())
-    }))
+    val cmtAlloc_s3   = Valid(new CommitTask())
+    val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new CMTask()))
     // Update PoS Message
-    val updPosTag     = Input(Valid(new Addr with HasPosIndex))
-    val cleanPos      = Input(Valid(new DJBundle with HasPosIndex {
-      val isSnp       = Bool()
-    }))
-    // PoS Busy Signal
-    val posBusy       = Output(UInt(2.W))
+    val updPosNest    = Flipped(Decoupled(new PackPosIndex with HasNest))
+    val updPosTag     = Flipped(Valid(new PackPosIndex with HasAddr))
+    val cleanPos      = Flipped(Valid(new PackPosIndex with HasChiChannel))
+    val lockPosSet    = Flipped(Valid(new PackPosIndex with HasLockSet))
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
     val fastResp      = Decoupled(new RespFlit())
+    // PoS Busy Signal
+    val posBusy       = Output(UInt(2.W))
   })
 
 
@@ -73,7 +59,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val bufReg_s2   = RegInit(0.U.asTypeOf(block.io.task_s1.bits))
   val shiftReg_s2 = RegInit(0.U.asTypeOf(new Shift(readDirLatency-1)))
   // S3: Receive DirResp and Decode
-  val decode      = Module(new Decode())
+  val decode      = Module(new Decode(dirBank))
   // S4: Issue Task to Backend
   val issue       = Module(new Issue(dirBank))
 
@@ -88,6 +74,8 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   issue.io.config           := io.config
 
   // io
+  io.reqDB_s1               <> block.io.reqDB_s1
+  io.fastData_s3            <> decode.io.fastData_s3
   io.readDir_s1             <> block.io.readDir_s1
   io.fastResp               <> fastDecoupledQueue(block.io.fastResp_s1) // TODO: queue size = nrDirBank
   io.posBusy                := posTable.io.busy
@@ -123,10 +111,10 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // posTable [S1]
   posTable.io.req_s0        := fastRRArb(Seq(snpTaskBuf.io.req2Pos_s0, reqTaskBuf.io.req2Pos_s0))
   posTable.io.retry_s1      := block.io.retry_s1
-  posTable.io.canNest       := decode.io.canNest_s3
+  posTable.io.updNest       := fastArb.validOut(Seq(decode.io.updNest_s3, io.updPosNest))
   posTable.io.updTag        := io.updPosTag
   posTable.io.clean         := io.cleanPos
-
+  posTable.io.lockSet       := io.lockPosSet
 
   // block [S1]
   block.io.chiTask_s0       := fastRRArb(Seq(snpTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0))

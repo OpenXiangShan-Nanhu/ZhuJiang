@@ -11,6 +11,7 @@ import xs.utils.debug._
 import zhujiang.chi.ReqOpcode._
 import zhujiang.chi.RspOpcode._
 import zhujiang.chi.SnpOpcode._
+import dongjiang.data._
 
 class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
@@ -18,20 +19,17 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // Task
-    val chiTask_s0    = Flipped(Valid(new ChiTask with HasAddr))
-    val task_s1       = Valid(new DJBundle {
-      val chi         = new ChiTask with HasAddr
-      val pos         = new PosIndex()
-    })
+    val chiTask_s0    = Flipped(Valid(new Chi with HasAddr))
+    val task_s1       = Valid(new PackChi with HasAddr with HasPackPosIndex with HasAlrDB)
     // Read Directory
-    val readDir_s1    = Decoupled(new DJBundle with HasAddr with HasPosIndex {
-      val early       = Bool() // Early access to data
-    })
+    val readDir_s1    = Decoupled(new Addr with HasPackPosIndex)
     // Message from PoS
     val posRetry_s1   = Input(Bool())
     val posIdx_s1     = Input(new PosIndex())
     // Return to TaskBuf
     val retry_s1      = Output(Bool())
+    // Send Req To Data
+    val reqDB_s1      = Decoupled(new PackLLCTxnID with HasChiSize)
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
     val fastResp_s1   = Decoupled(new RespFlit())
     // Block Message(The number of resources already used)
@@ -42,15 +40,16 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val validReg_s1     = RegInit(false.B)
-  val taskReg_s1      = Reg(new ChiTask with HasAddr)
-  val needRespReg_s1  = RegInit(false.B)
-  val needRsvdReg_s1  = RegInit(false.B)
-  val block_s1        = Wire(new Bundle {
-    val rsvd          = Bool()
-    val pos           = Bool()
-    val dir           = Bool()
-    val resp          = Bool()
+  val validReg_s1         = RegInit(false.B)
+  val taskReg_s1          = Reg(new Chi with HasAddr)
+  val needRespReadReg_s1  = RegInit(false.B)
+  val needRespDBIDReg_s1  = RegInit(false.B)
+  val needRsvdReg_s1      = RegInit(false.B)
+  val block_s1            = Wire(new Bundle {
+    val rsvd              = Bool()
+    val pos               = Bool()
+    val dir               = Bool()
+    val resp              = Bool()
     def all = rsvd | pos | dir | resp
   })
   dontTouch(block_s1)
@@ -74,7 +73,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   block_s1.rsvd     := needRsvdReg_s1
   block_s1.pos      := io.posRetry_s1
   block_s1.dir      := !io.readDir_s1.ready & taskReg_s1.memAttr.cacheable
-  block_s1.resp     := needRespReg_s1 & !io.fastResp_s1.ready
+  block_s1.resp     := (needRespReadReg_s1 | (needRespDBIDReg_s1 & !io.reqDB_s1.ready)) & !io.fastResp_s1.ready
   io.retry_s1       := validReg_s1 & block_s1.all
 
   /*
@@ -82,7 +81,10 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
    */
   io.task_s1.valid      := validReg_s1 & !block_s1.all
   io.task_s1.bits.chi   := taskReg_s1
+  io.task_s1.bits.addr  := taskReg_s1.addr
   io.task_s1.bits.pos   := io.posIdx_s1
+  io.task_s1.bits.alrDB.reqs := io.reqDB_s1.fire
+  io.task_s1.bits.alrDB.fast := false.B
 
   /*
    * Read Directory
@@ -90,15 +92,20 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.readDir_s1.valid       := validReg_s1 & taskReg_s1.memAttr.cacheable & !(block_s1.rsvd | block_s1.pos | block_s1.resp)
   io.readDir_s1.bits.addr   := taskReg_s1.addr
   io.readDir_s1.bits.pos    := io.posIdx_s1
-  io.readDir_s1.bits.early  := io.task_s1.bits.chi.isRead | io.task_s1.bits.chi.isSnp & io.task_s1.bits.chi.snpIs(SnpMakeInvalid)
 
   /*
    * Resp to Node
    */
   // needRespReg_s1 is associated with dbid2Rn of Commit.
-  // TODO: Get DBID Before Send XDBIDResp
-  needRespReg_s1              := io.chiTask_s0.bits.isAtomic | (io.chiTask_s0.bits.isWrite & !io.chiTask_s0.bits.reqIs(WriteEvictOrEvict)) | (io.chiTask_s0.bits.isRead & io.chiTask_s0.bits.isEO)
-  io.fastResp_s1.valid        := validReg_s1 & needRespReg_s1 & (block_s1.rsvd | block_s1.pos | block_s1.dir)
+  needRespReadReg_s1          := io.chiTask_s0.bits.isRead & io.chiTask_s0.bits.isEO
+  needRespDBIDReg_s1          := io.chiTask_s0.bits.needSendDBID()
+  // Send Req To Data
+  io.reqDB_s1.valid           := validReg_s1 & needRespDBIDReg_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
+  io.reqDB_s1.bits.size       := taskReg_s1.size
+  io.reqDB_s1.bits.llcTxnID.pos     := io.posIdx_s1
+  io.reqDB_s1.bits.llcTxnID.dirBank := dirBank.U
+  // Send Fast Resp To CHI
+  io.fastResp_s1.valid        := validReg_s1 & (needRespReadReg_s1 | (needRespDBIDReg_s1 & !io.reqDB_s1.ready)) & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
   io.fastResp_s1.bits         := DontCare
   io.fastResp_s1.bits.TgtID   := taskReg_s1.nodeId
   io.fastResp_s1.bits.TxnID   := taskReg_s1.txnID

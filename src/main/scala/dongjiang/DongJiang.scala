@@ -179,16 +179,18 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   frontends.zipWithIndex.foreach {
     case(f, i) =>
       f.io.respDir_s3 := directory.io.rRespVec(i)
+      f.io.updPosNest <> backend.io.updPosNestVec(i)
       f.io.updPosTag  := backend.io.updPosTagVec(i)
-      f.io.cleanPos   := backend.io.cleanPosVec(i)
+      f.io.cleanPos   := fastArb.validOut(Seq(backend.io.cleanPosVec(i), dataCtrl.io.cleanPosVec(i)))
+      f.io.lockPosSet := backend.io.lockPosSetVec(i)
   }
 
   /*
    * Connect Directory
    */
   directory.io.readVec.zip(frontends.map(_.io.readDir_s1)).foreach { case(a, b) => a <> b }
-  directory.io.write  <> backend.io.writeDir
-  directory.io.unlockVec2.zipWithIndex.foreach { case(vec, i) => vec.zipWithIndex.foreach { case(a, j) => a := backend.io.unlockVec2(i)(j) } }
+  directory.io.write <> backend.io.writeDir
+  directory.io.unlockVec2.zipWithIndex.foreach { case(vec, i) => vec := backend.io.unlockVec2(i) ++ Seq(dataCtrl.io.unlockVec(i)) }
 
   /*
    * Connect backend
@@ -201,5 +203,6 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   /*
    * Connect DataCtrl
    */
-  dataCtrl.io.hitMesVec.zip(directory.io.rHitMesVec).foreach     { case(a, b) => a <> b }
+  dataCtrl.io.reqDB <> fastArb(Seq(backend.io.reqDB) ++ frontends.map(_.io.reqDB_s1))
+  dataCtrl.io.task  <> fastArb(Seq(backend.io.dataTask) ++ frontends.map(_.io.fastData_s3))
 }

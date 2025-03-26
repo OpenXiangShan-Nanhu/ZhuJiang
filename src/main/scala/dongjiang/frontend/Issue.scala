@@ -7,10 +7,11 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
+import dongjiang.data.HasAlrDB
 import dongjiang.directory._
 import xs.utils.debug._
-
 import dongjiang.frontend.decode._
+import dongjiang.backend._
 
 class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
@@ -20,30 +21,10 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // Configuration
     val config        = new DJConfigIO()
     // In
-    val task_s3       = Flipped(Valid(new DJBundle {
-      val chi         = new ChiTask with HasAddr
-      val pos         = new PosIndex()
-      val dir         = new DirMsg()
-      val alrDeqDB    = Bool()
-      val code        = new TaskCode()
-      val commit      = new CommitCode()
-    }))
+    val task_s3       = Flipped(Valid(new PackChi with HasAddr with HasPackPosIndex with HasPackDirMsg with HasAlrDB with HasPackTaskCode with HasPackCmtCode))
     // Out
-    val cmtAlloc_s3   = Valid(new DJBundle {
-      val chi         = new ChiTask
-      val pos         = new PosIndex()
-      val dir         = new DirMsg()
-      val alrDeqDB    = Bool()
-      val hasOps      = Bool()
-      val commit      = new CommitCode()
-    })
-    val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new DJBundle {
-      val chi         = new ChiTask with HasAddr
-      val txnID       = new LLCTxnID
-      val needDB      = Bool()
-      val alrReqDB    = Bool()
-      val snpVec      = Vec(nrSfMetas, Bool())
-    }))
+    val cmtAlloc_s3   = Valid(new CommitTask())
+    val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new CMTask()))
     val alrUseBuf     = Output(UInt((issueBufBits+1).W))
   })
   dontTouch(io)
@@ -69,8 +50,7 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.cmtAlloc_s3.bits.chi       := io.task_s3.bits.chi
   io.cmtAlloc_s3.bits.pos       := io.task_s3.bits.pos
   io.cmtAlloc_s3.bits.dir       := io.task_s3.bits.dir
-  io.cmtAlloc_s3.bits.alrDeqDB  := io.task_s3.bits.alrDeqDB
-  io.cmtAlloc_s3.bits.hasOps    := io.task_s3.bits.code.valid
+  io.cmtAlloc_s3.bits.alrDB     := io.task_s3.bits.alrDB
   io.cmtAlloc_s3.bits.commit    := io.task_s3.bits.commit
 
 
@@ -78,16 +58,17 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * [S3] Receive task and trans to cmTask
    */
   val task_s3               = io.task_s3.bits
-  cmTask_s3.txnID.pos       := task_s3.pos
-  cmTask_s3.txnID.dirBank   := dirBank.U
+  cmTask_s3.addr            := task_s3.addr
+  cmTask_s3.llcTxnID.pos    := task_s3.pos
+  cmTask_s3.llcTxnID.dirBank:= dirBank.U
   cmTask_s3.chi             := task_s3.chi
-  cmTask_s3.alrReqDB        := task_s3.alrDeqDB
+  cmTask_s3.alrDB           := task_s3.alrDB
   // set by decode
   cmTask_s3.chi.channel     := Mux(task_s3.code.snoop, ChiChannel.SNP, ChiChannel.REQ)
   cmTask_s3.chi.opcode      := task_s3.code.opcode
   cmTask_s3.chi.expCompAck  := task_s3.code.expCompAck
   cmTask_s3.chi.retToSrc    := task_s3.code.retToSrc
-  cmTask_s3.needDB          := task_s3.code.needDB & !task_s3.alrDeqDB
+  cmTask_s3.needDB          := task_s3.code.needDB
   // snp tgt vec
   val metaId_s3 = task_s3.chi.metaId
   allVec_s3 := task_s3.dir.sf.allVec

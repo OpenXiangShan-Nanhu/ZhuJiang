@@ -9,6 +9,14 @@ import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
 
+trait HasLockSet extends DJBundle { this: DJBundle =>
+  val lock = new Bool()
+}
+
+trait HasNest extends DJBundle { this: DJBundle =>
+  val canNest = new Bool()
+}
+
 class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
@@ -16,20 +24,17 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val io = IO(new Bundle {
     val config      = new DJConfigIO()
     // req and ack
-    val req_s0       = Flipped(Valid(new DJBundle with HasAddr {
-      val isSnp     = Bool()
-    }))
+    val req_s0       = Flipped(Valid(new Addr with HasChiChannel))
     val sleep_s1    = Output(Bool())
     val full_s1     = Output(Bool())
     val posIdx_s1   = Output(new PosIndex())
     // retry from block
     val retry_s1    = Input(Bool())
     // update PoS
-    val canNest     = Flipped(Valid(new PosIndex()))
-    val updTag      = Flipped(Valid(new Addr with HasPosIndex))
-    val clean       = Flipped(Valid(new DJBundle with HasPosIndex {
-      val isSnp     = Bool()
-    }))
+    val updNest     = Flipped(Valid(new PackPosIndex with HasNest))
+    val updTag      = Flipped(Valid(new PackPosIndex with HasAddr))
+    val clean       = Flipped(Valid(new PackPosIndex with HasChiChannel))
+    val lockSet     = Flipped(Valid(new PackPosIndex with HasLockSet)) // TODO
     // wakeup TaskBuf Entry
     val wakeup      = Valid(new Addr)
     // PoS Busy Signal
@@ -40,15 +45,13 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * Reg and Wire declaration
    */
   val tagTable    = Reg(Vec(posSets, Vec(posWays, UInt(posTagBits.W))))
-  val ctrlTable   = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { 0.U.asTypeOf(new DJBundle {
+  val ctrlTable   = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { 0.U.asTypeOf(new DJBundle with HasNest {
     val validVec  = UInt(2.W)
-    val canNest   = Bool()
-
     def hasReq    = validVec(0)
     def hasSnp    = validVec(1)
     def valid     = validVec.orR
   }) }) }))
-  val reqReg_s1   = Reg(Valid(new DJBundle with HasPosIndex {
+  val reqReg_s1   = Reg(Valid(new DJBundle with HasPackPosIndex {
     val tag       = UInt(posTagBits.W)
     val isSnp     = Bool()
   }))
@@ -63,11 +66,11 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
    *  b. nest someone
    */
   // get block message
-  val reqSet      = io.req_s0.bits.posSet
+  val reqSet      = io.req_s0.bits.Addr.posSet
   val ctrlSet     = ctrlTable(reqSet)
   val addrSet     = tagTable(reqSet)
   val posValidVec = ctrlSet.map(_.valid)
-  val tagMatchVec = addrSet.map(_ === io.req_s0.bits.posTag)
+  val tagMatchVec = addrSet.map(_ === io.req_s0.bits.Addr.posTag)
   val matchVec    = posValidVec.zip(tagMatchVec).map { case(a, b) => a & b }
   // judge nest
   val nestVec     = matchVec.zip(ctrlSet.map(_.canNest)).map { case(a, b) => a & b }
@@ -86,7 +89,7 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * Store req from taskBuf
    */
   reqReg_s1.valid        := io.req_s0.valid & receive
-  reqReg_s1.bits.tag     := io.req_s0.bits.posTag
+  reqReg_s1.bits.tag     := io.req_s0.bits.Addr.posTag
   reqReg_s1.bits.isSnp   := io.req_s0.bits.isSnp
   reqReg_s1.bits.pos.set := reqSet
   reqReg_s1.bits.pos.way := Mux(snpNest, nestWay, freeWay)
@@ -108,7 +111,7 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
           val updHit  = io.updTag.valid & io.updTag.bits.pos.idxMatch(i, j)
           val reqHit  = reqReg_s1.valid & reqReg_s1.bits.pos.idxMatch(i , j) & !io.retry_s1
           when(updHit) {
-            tag := io.updTag.bits.posTag
+            tag := io.updTag.bits.Addr.posTag
           }.elsewhen(reqHit) {
             tag := reqReg_s1.bits.tag
           }
@@ -139,13 +142,12 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
             validVecNxt   := ctrl.validVec | Mux(reqIsSnp, "b10".U, "b01".U)
           }
           // modify canNest
-          val canNestHit  = io.canNest.valid & io.canNest.bits.idxMatch(i, j)
-          ctrl.canNest    := canNestHit
+          val updNestHit  = io.updNest.valid & io.updNest.bits.pos.idxMatch(i, j)
+          ctrl.canNest    := Mux(reqHit, false.B, Mux(updNestHit, io.updNest.bits.canNest, ctrl.canNest))
           // assert
           HardwareAssertion.withEn(PopCount(ctrl.validVec ^ validVecNxt) === 1.U, cleanHit | reqHit,
                                                                     desc = cf"PoS Index[${i}][${j}]")
           HardwareAssertion(PopCount(Seq(cleanHit, reqHit)) <= 1.U, desc = cf"PoS Index[${i}][${j}]")
-          HardwareAssertion.withEn(!ctrl.canNest, canNestHit,       desc = cf"PoS Index[${i}][${j}]")
           if(j % 4 == 0) HardwareAssertion.placePipe(Int.MaxValue-3)
       }
   }
@@ -158,7 +160,7 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val cleanWay = io.clean.bits.pos.way
   val cleanSet = io.clean.bits.pos.set
   val cleanTag = tagTable(cleanSet)(cleanWay)
-  io.wakeup.bits.catPoS(io.config.bankId, cleanTag, cleanSet, dirBank.U(dirBankBits.W))
+  io.wakeup.bits.Addr.catPoS(io.config.bankId, cleanTag, cleanSet, dirBank.U(dirBankBits.W))
   // get wakeup valid
   io.wakeup.valid := io.clean.valid & ctrlTable(cleanSet)(cleanWay).validVec.xorR
 

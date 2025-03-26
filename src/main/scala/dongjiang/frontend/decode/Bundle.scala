@@ -52,6 +52,8 @@ class TaskInst extends Bundle {
   val fwdResp     = UInt(ChiResp.width.W)
 }
 
+trait HasPackTaskInst { this: Bundle => val inst = new TaskInst() }
+
 object CMID {
   lazy val SNP  = 0
   lazy val READ = 1
@@ -105,15 +107,21 @@ trait HasTaskCode { this: Bundle with HasOperations =>
 
 class TaskCode extends Bundle with HasOperations with HasTaskCode
 
+trait HasPackTaskCode { this: Bundle => val code = new TaskCode() }
+
 trait HasWriDirCode { this: Bundle =>
   // Write Directory
   val wriSF       = UInt(SnpTgt.width.W)
   val wriLLC      = Bool()
   val srcValid    = Bool()
   val llcState    = UInt(ChiState.width.W)
+
+  def wriDir      = wriSF | wriLLC
 }
 
 class WriDirCode  extends Bundle with HasWriDirCode
+
+trait HasPackWriDirCode { this: Bundle => val code = new WriDirCode() }
 
 trait HasCommitCode { this: Bundle with HasWriDirCode =>
   // Need wait second task done
@@ -129,9 +137,15 @@ trait HasCommitCode { this: Bundle with HasWriDirCode =>
 
   // Not Need Commit
   val noCmt       = Bool()
+
+  // def
+  def valid       = commit | noCmt | wriDir
+  def invalid     = !valid
 }
 
 class CommitCode extends Bundle with HasWriDirCode with HasCommitCode
+
+trait HasPackCmtCode { this: Bundle => val commit = new CommitCode() }
 
 object DecodeCHI {
   val width = ChiResp.width

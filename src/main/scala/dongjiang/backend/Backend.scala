@@ -7,11 +7,12 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
-import dongjiang.directory.DirEntry
 import xijiang.Node
 import xs.utils.debug.{DomainInfo, HardwareAssertion}
-import dongjiang.directory.{DirEntry, DirMsg}
+import dongjiang.frontend._
 import dongjiang.frontend.decode._
+import dongjiang.data._
+import dongjiang.directory._
 
 class Backend(implicit p: Parameters) extends DJModule {
   /*
@@ -28,17 +29,14 @@ class Backend(implicit p: Parameters) extends DJModule {
     // CHI RESP From Frontend
     val fastResp      = Flipped(Decoupled(new RespFlit()))
     // Update PoS Message
-    val updPosTagVec  = Vec(djparam.nrDirBank, Valid(new Addr with HasPosIndex))
-    val updPosNestVec = Vec(djparam.nrDirBank, Valid(new DJBundle with HasPosIndex {
-      val canNest     = Bool()
-    }))
-    val cleanPosVec   = Vec(djparam.nrDirBank, Valid(new DJBundle with HasPosIndex {
-      val isSnp       = Bool()
-    }))
+    val updPosNestVec = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasNest))
+    val updPosTagVec  = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasAddr)) // Only from replace
+    val cleanPosVec   = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasChiChannel))
+    val lockPosSetVec = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasLockSet)) // Only from replace
     // Write Directory
     val writeDir      = new DJBundle {
-      val llc         = Decoupled(new DirEntry("llc") with HasPosIndex)
-      val sf          = Decoupled(new DirEntry("sf")  with HasPosIndex)
+      val llc         = Decoupled(new DirEntry("llc") with HasPackPosIndex)
+      val sf          = Decoupled(new DirEntry("sf")  with HasPackPosIndex)
     }
     // Write Directory Resp
     val respDir       = new DJBundle {
@@ -47,24 +45,14 @@ class Backend(implicit p: Parameters) extends DJModule {
     }
     // Clean Signal to Directory
     val unlockVec2    = Vec(djparam.nrDirBank, Vec(2, Valid(new PosIndex())))
-    // Multicore Req running in LAN // TODO
-    val multicore     = Bool()
     // Task From Frontend
-    val cmtAllocVec   = Vec(djparam.nrDirBank, Flipped(Valid(new DJBundle {
-      val chi         = new ChiTask
-      val pos         = new PosIndex()
-      val dir         = new DirMsg()
-      val alrDeqDB    = Bool()
-      val hasOps      = Bool()
-      val commit      = new CommitCode()
-    })))
-    val cmAllocVec2   = Vec(djparam.nrDirBank, Vec(nrTaskCM, Flipped(Decoupled(new DJBundle {
-      val chi         = new ChiTask with HasAddr
-      val txnID       = new LLCTxnID
-      val needDB      = Bool()
-      val alrReqDB    = Bool()
-      val snpVec      = Vec(nrSfMetas, Bool())
-    }))))
+    val cmtAllocVec   = Vec(djparam.nrDirBank, Flipped(Valid(new CommitTask())))
+    val cmAllocVec2   = Vec(djparam.nrDirBank, Vec(nrTaskCM, Flipped(Decoupled(new CMTask()))))
+    // Send Task To DB
+    val reqDB         = Decoupled(new PackLLCTxnID with HasChiSize)
+    val dataTask      = Decoupled(new DataTask)
+    // Multicore Req running in LAN
+    val multicore     = Bool() // TODO
   })
   io <> DontCare
   HardwareAssertion(!io.cmtAllocVec.map(_.valid).reduce(_ | _))

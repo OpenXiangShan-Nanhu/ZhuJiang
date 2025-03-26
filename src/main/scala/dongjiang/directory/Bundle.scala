@@ -22,6 +22,10 @@ class DirParam(dirType: String)(implicit p: Parameters) extends DJBundle with Ha
   override def paramType: String = dirType
 }
 
+/*
+ * DirBaseMsg:
+ * HasDirBaseMsg -> DirEntry/HasDirMsg -> DirMsg -> PackDirMsg -> HasPackDirMsg
+ */
 trait HasDirBaseMsg extends DJBundle { this: DJBundle with HasDirParam =>
   val wayOH   = UInt(ways.W)
   val hit     = Bool()
@@ -34,7 +38,11 @@ trait HasDirBaseMsg extends DJBundle { this: DJBundle with HasDirParam =>
   def othHit(metaId: UInt): Bool = hit & othVec(metaId).reduce(_ | _)
 }
 
-// Without Addr
+class DirEntry(dirType: String)(implicit p: Parameters) extends DJBundle with HasDirParam with HasAddr with HasDirBaseMsg {
+  override def paramType: String = dirType
+  override def addrType : String = dirType
+}
+
 trait HasDirMsg extends DJBundle { this: DJBundle =>
   val llc = new DJBundle with HasDirParam with HasDirBaseMsg {
     override def paramType: String = "llc"
@@ -42,12 +50,7 @@ trait HasDirMsg extends DJBundle { this: DJBundle =>
   val sf  = new DJBundle with HasDirParam with HasDirBaseMsg {
     override def paramType: String = "sf"
   }
-}
-
-class DirMsg(implicit p: Parameters) extends DJBundle with HasDirMsg
-
-trait HasFastStateInst { this: DJBundle with HasDirMsg =>
-  def getInst(metaId: UInt): StateInst = {
+  def getStateInst(metaId: UInt): StateInst = {
     val inst = Wire(new StateInst)
     inst.valid    := true.B
     inst.srcHit   := sf.srcHit(metaId)
@@ -57,9 +60,9 @@ trait HasFastStateInst { this: DJBundle with HasDirMsg =>
   }
 }
 
-// With Addr
-class DirEntry(dirType: String)(implicit p: Parameters) extends DJBundle with HasDirParam with HasAddr with HasDirBaseMsg {
-  override def paramType: String = dirType
-  override def addrType : String = dirType
-}
+class DirMsg(implicit p: Parameters) extends DJBundle with HasDirMsg
+
+trait HasPackDirMsg extends DJBundle { this: DJBundle => val dir = new DirMsg() }
+
+class PackDirMsg(implicit p: Parameters) extends DJBundle with HasPackDirMsg
 

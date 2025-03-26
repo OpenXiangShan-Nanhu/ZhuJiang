@@ -17,11 +17,12 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
     // CHI TX/RX DAT
     val txDat       = Decoupled(new DataFlit())
     val rxDat       = Flipped(Decoupled(new DataFlit())) // Only use rxDat.Data/DataID/BE in DataCtrl
-    // Read LLC Hit Message
-    val hitMesVec   = Vec(djparam.nrDirBank, Flipped(Decoupled(new DJBundle with HasPosIndex {
-      val set       = UInt(llcSetBits.W)
-      val way       = UInt(llcWayBits.W)
-    })))
+    // Task From Frontend or Backend
+    val reqDB       = Flipped(Decoupled(new PackLLCTxnID with HasChiSize))
+    val task        = Flipped(Decoupled(new DataTask))
+    // Clean Message To Frontend or Directory
+    val cleanPosVec = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasChiChannel))
+    val unlockVec   = Vec(djparam.nrDirBank, Valid(new PosIndex()))
   })
 
   io <> DontCare

@@ -21,7 +21,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     // CHI REQ IN
     val rxReq   = Flipped(Decoupled(new ReqFlit(false)))
     // CHI TASK OUT
-    val chiTask = Decoupled(new ChiTask with HasAddr)
+    val chiTask = Decoupled(new Chi with HasAddr)
   })
 
   // Connect Valid Ready
@@ -33,12 +33,14 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
   val req       = io.rxReq.bits
   val task      = io.chiTask.bits
   task.addr     := req.Addr
+  task.toLAN    := task.Addr.isToLAN(io.config.ci)
   task.fromLAN  := NocType.rxIs(req, LAN)
   task.nodeId   := req.SrcID
   task.channel  := REQ
   task.opcode   := req.Opcode
   task.txnID    := req.TxnID
   // Use in req
+  task.dataId   := task.Addr.getDataId
   task.order    := req.Order
   task.snpAttr  := req.SnpAttr
   task.snoopMe  := req.SnoopMe
@@ -54,6 +56,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
    * HardwareAssertion
    */
   awhen(io.rxReq.valid) {
+    // TODO
     // QoS
     // TgtID
     // SrcID
@@ -76,8 +79,8 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     HardwareAssertion.withEn(task.isFullSize, task.isAllocatingRead | task.isDataless | task.isWriteFull)
     HardwareAssertion.withEn(task.isNotFullSize, task.isAtomic)
     // Addr
-    HardwareAssertion(task.bankId === io.config.bankId)
-    HardwareAssertion.withEn(task.offset === 0.U, task.isAllocatingRead | task.isDataless | task.isWriteFull)
+    HardwareAssertion(task.Addr.bankId === io.config.bankId)
+    HardwareAssertion.withEn(task.Addr.offset === 0.U, task.isAllocatingRead | task.isDataless | task.isWriteFull)
     // NS
     // NSE
     // LikelyShared
@@ -141,7 +144,7 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
     // CHI REQ IN
     val rxSnp   = Flipped(Decoupled(new SnoopFlit()))
     // CHI TASK OUT
-    val chiTask = Decoupled(new ChiTask with HasAddr)
+    val chiTask = Decoupled(new Chi with HasAddr)
   })
 
   HardwareAssertion(!io.rxSnp.valid)
@@ -155,12 +158,14 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
   val snp       = io.rxSnp.bits
   val task      = io.chiTask.bits
   task.addr     := Cat(snp.Addr, 0.U(3.W))
+  task.toLAN    := true.B
   task.fromLAN  := false.B
   task.nodeId   := snp.SrcID
   task.channel  := SNP
   task.opcode   := snp.Opcode
   task.txnID    := snp.TxnID
   // Use in req
+  task.dataId   := DontCare
   task.order    := DontCare
   task.snpAttr  := DontCare
   task.snoopMe  := DontCare
@@ -176,6 +181,7 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
    * HardwareAssertion
    */
 awhen(io.rxSnp.valid) {
+  // TODO
   // QoS
   // TgtID
   // SrcID
@@ -192,7 +198,7 @@ awhen(io.rxSnp.valid) {
   // Opcode
   HardwareAssertion(task.snpIsLegal)
   // Addr
-  HardwareAssertion(task.ci === io.config.ci)
+  HardwareAssertion(task.Addr.ci === io.config.ci)
   // NS
   // NSE
   // DoNotGoToSD

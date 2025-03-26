@@ -16,31 +16,21 @@ class Directory(implicit p: Parameters) extends DJModule {
   val io = IO(new Bundle {
     val config      = Input(new DJConfigIO())
     // Read from frontends
-    val readVec     = Vec(djparam.nrDirBank, Flipped(Decoupled(new DJBundle with HasAddr with HasPosIndex {
-      val early     = Bool() // Early access to data
-    })))
+    val readVec     = Vec(djparam.nrDirBank, Flipped(Decoupled(new Addr with HasPackPosIndex)))
     // Resp to frontends
-    val rRespVec    = Vec(djparam.nrDirBank, Valid(new DJBundle {
-      val dir       = new DirMsg()
-      val alrDeqDB  = Bool() // Already Req DataBuffer
-    }))
+    val rRespVec    = Vec(djparam.nrDirBank, Valid(new PackDirMsg))
     // Write From backend
     val write       = new DJBundle {
-      val llc       = Flipped(Decoupled(new DirEntry("llc") with HasPosIndex))
-      val sf        = Flipped(Decoupled(new DirEntry("sf")  with HasPosIndex))
+      val llc       = Flipped(Decoupled(new DirEntry("llc") with HasPackPosIndex))
+      val sf        = Flipped(Decoupled(new DirEntry("sf")  with HasPackPosIndex))
     }
     // Resp to backend
     val wResp       = new DJBundle {
       val llc       = Valid(new DirEntry("llc"))
       val sf        = Valid(new DirEntry("sf"))
     }
-    // Read LLC Hit Message to Data
-    val rHitMesVec  = Vec(djparam.nrDirBank, Decoupled(new DJBundle with HasPosIndex {
-      val set       = UInt(llcSetBits.W)
-      val way       = UInt(llcWayBits.W)
-    }))
     // Clean Signal from backend(Replace CM and Commit CM)
-    val unlockVec2  = Vec(djparam.nrDirBank, Vec(2, Flipped(Valid(new PosIndex()))))
+    val unlockVec2  = Vec(djparam.nrDirBank, Vec(3, Flipped(Valid(new PosIndex()))))
   })
 
   /*
@@ -50,7 +40,6 @@ class Directory(implicit p: Parameters) extends DJModule {
   val sfs               = Seq.tabulate(djparam.nrDirBank)(i => Module(new DirectoryBase("sf", i)))
   val wriLLCBankPipe    = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
   val wriSFBankPipe     = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
-  val earlyShiftRegVec  = RegInit(VecInit(Seq.fill(djparam.nrDirBank) { 0.U.asTypeOf(new Shift(readDirLatency)) }))
 
   /*
    * Connect llcs and sfs
@@ -73,16 +62,16 @@ class Directory(implicit p: Parameters) extends DJModule {
       io.readVec(i).ready   := llc.io.read.ready & sf.io.read.ready
 
       // write valid
-      llc.io.write.valid    := io.write.llc.valid & io.write.llc.bits.dirBank === i.U
-      sf.io.write.valid     := io.write.sf.valid  & io.write.sf.bits.dirBank === i.U
+      llc.io.write.valid    := io.write.llc.valid & io.write.llc.bits.Addr.dirBank === i.U
+      sf.io.write.valid     := io.write.sf.valid  & io.write.sf.bits.Addr.dirBank === i.U
       // write bits
       llc.io.write.bits     := io.write.llc.bits
       sf.io.write.bits      := io.write.sf.bits
       // write read
-      when(io.write.llc.bits.bankId === i.U) {
+      when(io.write.llc.bits.Addr.bankId === i.U) {
         io.write.llc.ready  := llc.io.write.ready
       }
-      when(io.write.sf.bits.bankId === i.U) {
+      when(io.write.sf.bits.Addr.bankId === i.U) {
         io.write.sf.ready   := sf.io.write.ready
       }
 
@@ -96,20 +85,16 @@ class Directory(implicit p: Parameters) extends DJModule {
    */
   // Read Resp
   io.rRespVec.map(_.valid).zip(llcs.map(_.io.resp)).foreach        { case(a, b) => a := b.valid }
-  io.rRespVec.map(_.bits.alrDeqDB).zip(io.rHitMesVec).foreach      { case(a, b) => a := b.fire }
   io.rRespVec.map(_.bits.dir.llc).zip(llcs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
   io.rRespVec.map(_.bits.dir.sf ).zip( sfs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
 
   // Store Write LLC Resp DirBank
   wriLLCBankPipe.io.enq.valid := io.write.llc.fire
-  wriLLCBankPipe.io.enq.bits  := io.write.llc.bits.bankId
+  wriLLCBankPipe.io.enq.bits  := io.write.llc.bits.Addr.bankId
 
   // Store Write SF Resp DirBank
   wriSFBankPipe.io.enq.valid  := io.write.sf.fire
-  wriSFBankPipe.io.enq.bits   := io.write.sf.bits.bankId
-
-  // Store Early Request
-  earlyShiftRegVec.zip(io.readVec).foreach { case(a, b) => a.input(b.fire & b.bits.early) }
+  wriSFBankPipe.io.enq.bits   := io.write.sf.bits.Addr.bankId
 
   // Output wResp and rHitMesVec
   io.wResp <> DontCare
@@ -120,18 +105,12 @@ class Directory(implicit p: Parameters) extends DJModule {
       when(wriLLCBankPipe.io.deq.bits === i.U) {
         io.wResp.llc.bits := llc.io.resp.bits
       }
-      // TODO: HA
       // SF wResp
       io.wResp.sf.valid   := llc.io.resp.valid & wriSFBankPipe.io.deq.valid
       when(wriSFBankPipe.io.deq.bits === i.U) {
         io.wResp.sf.bits  := sf.io.resp.bits
       }
       // TODO: HA
-      // Hit Resp
-      io.rHitMesVec(i).valid        := earlyShiftRegVec(i).isValid & llc.io.resp.bits.hit
-      io.rHitMesVec(i).bits.pos     := llc.io.resp.bits.pos
-      io.rHitMesVec(i).bits.set     := llc.io.resp.bits.set
-      io.rHitMesVec(i).bits.way     := OHToUInt(llc.io.resp.bits.wayOH)
   }
 
   /*
