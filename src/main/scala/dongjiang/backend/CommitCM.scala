@@ -13,7 +13,7 @@ import dongjiang.directory.{DirEntry, DirMsg, HasPackDirMsg}
 import dongjiang.frontend.decode.{HasPackCmtCode, _}
 import dongjiang.data._
 import zhujiang.chi.ReqOpcode._
-
+import dongjiang.frontend._
 
 class CMState(implicit p: Parameters) extends DJBundle {
   val waitResp  = Bool() // Wait TaskCM Resp
@@ -31,15 +31,20 @@ class CMState(implicit p: Parameters) extends DJBundle {
 
 class CommitTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasPackPosIndex with HasPackDirMsg with HasAlrDB with HasPackCmtCode
 
+// TODO: no need Addr
 class CMTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasAddr with HasPackLLCTxnID with HasAlrDB {
   val needDB = Bool()
   val snpVec = Vec(nrSfMetas, Bool())
   def doDMT  = !needDB
 }
 
+class PackCMTask(implicit p: Parameters) extends DJBundle {
+  val task = new CMTask()
+}
+
 class RespToCmt(implicit p: Parameters) extends DJBundle with HasPackLLCTxnID with HasPackTaskInst with HasAlrDB
 
-class Commit(dirBank: Int)(implicit p: Parameters) extends DJModule {
+class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
@@ -51,23 +56,31 @@ class Commit(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val txRsp       = Decoupled(new RespFlit())
     val rxRsp       = Flipped(Valid(new RespFlit()))
     val rxDat       = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
+    // Get Full Addr In PoS
+    val getPosAddr  = Decoupled(new PosIndex())
+    val posRespAddr = Input(new Addr())
     // Send Task To CM
-    val cmAllocOH   = Output(UInt(nrTaskCM.W))
-    val cmAlloc     = Decoupled(new CMTask)
+    val cmAllocVec  = Vec(nrTaskCM, Decoupled(new CMTask))
     // Resp From TaskCM
-    val respToCmt   = Flipped(Valid(new RespToCmt))
+    val respCmt     = Flipped(Valid(new RespToCmt))
     // Send Task To Replace
     val replAlloc   = Decoupled(new Addr with HasPackWriDirCode with HasPackLLCTxnID)
+    val replResp    = Flipped(Valid(new PackPosIndex()))
     // Send Task To Data
     val dataTask    = Decoupled(new DataTask)
+    val dataResp    = Flipped(Valid(new PackPosIndex()))
+    // Update PoS Message
+    val updPosNest  = Decoupled(new PackPosIndex with HasNest)
+    val cleanPos    = Valid(new PackPosIndex with HasChiChannel)
+    val unlock      = Valid(new PosIndex())
   })
-  HardwareAssertion(!io.alloc.valid)
+  HardwareAssertion(!io.respCmt.valid)
   io <> DontCare
 
   /*
    * Reg and Wire declaration
    */
-  val cmTable     = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { new CMState() }) }))
+  val cmTable     = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { 0.U.asTypeOf(new CMState()) }) }))
   val msgTable    = Reg(Vec(posSets, Vec(posWays, new PackChi with HasPackDirMsg with HasAlrDB)))
   val msg_rec     = Wire(chiselTypeOf(msgTable.head.head))
   val cm_rec      = Wire(new CMState())

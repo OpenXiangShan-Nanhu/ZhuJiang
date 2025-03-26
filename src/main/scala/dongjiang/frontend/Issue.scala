@@ -119,9 +119,9 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.cmAllocVec_s4(CMID.WOA).valid  := woaVec_s4.reduce(_ | _)
   // bits
   io.cmAllocVec_s4(CMID.SNP).bits   := cmTaskBufReg_s4(snpId_s4)
-  io.cmAllocVec_s4(CMID.READ).bits  := cmTaskBufReg_s4(snpId_s4)
-  io.cmAllocVec_s4(CMID.DL).bits    := cmTaskBufReg_s4(snpId_s4)
-  io.cmAllocVec_s4(CMID.WOA).bits   := cmTaskBufReg_s4(snpId_s4)
+  io.cmAllocVec_s4(CMID.READ).bits  := cmTaskBufReg_s4(readId_s4)
+  io.cmAllocVec_s4(CMID.DL).bits    := cmTaskBufReg_s4(dlId_s4)
+  io.cmAllocVec_s4(CMID.WOA).bits   := cmTaskBufReg_s4(woaId_s4)
   // invalid
   taskOpsVecReg_s4.zipWithIndex.foreach {
     case(ops, i) =>

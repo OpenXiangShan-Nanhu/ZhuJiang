@@ -30,6 +30,9 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val posIdx_s1   = Output(new PosIndex())
     // retry from block
     val retry_s1    = Input(Bool())
+    // Get Full Addr In PoS
+    val getAddr     = Input(new PosIndex())
+    val respAddr    = Output(new Addr())
     // update PoS
     val updNest     = Flipped(Valid(new PackPosIndex with HasNest))
     val updTag      = Flipped(Valid(new PackPosIndex with HasAddr))
@@ -40,6 +43,8 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // PoS Busy Signal
     val busy        = Output(UInt(2.W))
   })
+
+  io.respAddr := DontCare // TODO
 
   /*
    * Reg and Wire declaration

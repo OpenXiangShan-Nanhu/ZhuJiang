@@ -30,7 +30,7 @@ class Directory(implicit p: Parameters) extends DJModule {
       val sf        = Valid(new DirEntry("sf"))
     }
     // Clean Signal from backend(Replace CM and Commit CM)
-    val unlockVec2  = Vec(djparam.nrDirBank, Vec(3, Flipped(Valid(new PosIndex()))))
+    val unlockVec   = Vec(djparam.nrDirBank, Flipped(Valid(new PosIndex())))
   })
 
   /*
@@ -76,8 +76,8 @@ class Directory(implicit p: Parameters) extends DJModule {
       }
 
       // Clean Lock Table
-      llc.io.unlockVec.zip(io.unlockVec2(i)).foreach { case(a, b) => a := b }
-      sf.io.unlockVec.zip(io.unlockVec2(i)).foreach  { case(a, b) => a := b }
+      llc.io.unlock := io.unlockVec(i)
+      sf.io.unlock  := io.unlockVec(i)
   }
 
   /*

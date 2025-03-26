@@ -69,6 +69,13 @@ object fastRRArb {
     out.bits := arb.io.out.bits
     out
   }
+
+  def onlyBits[T <: Data](in: Seq[DecoupledIO[T]]): T = {
+    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, true))
+    arb.io.in.zip(in).foreach { case (a, b) => a <> b }
+    arb.io.out.ready := true.B
+    arb.io.out.bits
+  }
 }
 
 object fastArb {

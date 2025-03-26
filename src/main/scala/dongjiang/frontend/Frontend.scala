@@ -12,6 +12,7 @@ import dongjiang.data.DataTask
 import xs.utils.debug._
 import dongjiang.directory.{DirEntry, DirMsg, PackDirMsg}
 import dongjiang.frontend.decode.{CommitCode, Operations}
+import xs.utils.queue.FastQueue
 
 class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
@@ -32,6 +33,9 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // To Backend
     val cmtAlloc_s3   = Valid(new CommitTask())
     val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new CMTask()))
+    // Get Full Addr In PoS
+    val getPosAddr    = Input(new PosIndex())
+    val posRespAddr   = Output(new Addr())
     // Update PoS Message
     val updPosNest    = Flipped(Decoupled(new PackPosIndex with HasNest))
     val updPosTag     = Flipped(Valid(new PackPosIndex with HasAddr))
@@ -74,10 +78,11 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   issue.io.config           := io.config
 
   // io
+  io.posRespAddr            := posTable.io.respAddr
   io.reqDB_s1               <> block.io.reqDB_s1
   io.fastData_s3            <> decode.io.fastData_s3
   io.readDir_s1             <> block.io.readDir_s1
-  io.fastResp               <> fastDecoupledQueue(block.io.fastResp_s1) // TODO: queue size = nrDirBank
+  io.fastResp               <> FastQueue(block.io.fastResp_s1, djparam.nrDirBank)
   io.posBusy                := posTable.io.busy
   io.cmtAlloc_s3            := issue.io.cmtAlloc_s3
   io.cmAllocVec_s4          <> issue.io.cmAllocVec_s4
@@ -115,6 +120,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   posTable.io.updTag        := io.updPosTag
   posTable.io.clean         := io.cleanPos
   posTable.io.lockSet       := io.lockPosSet
+  posTable.io.getAddr       := io.getPosAddr
 
   // block [S1]
   block.io.chiTask_s0       := fastRRArb(Seq(snpTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0))

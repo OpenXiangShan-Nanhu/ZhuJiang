@@ -75,7 +75,7 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.task_s3.bits.alrDB.fast:= io.fastData_s3.fire
   io.task_s3.bits.code      := code_s3
   io.task_s3.bits.commit    := Mux(code_s3.valid, 0.U.asTypeOf(new CommitCode), cmt_s3)
-  HardwareAssertion.withEn(code_s3.valid, cmt_s3.invalid)
+  HardwareAssertion.withEn(code_s3.valid, validReg_s3 & cmt_s3.invalid)
 
   // canNest_s3
   io.updNest_s3.valid       := validReg_s3 & code_s3.canNest

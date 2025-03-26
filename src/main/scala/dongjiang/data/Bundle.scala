@@ -46,7 +46,7 @@ trait HasLLCIndex { this: DJBundle =>
 }
 
 /*
- * DataTask
+ * DataTask -> DataTaskBundle
  */
 class DataTask(implicit p: Parameters) extends DJBundle with HasPackDataOp with HasPackLLCTxnID with HasChiSize with HasLLCIndex {
   val txDat = new DataFlit

@@ -257,6 +257,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val nrReadCM         = djparam.nrPoS / 2
   lazy val nrDatalessCM     = djparam.nrPoS / 4
   lazy val nrWriOrAtmCM     = djparam.nrPoS / 4
+  lazy val fastRespQSzie    = djparam.nrPoS / 8
 
 
   // TIMEOUT CHECK CNT VALUE

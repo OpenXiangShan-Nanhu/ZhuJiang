@@ -126,6 +126,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    */
   frontends.foreach(_.io.config := io.config)
   directory.io.config := io.config
+  backend.io.config := io.config
 
   /*
    * Connect IO CHI
@@ -181,8 +182,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
       f.io.respDir_s3 := directory.io.rRespVec(i)
       f.io.updPosNest <> backend.io.updPosNestVec(i)
       f.io.updPosTag  := backend.io.updPosTagVec(i)
-      f.io.cleanPos   := fastArb.validOut(Seq(backend.io.cleanPosVec(i), dataCtrl.io.cleanPosVec(i)))
+      f.io.cleanPos   := backend.io.cleanPosVec(i)
       f.io.lockPosSet := backend.io.lockPosSetVec(i)
+      f.io.getPosAddr := backend.io.getPosAddrVec(i)
   }
 
   /*
@@ -190,15 +192,17 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    */
   directory.io.readVec.zip(frontends.map(_.io.readDir_s1)).foreach { case(a, b) => a <> b }
   directory.io.write <> backend.io.writeDir
-  directory.io.unlockVec2.zipWithIndex.foreach { case(vec, i) => vec := backend.io.unlockVec2(i) ++ Seq(dataCtrl.io.unlockVec(i)) }
+  directory.io.unlockVec.zipWithIndex.foreach { case(vec, i) => vec := backend.io.unlockVec(i) }
 
   /*
    * Connect backend
    */
   backend.io.fastResp <> fastRRArb(frontends.map(_.io.fastResp))
   backend.io.respDir  := directory.io.wResp
-  backend.io.cmtAllocVec.zip(frontends.map(_.io.cmtAlloc_s3)).foreach   { case(a, b) => a <> b }
-  backend.io.cmAllocVec2.zip(frontends.map(_.io.cmAllocVec_s4)).foreach { case(a, b) => a <> b }
+  backend.io.cmtAllocVec.zip(frontends.map(_.io.cmtAlloc_s3)).foreach    { case(a, b) => a <> b }
+  backend.io.cmAllocVec2.zip(frontends.map(_.io.cmAllocVec_s4)).foreach  { case(a, b) => a <> b }
+  backend.io.posRespAddrVec.zip(frontends.map(_.io.posRespAddr)).foreach { case(a, b) => a := b }
+  backend.io.dataResp := dataCtrl.io.resp
 
   /*
    * Connect DataCtrl

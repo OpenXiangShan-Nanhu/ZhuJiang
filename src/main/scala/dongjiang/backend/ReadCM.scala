@@ -47,33 +47,33 @@ class ReadCM(implicit p: Parameters) extends DJModule {
    * IO declaration
    */
   val io = IO(new Bundle {
-    val config      = new DJConfigIO()
+    val config        = new DJConfigIO()
     // Commit Task In
-    val alloc       = Flipped(Decoupled(new CMTask))
+    val alloc         = Flipped(Decoupled(new CMTask))
     // CHI
-    val txReq       = Decoupled(new ReqFlit(true))
-    val txRsp       = Decoupled(new RespFlit())
-    val rxDat       = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
+    val txReq         = Decoupled(new ReqFlit(true))
+    val txRsp         = Decoupled(new RespFlit())
+    val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
     // Update PoS Message
-    val updPosNest  = Decoupled(new PackLLCTxnID with HasNest)
+    val updPosNestVec = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasNest))
     // Resp To Commit
-    val respCmt     = Decoupled(new RespToCmt)
+    val respCmt       = Decoupled(new RespToCmt)
     // Req To Data
-    val reqDB       = Decoupled(new PackLLCTxnID with HasChiSize)
+    val reqDB         = Decoupled(new PackLLCTxnID with HasChiSize)
   })
-  HardwareAssertion(!io.alloc.valid)
 
   /*
    * Reg and Wire declaration
    */
   val cmRegVec    = RegInit(VecInit(Seq.fill(nrReadCM) { 0.U.asTypeOf(new CMState) }))
-  val msgRegVec   = Reg(Vec(nrReadCM, new CMTask with HasPackTaskInst))
+  val msgRegVec   = Reg(Vec(nrReadCM, new PackCMTask with HasPackTaskInst))
 
   /*
    * [REC] Receive Task IO
    */
   val cmVec_rec     = cmRegVec.map(!_.valid) // Free Vec
   val cmId_rec      = PriorityEncoder(cmVec_rec)
+  io.alloc.ready    := cmVec_rec.reduce(_ | _)
 
   /*
    * ReqDB
@@ -81,58 +81,61 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   val cmVec_reqDB       = cmRegVec.map(_.isReqDB)
   val cmId_reqDB        = StepRREncoder(cmVec_reqDB, io.reqDB.fire)
   io.reqDB.valid        := cmVec_reqDB.reduce(_ | _)
-  io.reqDB.bits.llcTxnID:= msgRegVec(cmId_reqDB).llcTxnID
+  io.reqDB.bits.llcTxnID:= msgRegVec(cmId_reqDB).task.llcTxnID
+  io.reqDB.bits.size    := msgRegVec(cmId_reqDB).task.chi.size
 
   /*
    * SendReq
    */
   val cmVec_sReq  = cmRegVec.map(_.isSendReq)
-  val cmId_sReq   = StepRREncoder(cmVec_reqDB, io.txReq.fire)
-  val msg_sReq    = msgRegVec(cmId_sReq)
+  val cmId_sReq   = StepRREncoder(cmVec_sReq, io.txReq.fire)
+  val task_sReq   = msgRegVec(cmId_sReq).task
   // valid
   io.txReq.valid  := cmVec_sReq.reduce(_ | _)
   // bits
-  io.txReq.bits.ExpCompAck      := msg_sReq.chi.expCompAck
-  io.txReq.bits.MemAttr         := msg_sReq.chi.memAttr.asUInt
+  io.txReq.bits                 := DontCare
+  io.txReq.bits.ExpCompAck      := task_sReq.chi.expCompAck
+  io.txReq.bits.MemAttr         := task_sReq.chi.memAttr.asUInt
   io.txReq.bits.Order           := Order.None
-  io.txReq.bits.Addr            := msg_sReq.chi.order
-  io.txReq.bits.Size            := msg_sReq.chi.size
-  io.txReq.bits.Opcode          := msg_sReq.chi.opcode
-  io.txReq.bits.ReturnTxnID.get := Mux(msg_sReq.doDMT, msg_sReq.chi.txnID,  msg_sReq.llcTxnID.get)
-  io.txReq.bits.ReturnNID.get   := Mux(msg_sReq.doDMT, msg_sReq.chi.nodeId, Fill(io.txReq.bits.ReturnNID.get.getWidth, 1.U)) // If set RetrunNID max value, it will be remap in SAM
-  io.txReq.bits.TxnID           := msg_sReq.llcTxnID.get
+  io.txReq.bits.Addr            := task_sReq.addr
+  io.txReq.bits.Size            := task_sReq.chi.size
+  io.txReq.bits.Opcode          := task_sReq.chi.opcode
+  io.txReq.bits.ReturnTxnID.get := Mux(task_sReq.doDMT, task_sReq.chi.txnID,  task_sReq.llcTxnID.get)
+  io.txReq.bits.ReturnNID.get   := Mux(task_sReq.doDMT, task_sReq.chi.nodeId, Fill(io.txReq.bits.ReturnNID.get.getWidth, 1.U)) // If set RetrunNID max value, it will be remap in SAM
+  io.txReq.bits.TxnID           := task_sReq.llcTxnID.get
   io.txReq.bits.SrcID           := DontCare // remap in SAM
   // set tgt noc type
-  NocType.setTx(io.txReq.bits, msg_sReq.chi.getNoC(io.config.ci))
+  NocType.setTx(io.txReq.bits, task_sReq.chi.getNoC(io.config.ci))
 
   /*
    * Send CompAck
    */
   val cmVec_sAck  = cmRegVec.map(_.isSendCompAck)
   val cmId_sAck   = StepRREncoder(cmVec_sAck, io.txRsp.fire)
-  val msg_sAck    = msgRegVec(cmId_sAck)
+  val task_sAck   = msgRegVec(cmId_sAck).task
   // valid
   io.txRsp.valid  := cmVec_sAck.reduce(_ | _)
   // bits
   io.txRsp.bits         := DontCare
   io.txRsp.bits.Opcode  := CompAck
-  io.txRsp.bits.TxnID   := msg_sAck.chi.txnID
+  io.txRsp.bits.TxnID   := task_sAck.chi.txnID
   io.txRsp.bits.SrcID   := DontCare
-  io.txRsp.bits.TgtID   := msg_sAck.chi.nodeId
-  NocType.setTx(io.txRsp.bits, msg_sAck.chi.getNoC(io.config.ci))
+  io.txRsp.bits.TgtID   := task_sAck.chi.nodeId
+  NocType.setTx(io.txRsp.bits, task_sAck.chi.getNoC(io.config.ci))
 
 
   /*
    * Update PoS Message
    */
+  val fire_nest   = io.updPosNestVec.map(_.fire).reduce(_ | _)
   val cmVec_nest  = cmRegVec.map(_.cantNest)
-  val cmId_nest   = StepRREncoder(cmVec_nest, io.updPosNest.fire)
-  val msg_nest    = msgRegVec(cmId_nest)
+  val cmId_nest   = StepRREncoder(cmVec_nest, fire_nest)
+  val task_nest   = msgRegVec(cmId_nest).task
   // valid
-  io.updPosNest.valid := cmVec_nest.reduce(_ | _)
+  io.updPosNestVec.zipWithIndex.foreach { case(upd, i) => upd.valid := cmVec_nest.reduce(_ | _) & task_nest.llcTxnID.dirBank === i.U }
   // bits
-  io.updPosNest.bits.llcTxnID := msg_nest.llcTxnID
-  io.updPosNest.bits.canNest  := false.B
+  io.updPosNestVec.foreach(_.bits.pos     := task_nest.llcTxnID.pos)
+  io.updPosNestVec.foreach(_.bits.canNest := false.B)
 
   /*
    * Update PoS Message
@@ -143,50 +146,52 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   // valid
   io.respCmt.valid := cmVec_resp.reduce(_ | _)
   // bits
-  io.respCmt.bits.llcTxnID      := msg_resp.llcTxnID
+  io.respCmt.bits.llcTxnID      := msg_resp.task.llcTxnID
   io.respCmt.bits.inst.valid    := true.B
   io.respCmt.bits.inst.fwdValid := false.B
   io.respCmt.bits.inst.channel  := ChiChannel.DAT
   io.respCmt.bits.inst.opcode   := msg_resp.inst.opcode
   io.respCmt.bits.inst.resp     := msg_resp.inst.resp
   io.respCmt.bits.inst.fwdResp  := ChiResp.I
+  io.respCmt.bits.alrDB         := msg_resp.task.alrDB
 
   /*
    * Modify Ctrl Machine Table
    */
+  val hwaVec2 = WireInit(VecInit(Seq.fill(nrReadCM) { VecInit(Seq.fill(7) { true.B }) }))
   cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
     case ((cm, msg), i) =>
-      val allocHit    = io.alloc.fire      & i.U === cmId_rec
-      val reqDBHit    = io.reqDB.fire      & i.U === cmId_reqDB
-      val sendReqHit  = io.txReq.fire      & i.U === cmId_sReq
-      val recDataHit  = io.rxDat.fire      & msg.llcTxnID.get === io.rxDat.bits.TxnID
-      val sendAckHit  = io.txRsp.fire      & i.U === cmId_sAck
-      val updNestHit  = io.updPosNest.fire & i.U === cmId_nest
-      val respCmtHit  = io.respCmt.fire    & i.U === cmId_resp
+      val allocHit    = io.alloc.fire   & i.U === cmId_rec
+      val reqDBHit    = io.reqDB.fire   & i.U === cmId_reqDB
+      val sendReqHit  = io.txReq.fire   & i.U === cmId_sReq
+      val recDataHit  = io.rxDat.fire   & msg.task.llcTxnID.get === io.rxDat.bits.TxnID
+      val sendAckHit  = io.txRsp.fire   & i.U === cmId_sAck
+      val updNestHit  = fire_nest       & i.U === cmId_nest
+      val respCmtHit  = io.respCmt.fire & i.U === cmId_resp
 
       // Store Msg From Frontend
       when(allocHit) {
-        msg      := io.alloc.bits
-        msg.inst := DontCare
+        msg.task := io.alloc.bits
+        msg.inst := 0.U.asTypeOf(new TaskInst)
       // Store AlrReqDB
       }.elsewhen(reqDBHit) {
-        cm.cantNest    := true.B
-        msg.alrDB.reqs := true.B
+        cm.cantNest         := true.B
+        msg.task.alrDB.reqs := true.B
       // Store Message
       }.elsewhen(recDataHit) {
         // chi
-        msg.chi.nodeId := io.rxDat.bits.HomeNID
-        msg.chi.txnID  := io.rxDat.bits.DBID
+        msg.task.chi.nodeId := io.rxDat.bits.HomeNID
+        msg.task.chi.txnID  := io.rxDat.bits.DBID
         // inst
-        msg.inst.resp  := io.rxDat.bits.DBID
+        msg.inst.resp       := io.rxDat.bits.DBID
       }
 
       // Get Next State
       val nxtState = PriorityMux(Seq(
         allocHit    -> Mux(io.alloc.bits.needDB & !io.alloc.bits.alrDB.reqs, ReqDB, SendReq),
         reqDBHit    -> SendReq,
-        sendReqHit  -> Mux(!msg.doDMT, WaitData0, Free),
-        recDataHit  -> Mux(msg.chi.isNotFullSize, Mux(msg.chi.expCompAck, SendCompAck, Free), Mux(cm.isWaitData0, WaitData0, WaitData1)),
+        sendReqHit  -> Mux(!msg.task.doDMT, WaitData0, Free),
+        recDataHit  -> Mux(msg.task.chi.isNotFullSize, Mux(msg.task.chi.expCompAck, SendCompAck, Free), Mux(cm.isWaitData0, WaitData0, WaitData1)),
         sendAckHit  -> Free,
         true.B      -> cm.state,
       ))
@@ -198,19 +203,24 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       cm.respCmt  := Mux(respCmtHit, false.B, (cm.state === WaitData0 | cm.state === WaitData1) & (nxtState === SendCompAck | nxtState === Free)) // WaitData -> SendCompAck/Free
 
       // HardwareAssertion
-      HardwareAssertion.withEn(cm.state === Free, allocHit)
-      HardwareAssertion.withEn(cm.isReqDB,        reqDBHit)
-      HardwareAssertion.withEn(cm.isSendReq,      sendReqHit)
-      HardwareAssertion.withEn(cm.isWaitData,     recDataHit)
-      HardwareAssertion.withEn(cm.isSendCompAck,  sendAckHit)
-      HardwareAssertion.withEn(cm.cantNest,       updNestHit)
-      HardwareAssertion.withEn(cm.respCmt,        respCmtHit)
-      HardwareAssertion.placePipe(Int.MaxValue-3)
+      when(allocHit)   { hwaVec2(i)(0) := cm.state === Free }
+      when(reqDBHit)   { hwaVec2(i)(1) := cm.isReqDB }
+      when(sendReqHit) { hwaVec2(i)(2) := cm.isSendReq }
+      when(recDataHit) { hwaVec2(i)(3) := cm.isWaitData }
+      when(sendAckHit) { hwaVec2(i)(4) := cm.isSendCompAck }
+      when(updNestHit) { hwaVec2(i)(5) := cm.cantNest }
+      when(respCmtHit) { hwaVec2(i)(6) := cm.respCmt }
   }
 
 
   /*
    * HardwareAssertion placePipe
    */
+
+  hwaVec2.transpose.zipWithIndex.foreach {
+    case(vec, i) =>
+      val idx = PriorityEncoder(vec)
+      HardwareAssertion(vec.reduce(_ | _), cf"Index[$idx] : Type[$i]")
+  }
   HardwareAssertion.placePipe(Int.MaxValue-2)
 }

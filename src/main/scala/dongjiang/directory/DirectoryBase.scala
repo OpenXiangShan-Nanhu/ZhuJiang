@@ -47,7 +47,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     val read      = Flipped(Decoupled(new Addr(dirType) with HasPackPosIndex))
     val write     = Flipped(Decoupled(new DirEntry(dirType) with HasPackPosIndex))
     val resp      = Valid(new DirEntry(dirType) with HasPackPosIndex)
-    val unlockVec = Vec(3, Flipped(Valid(new PosIndex())))
+    val unlock    = Flipped(Valid(new PosIndex()))
   })
   dontTouch(io)
 
@@ -267,8 +267,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
           val readHitLock = readHit_d2             & req_d2.pos.idxMatch(i, j)
           val replLock    = shiftReg.updTagMeta_d2 & req_d2.pos.idxMatch(i, j)
           val writeLock   = shiftReg.wriUpdRepl_d2 & req_d2.pos.idxMatch(i, j)
-          val cleanLockVec= io.unlockVec.map(u => u.valid & u.bits.idxMatch(i, j))
-          val cleanLock   = cleanLockVec.reduce(_ | _)
+          val cleanLock   = io.unlock.valid        & io.unlock.bits.idxMatch(i, j)
           when(readHitLock | replLock | writeLock) {
             lock.valid  := true.B
             lock.way    := selWay
@@ -276,7 +275,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
             lock.valid  := false.B
             lock.way    := selWay
           }
-          HardwareAssertion(PopCount(Seq(readHitLock, replLock, writeLock) ++ cleanLockVec) <= 1.U, cf"Lock Table Index[$i][$j]")
+          HardwareAssertion(PopCount(Seq(readHitLock, replLock, writeLock, cleanLock)) <= 1.U, cf"Lock Table Index[$i][$j]")
           HardwareAssertion.withEn(!lock.valid, readHitLock | replLock | writeLock, cf"Lock Table Index[$i][$j]")
           HardwareAssertion.withEn(lock.valid,  cleanLock, cf"Lock Table Index[$i][$j]")
           if(j % 4 == 0) HardwareAssertion.placePipe(Int.MaxValue-3)
