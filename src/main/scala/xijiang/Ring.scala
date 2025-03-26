@@ -7,7 +7,7 @@ import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 import xijiang.tfs._
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.chi.NodeIdBundle
-import zhujiang.device.reset.ResetDevice
+import zhujiang.device.misc.ResetDevice
 
 class Ring(implicit p: Parameters) extends ZJModule {
   private val tfs = p(ZJParametersKey).tfsParams.isDefined
@@ -38,7 +38,7 @@ class Ring(implicit p: Parameters) extends ZJModule {
       m.icn <> r.icn
       m.nodeId := r.router.nodeId
       m.suggestName(s"${n.routerStr}TrafficGen")
-      if(n.defaultHni) {
+      if(n.nodeType == NodeType.M) {
         val resetDev = Module(new ResetDevice)
         resetDev.clock := clock
         resetDev.reset := reset
@@ -61,6 +61,7 @@ class Ring(implicit p: Parameters) extends ZJModule {
   val icnHfs = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.HF).map(_._1.get)) else None
   val icnHis = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.HI).map(_._1.get)) else None
   val icnSns = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.S).map(_._1.get)) else None
+  val icnMns = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.M).map(_._1.get)) else None
 
   private val functionalRouters = routersAndNodes.filter(_._2.nodeType != NodeType.P).map(_._1)
   for(i <- functionalRouters.indices) {

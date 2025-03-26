@@ -111,10 +111,17 @@ class ChannelTap[T <: RingFlit](
     taps(idx).io.inject.bits := io.inject.bits
     taps(idx).io.matchTag := io.matchTag
     taps(idx).io.tapIdx := idx.U
-    val eb = Module(new EjectBuffer(gen, ejectBuf, channel))
-    eb.io.enq <> taps(idx).io.eject
-    ejectArb.io.in(idx) <> eb.io.deq
-    eb.suggestName(s"eject_buf_$idx")
+    if(channel == "DBG") {
+      val eb = Module(new Queue(gen, 2))
+      eb.io.enq <> taps(idx).io.eject
+      ejectArb.io.in(idx) <> eb.io.deq
+      eb.suggestName(s"eject_buf_$idx")
+    } else {
+      val eb = Module(new EjectBuffer(gen, ejectBuf, channel))
+      eb.io.enq <> taps(idx).io.eject
+      ejectArb.io.in(idx) <> eb.io.deq
+      eb.suggestName(s"eject_buf_$idx")
+    }
   }
   io.eject <> ejectArb.io.out
   io.inject.ready := Mux1H(io.injectTapSelOH, taps.map(_.io.inject.ready))

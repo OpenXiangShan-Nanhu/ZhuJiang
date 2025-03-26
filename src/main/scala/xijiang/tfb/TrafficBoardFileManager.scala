@@ -3,6 +3,7 @@ package xijiang.tfb
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xs.utils.FileRegisters
+import xs.utils.debug.HardwareAssertionKey
 import zhujiang.ZJParametersKey
 import zhujiang.chi.{ChannelEncodings, DataFlit, ReqFlit}
 
@@ -11,30 +12,30 @@ case class TrafficBoardParams(
 )
 
 object TrafficBoardFileManager {
-  def release(p: Parameters): Unit = {
+  def release(implicit p: Parameters): Unit = {
     FileRegisters.add("env/tfb/include", "traffic_board.h", header, true)
     FileRegisters.add("env/tfb/src", "traffic_board.cpp", source(p), true)
   }
 
-  def release(header_dir: String, src_dir: String, p: Parameters): Unit = {
+  def release(header_dir: String, src_dir: String)(implicit p: Parameters): Unit = {
     FileRegisters.add(header_dir, "traffic_board.h", header, dontCarePrefix = true)
     FileRegisters.add(src_dir, "traffic_board.cpp", source(p), dontCarePrefix = true)
   }
 
-  private def getEject(nt: Int): Seq[String] = Node(nodeType = nt).ejects
+  private def getEject(nt: Int)(implicit p:Parameters): Seq[String] = Node(nodeType = nt).ejects
 
-  val allNodeTypeMap: Seq[(String, Int, Seq[String])] = Seq(
+  def allNodeTypeMap(implicit p:Parameters): Seq[(String, Int, Seq[String])] = Seq(
     ("cc", NodeType.CC, getEject(NodeType.CC)),
     ("rf", NodeType.RF, getEject(NodeType.RF)),
     ("ri", NodeType.RI, getEject(NodeType.RI)),
     ("hf", NodeType.HF, getEject(NodeType.HF)),
     ("hi", NodeType.HI, getEject(NodeType.HI)),
     ("sn", NodeType.S, getEject(NodeType.S)),
-  )
+  ) ++ Option.when(p(HardwareAssertionKey).enable)("mn", NodeType.M, getEject(NodeType.M)).toSeq
 
-  val allNodeTypeDefs: String = allNodeTypeMap.map({ case (n, v, _) => s"#define ${n.toUpperCase}_TYPE $v\n" }).reduce(_ ++ _)
+  def allNodeTypeDefs(implicit p:Parameters): String = allNodeTypeMap.map({ case (n, v, _) => s"#define ${n.toUpperCase}_TYPE $v\n" }).reduce(_ ++ _)
 
-  private val nodePoolInitFn: String = allNodeTypeMap.map({ case (n, _, _) => s"  nodes_pool[${n.toUpperCase}_TYPE] = vector<uint16_t>();\n" }).reduce(_ ++ _)
+  private def nodePoolInitFn(implicit p:Parameters): String = allNodeTypeMap.map({ case (n, _, _) => s"  nodes_pool[${n.toUpperCase}_TYPE] = vector<uint16_t>();\n" }).reduce(_ ++ _)
 
   def header: String =
     """
@@ -65,9 +66,10 @@ object TrafficBoardFileManager {
       |#endif //__TRAFFIC_BOARD_H__
       |""".stripMargin
 
-  def source(p: Parameters) = {
+  def source(implicit p:Parameters):String = {
     val maxFlitSize = new DataFlit()(p).getWidth
     val params = p(ZJParametersKey)
+    val hwa = p(HardwareAssertionKey).enable
     s"""
        |#include "svdpi.h"
        |#include <cstdint>
@@ -93,6 +95,7 @@ object TrafficBoardFileManager {
        |#define RSP ${ChannelEncodings.RSP}
        |#define DAT ${ChannelEncodings.DAT}
        |#define HRQ ${ChannelEncodings.HRQ}
+       |${if(hwa) s"#define DBG ${ChannelEncodings.DBG}" else ""}
        |
        |#define NODE_ID_BITS ${params.nodeIdBits}
        |#define TGT_ID_OFF 0
@@ -185,11 +188,13 @@ object TrafficBoardFileManager {
        |  scoreboard[node_id][RSP] = list<unique_ptr<TrafficBoardEntry>>();
        |  scoreboard[node_id][DAT] = list<unique_ptr<TrafficBoardEntry>>();
        |  scoreboard[node_id][HRQ] = list<unique_ptr<TrafficBoardEntry>>();
+       |  ${if(hwa) "scoreboard[node_id][DBG] = list<unique_ptr<TrafficBoardEntry>>();" else ""}
        |  locks[node_id] = unordered_map<uint8_t, unique_ptr<mutex>>();
        |  locks[node_id][REQ] = make_unique<mutex>();
        |  locks[node_id][RSP] = make_unique<mutex>();
        |  locks[node_id][DAT] = make_unique<mutex>();
        |  locks[node_id][HRQ] = make_unique<mutex>();
+       |  ${if(hwa) "locks[node_id][DBG] = make_unique<mutex>();" else ""}
        |  nodes_pool[node_type].push_back(node_id);
        |}
        |
@@ -249,6 +254,7 @@ object TrafficBoardFileManager {
        |  global_timer++;
        |  for(auto &[k0, v0]: scoreboard) {
        |    for(auto &[k1, v1]: v0) {
+       |      ${if(hwa) "if(k1 == DBG) return false;" else ""}
        |      for(auto &d: v1) {
        |        d->timer++;
        |        if(d->timer > TIME_OUT) {

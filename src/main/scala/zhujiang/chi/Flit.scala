@@ -162,7 +162,10 @@ object ChannelEncodings {
   def DAT: Int = 2
   def SNP: Int = 3
   def ERQ: Int = 4
-  def HRQ: Int = 5
+  def DBG: Int = 5
+  def HRQ: Int = 6
+
+  def MAX_LEGAL_PORT_CHN: Int = DBG
 
   val encodingsMap = Map[String, Int](
     "REQ" -> REQ,
@@ -170,7 +173,8 @@ object ChannelEncodings {
     "DAT" -> DAT,
     "SNP" -> SNP,
     "ERQ" -> ERQ,
-    "HRQ" -> HRQ
+    "DBG" -> DBG,
+    "HRQ" -> HRQ,
   )
 }
 
@@ -209,7 +213,6 @@ class SnpAddrBundle(implicit p: Parameters) extends ZJBundle {
 class NodeIdBundle(implicit p: Parameters) extends ZJBundle {
   val nid = UInt(nodeNidBits.W)
   val aid = UInt(nodeAidBits.W)
-  def chip: UInt = aid
   def router: UInt = Cat(nid, 0.U(aid.getWidth.W))
 }
 

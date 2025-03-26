@@ -5,6 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.router._
 import xijiang.router.base.BaseRouter
+import xs.utils.debug.HardwareAssertionKey
 import zhujiang.ZJParametersKey
 import zhujiang.chi.{MemAttr, NodeIdBundle, ReqAddrBundle, SnpAddrBundle}
 
@@ -15,9 +16,9 @@ object NodeType {
   val HF: Int = 3
   val HI: Int = 4
   val S: Int = 5
-  val P: Int = 6
+  val M: Int = 6
+  val P: Int = 7
   def HX: Int = HF
-  def C2C: Int = CC
   def width: Int = log2Ceil(P)
   def min: Int = 0
   def max: Int = P
@@ -65,9 +66,6 @@ case class Node(
       case NodeType.CC => Module(new RnRouter(this)(p))
       case NodeType.RF => Module(new RnRouter(this)(p))
       case NodeType.RI => Module(new RnRouter(this)(p))
-      case NodeType.HF => Module(new BaseRouter(this)(p))
-      case NodeType.HI => Module(new BaseRouter(this)(p))
-      case NodeType.S => Module(new BaseRouter(this)(p))
       case _ => Module(new BaseRouter(this)(p))
     }
     res.suggestName(routerName)
@@ -81,6 +79,7 @@ case class Node(
       case NodeType.RI => if(attr == "") s"rni" else s"rni_$attr"
       case NodeType.HF => s"hnf_$bankId"
       case NodeType.HI => if(attr == "") s"hni" else s"hni_$attr"
+      case NodeType.M => if(attr == "") s"mn" else s"mn_$attr"
       case NodeType.S => if(attr == "") s"sn" else s"sn_$attr"
       case _ => "pip"
     }
@@ -95,11 +94,12 @@ case class Node(
     case NodeType.RI => (routerStrGen("RequestIo"), icnStrGen("", "rni"), "RNI")
     case NodeType.HF => (routerStrGen("HomeFull"), icnStrGen("", s"hnf_bank_$bankId"), "HNF")
     case NodeType.HI => (routerStrGen("HomeIo"), icnStrGen("", "hni"), "HNI")
+    case NodeType.M => (routerStrGen("Misc"), icnStrGen("", "mn"), "MN")
     case NodeType.S => (routerStrGen("Subordinate"), icnStrGen("", s"sn"), "SN")
     case _ => (routerStrGen("Pipeline"), icnStrGen("", "pip"), "PIP")
   }
 
-  lazy val (ejects, injects): (Seq[String], Seq[String]) = {
+  private lazy val (_ejects, _injects): (Seq[String], Seq[String]) = {
     val res = nodeType match {
       case NodeType.CC => (Seq("REQ", "RSP", "DAT", "SNP"), Seq("REQ", "RSP", "DAT"))
       case NodeType.RF => (Seq("RSP", "DAT", "SNP"), Seq("REQ", "RSP", "DAT"))
@@ -116,6 +116,21 @@ case class Node(
     res
   }
 
+  def ejects(implicit p:Parameters):Seq[String] = {
+    nodeType match {
+      case NodeType.M => if(p(HardwareAssertionKey).enable) _ejects :+ "DBG" else _ejects
+      case _ => _ejects
+    }
+  }
+
+  def injects(implicit p:Parameters):Seq[String] = {
+    nodeType match {
+      case NodeType.CC => if(p(HardwareAssertionKey).enable) _injects :+ "DBG" else _injects
+      case NodeType.HF => if(p(HardwareAssertionKey).enable && hfpId == 0) _injects :+ "DBG" else _injects
+      case _ => _injects
+    }
+  }
+
   private def getLegalTgtSeq(ring: Seq[Node], chn: String): Seq[Int] = {
     import NodeType._
     val legalTgtTypeSeq = nodeType match {
@@ -123,18 +138,21 @@ case class Node(
         case "REQ" => Seq(CC, HF, HI)
         case "RSP" => Seq(CC, HF, HI)
         case "DAT" => Seq(CC, RF, RI, HF, HI)
+        case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
       case RF => chn match {
         case "REQ" => Seq(CC, HF, HI)
         case "RSP" => Seq(CC, HF, HI)
         case "DAT" => Seq(CC, RF, RI, HF, HI)
+        case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
       case RI => chn match {
         case "REQ" => Seq(CC, HF, HI)
         case "RSP" => Seq(CC, HF, HI)
         case "DAT" => Seq(CC, HF, HI)
+        case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
       case HF => chn match {
@@ -142,17 +160,20 @@ case class Node(
         case "DAT" => Seq(CC, RF, RI, S)
         case "SNP" => Seq(CC, RF)
         case "ERQ" => Seq(S)
+        case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
       case HI => chn match {
         case "RSP" => Seq(CC, RF, RI)
         case "DAT" => Seq(CC, RF, RI)
         case "ERQ" => Seq(S)
+        case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
       case S => chn match {
         case "RSP" => Seq(CC, RF, RI, HF, HI)
         case "DAT" => Seq(CC, RF, RI, HF, HI)
+        case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
       case _ => Seq[Int]()
@@ -235,7 +256,7 @@ case class Node(
     }
 
     val hdAttrStr = if(nodeType == NodeType.HI) {
-      s"""    default_iocu: $defaultHni
+      s"""    default_hni: $defaultHni
          |""".stripMargin
     } else {
       ""

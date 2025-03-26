@@ -99,11 +99,13 @@ class SocketIcnSide(node:Node)(implicit p:Parameters) extends Module with Socket
     connChn(Some(c2c.io.chi.rx.rsp), asyncDevModule.io.icn.tx.resp)
     connChn(Some(c2c.io.chi.rx.dat), asyncDevModule.io.icn.tx.data)
     connChn(Some(c2c.io.chi.rx.snp), asyncDevModule.io.icn.tx.snoop)
+    connChn(c2c.io.chi.rx.dbg, asyncDevModule.io.icn.tx.debug)
 
     connChn(asyncDevModule.io.icn.rx.req, Some(c2c.io.chi.tx.req))
     connChn(asyncDevModule.io.icn.rx.resp, Some(c2c.io.chi.tx.rsp))
     connChn(asyncDevModule.io.icn.rx.data, Some(c2c.io.chi.tx.dat))
     connChn(asyncDevModule.io.icn.rx.snoop, Some(c2c.io.chi.tx.snp))
+    connChn(asyncDevModule.io.icn.rx.debug, c2c.io.chi.tx.dbg)
 
     asyncDevModule.clock := io.socket.c2cClock.get
     asyncDevModule.reset := resetGen.o_reset
@@ -147,11 +149,13 @@ class SocketDevSide(node:Node)(implicit p:Parameters) extends Module with Socket
     connChn(Some(c2c.io.chi.rx.rsp), asyncIcnModule.io.dev.tx.resp)
     connChn(Some(c2c.io.chi.rx.dat), asyncIcnModule.io.dev.tx.data)
     connChn(Some(c2c.io.chi.rx.snp), asyncIcnModule.io.dev.tx.snoop)
+    connChn(c2c.io.chi.rx.dbg, asyncIcnModule.io.dev.tx.debug)
 
     connChn(asyncIcnModule.io.dev.rx.req, Some(c2c.io.chi.tx.req))
     connChn(asyncIcnModule.io.dev.rx.resp, Some(c2c.io.chi.tx.rsp))
     connChn(asyncIcnModule.io.dev.rx.data, Some(c2c.io.chi.tx.dat))
     connChn(asyncIcnModule.io.dev.rx.snoop, Some(c2c.io.chi.tx.snp))
+    connChn(asyncIcnModule.io.dev.rx.debug, c2c.io.chi.tx.dbg)
 
     asyncIcnModule.clock := io.socket.c2cClock.get
     asyncIcnModule.reset := resetGen.o_reset

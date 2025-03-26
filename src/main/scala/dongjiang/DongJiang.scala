@@ -66,6 +66,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   // Get icnVec
   val icnVec = Wire(MixedVec(hnNodeSeq.map(n => new DeviceIcnBundle(n))))
   icnVec.head <> io.lan
+  icnVec.foreach(_.tx.debug.foreach(_ := DontCare))
   NocType.setRx(icnVec.head.rx.req.get.bits.asTypeOf(new ReqFlit(false)), LAN)
   NocType.setRx(icnVec.head.rx.resp.get.bits.asTypeOf(new RespFlit()), LAN)
   NocType.setRx(icnVec.head.rx.data.get.bits.asTypeOf(new DataFlit()), LAN)

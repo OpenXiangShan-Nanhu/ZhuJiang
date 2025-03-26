@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
+import xs.utils.debug.HardwareAssertionKey
 import zhujiang.ZJBundle
 import zhujiang.chi._
 
@@ -12,18 +13,21 @@ trait BaseIcnMonoBundle {
   def resp: Option[DecoupledIO[Data]]
   def data: Option[DecoupledIO[Data]]
   def snoop: Option[DecoupledIO[Data]]
+  def debug: Option[DecoupledIO[Data]]
   def chnMap: Map[String, Option[DecoupledIO[Data]]] = Map(
     ("REQ", req),
     ("RSP", resp),
     ("DAT", data),
     ("SNP", snoop),
-    ("ERQ", req)
+    ("ERQ", req),
+    ("DBG", debug)
   )
 }
 
 class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseIcnMonoBundle {
   private val split = zjParams.splitFlit
   private val illegal = node.ejects.contains("REQ") && node.ejects.contains("ERQ")
+  private val hwaP = p(HardwareAssertionKey)
   require(!illegal)
   val req = if(node.ejects.contains("REQ")) {
     if(split) Some(Decoupled(new RReqFlit)) else Some(Decoupled(UInt(rreqFlitBits.W)))
@@ -43,6 +47,10 @@ class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
     if(split) Some(Decoupled(new SnoopFlit)) else Some(Decoupled(UInt(snoopFlitBits.W)))
   } else None
 
+  val debug = if(node.ejects.contains("DBG") && hwaP.enable) {
+    if(split) Some(Decoupled(new RingFlit(debugFlitBits))) else Some(Decoupled(UInt(debugFlitBits.W)))
+  } else None
+
   def getBundle(chn: String): Option[DecoupledIO[Data]] = {
     val ej = node.ejects
     chn match {
@@ -52,6 +60,7 @@ class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
       case "SNP" => snoop
       case "ERQ" => if(ej.contains("ERQ")) req else None
       case "HRQ" => if(ej.contains("ERQ")) req else if(ej.contains("SNP")) snoop else None
+      case "DBG" => debug
       case _ => None
     }
   }
@@ -63,6 +72,7 @@ class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
       case "SNP" => node.ejects.contains("SNP")
       case "ERQ" => node.ejects.contains("ERQ")
       case "HRQ" => node.ejects.contains("SNP") || node.ejects.contains("ERQ")
+      case "DBG" => node.ejects.contains("DBG") && hwaP.enable
       case _ => false
     }
   }
@@ -71,6 +81,7 @@ class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
 class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseIcnMonoBundle {
   private val split = zjParams.splitFlit
   private val illegal = node.injects.contains("REQ") && node.injects.contains("ERQ")
+  private val hwaP = p(HardwareAssertionKey)
   require(!illegal)
   val req = if(node.injects.contains("REQ")){
     if(split) Some(Flipped(Decoupled(new RReqFlit))) else Some(Flipped(Decoupled(UInt(rreqFlitBits.W))))
@@ -90,6 +101,10 @@ class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
     if(split) Some(Flipped(Decoupled(new SnoopFlit))) else Some(Flipped(Decoupled(UInt(snoopFlitBits.W))))
   } else None
 
+  val debug = if(node.injects.contains("DBG") && hwaP.enable) {
+    if(split) Some(Flipped(Decoupled(new RingFlit(debugFlitBits)))) else Some(Flipped(Decoupled(UInt(debugFlitBits.W))))
+  } else None
+
   def getBundle(chn: String): Option[DecoupledIO[Data]] = {
     val ij = node.injects
     chn match {
@@ -99,6 +114,7 @@ class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
       case "SNP" => snoop
       case "ERQ" => if(node.injects.contains("ERQ")) req else None
       case "HRQ" => if(ij.contains("ERQ")) req else if(ij.contains("SNP")) snoop else None
+      case "DBG" => debug
       case _ => None
     }
   }
@@ -111,6 +127,7 @@ class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
       case "SNP" => node.injects.contains("SNP")
       case "ERQ" => node.injects.contains("ERQ")
       case "HRQ" => node.injects.contains("SNP") || node.injects.contains("ERQ")
+      case "DBG" => node.injects.contains("DBG") && hwaP.enable
       case _ => false
     }
   }
@@ -120,16 +137,18 @@ class IcnBundle(val node: Node, hasReset:Boolean = false)(implicit p: Parameters
   val tx = new IcnTxBundle(node)
   val rx = new IcnRxBundle(node)
   val resetState = if(hasReset) Some(Output(Vec(2, Bool()))) else None
-  val resetInject = if(hasReset && node.defaultHni && node.nodeType == NodeType.HI) Some(Input(Vec(2, Bool()))) else None
+  val resetInject = if(hasReset && node.nodeType == NodeType.M) Some(Input(Vec(2, Bool()))) else None
   def <>(that: DeviceIcnBundle): Unit = {
     this.rx <> that.tx
     that.rx <> this.tx
   }
 }
 
-class DeviceIcnBundle(val node: Node)(implicit p: Parameters) extends ZJBundle {
+class DeviceIcnBundle(val node: Node, hasReset:Boolean = false)(implicit p: Parameters) extends ZJBundle {
   val tx = Flipped(new IcnRxBundle(node))
   val rx = Flipped(new IcnTxBundle(node))
+  val resetState = if(hasReset) Some(Input(Vec(2, Bool()))) else None
+  val resetInject = if(hasReset && node.nodeType == NodeType.M) Some(Output(Vec(2, Bool()))) else None
   def <>(that: IcnBundle): Unit = {
     this.rx <> that.tx
     that.rx <> this.tx

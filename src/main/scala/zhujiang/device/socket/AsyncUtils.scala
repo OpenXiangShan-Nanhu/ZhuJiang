@@ -5,6 +5,7 @@ import freechips.rocketchip.util.{AsyncBundle, AsyncQueueParams, AsyncQueueSink,
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.{BaseIcnMonoBundle, DeviceIcnBundle, IcnBundle}
+import xs.utils.debug.HardwareAssertionKey
 import zhujiang.{ZJBundle, ZJModule}
 
 import scala.collection.immutable.SeqMap
@@ -22,12 +23,14 @@ trait BaseAsyncIcnMonoBundle {
   def resp: Option[AsyncBundle[UInt]]
   def data: Option[AsyncBundle[UInt]]
   def snoop: Option[AsyncBundle[UInt]]
+  def debug: Option[AsyncBundle[UInt]]
   def chnMap: Map[String, Option[AsyncBundle[UInt]]] = Map(
     ("REQ", req),
     ("RSP", resp),
     ("DAT", data),
     ("SNP", snoop),
-    ("ERQ", req)
+    ("ERQ", req),
+    ("DBG", debug)
   )
 }
 
@@ -51,6 +54,10 @@ class IcnTxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with
   val snoop = if(node.ejects.contains("SNP")) {
     Some(new AsyncBundle(UInt(snoopFlitBits.W), AsyncUtils.params))
   } else None
+
+  val debug = if(node.ejects.contains("DBG") && p(HardwareAssertionKey).enable) {
+    Some(new AsyncBundle(UInt(debugFlitBits.W), AsyncUtils.params))
+  } else None
 }
 
 class IcnRxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseAsyncIcnMonoBundle {
@@ -72,6 +79,10 @@ class IcnRxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with
 
   val snoop = if(node.injects.contains("SNP")) {
     Some(Flipped(new AsyncBundle(UInt(snoopFlitBits.W), AsyncUtils.params)))
+  } else None
+
+  val debug = if(node.injects.contains("DBG") && p(HardwareAssertionKey).enable) {
+    Some(Flipped(new AsyncBundle(UInt(debugFlitBits.W), AsyncUtils.params)))
   } else None
 }
 
@@ -99,7 +110,8 @@ abstract class BaseIcnAsyncModule(node: Node, icnSide:Boolean)(implicit p: Param
     "RSP" -> respFlitBits,
     "DAT" -> dataFlitBits,
     "SNP" -> snoopFlitBits,
-    "ERQ" -> hreqFlitBits
+    "ERQ" -> hreqFlitBits,
+    "DBG" -> debugFlitBits
   )
 
   def icnRxBundle: BaseIcnMonoBundle
@@ -115,27 +127,31 @@ abstract class BaseIcnAsyncModule(node: Node, icnSide:Boolean)(implicit p: Param
     val toAsync = if(icnSide) node.ejects else node.injects
     val fromAsync = if(icnSide) node.injects else node.ejects
     for(chn <- toAsync) {
-      val icnRx = icnRxBundle.chnMap(chn).get
-      val asyncTx = asyncTxBundle.chnMap(chn).get
-      val flitType = UInt(flitBitsMap(chn).W)
-      val asyncSource = Module(new AsyncSource(flitType))
-      asyncSource.io.enq.valid := icnRx.valid
-      asyncSource.io.enq.bits := icnRx.bits.asTypeOf(flitType)
-      icnRx.ready := asyncSource.io.enq.ready
-      asyncTx <> asyncSource.io.async
-      asyncSource.suggestName(s"${chn}AsyncSource")
+      if(chn != "DBG" || p(HardwareAssertionKey).enable) {
+        val icnRx = icnRxBundle.chnMap(chn).get
+        val asyncTx = asyncTxBundle.chnMap(chn).get
+        val flitType = UInt(flitBitsMap(chn).W)
+        val asyncSource = Module(new AsyncSource(flitType))
+        asyncSource.io.enq.valid := icnRx.valid
+        asyncSource.io.enq.bits := icnRx.bits.asTypeOf(flitType)
+        icnRx.ready := asyncSource.io.enq.ready
+        asyncTx <> asyncSource.io.async
+        asyncSource.suggestName(s"${chn}AsyncSource")
+      }
     }
 
     for(chn <- fromAsync) {
-      val icnTx = icnTxBundle.chnMap(chn).get
-      val asyncRx = asyncRxBundle.chnMap(chn).get
-      val flitType = UInt(flitBitsMap(chn).W)
-      val asyncSink = Module(new AsyncSink(flitType))
-      asyncSink.io.async <> asyncRx
-      icnTx.valid := asyncSink.io.deq.valid
-      icnTx.bits := asyncSink.io.deq.bits.asTypeOf(icnTx.bits)
-      asyncSink.io.deq.ready := icnTx.ready
-      asyncSink.suggestName(s"${chn}AsyncSink")
+      if(chn != "DBG" || p(HardwareAssertionKey).enable) {
+        val icnTx = icnTxBundle.chnMap(chn).get
+        val asyncRx = asyncRxBundle.chnMap(chn).get
+        val flitType = UInt(flitBitsMap(chn).W)
+        val asyncSink = Module(new AsyncSink(flitType))
+        asyncSink.io.async <> asyncRx
+        icnTx.valid := asyncSink.io.deq.valid
+        icnTx.bits := asyncSink.io.deq.bits.asTypeOf(icnTx.bits)
+        asyncSink.io.deq.ready := icnTx.ready
+        asyncSink.suggestName(s"${chn}AsyncSink")
+      }
     }
   }
 }

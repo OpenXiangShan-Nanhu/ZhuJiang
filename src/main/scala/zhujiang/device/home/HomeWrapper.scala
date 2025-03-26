@@ -9,7 +9,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
 import xs.utils.ResetRRArbiter
-import xs.utils.debug.{DomainInfo, HardwareAssertion}
+import xs.utils.debug.{DomainInfo, HardwareAssertion, HardwareAssertionKey}
 import zhujiang.chi.{ChiBuffer, HReqFlit, NodeIdBundle, ReqAddrBundle, RingFlit}
 
 @instantiable
@@ -71,7 +71,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
     lanPipes(i).last.io.icn
   }
 
-  for(chn <- node.ejects) {
+  for(chn <- node.ejects.filterNot(_ == "DBG")) {
     val rxSeq = hnxLans.map(_.tx.getBundle(chn).get)
     if(rxSeq.size == 1) {
       hnx.io.lan.rx.getBundle(chn).get <> rxSeq.head
@@ -83,7 +83,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
   }
 
   private val mems = zjParams.island.filter(n => n.nodeType == NodeType.S)
-  for(chn <- node.injects) {
+  for(chn <- node.injects.filterNot(_ == "DBG")) {
     val txBdSeq = hnxLans.map(_.rx.getBundle(chn).get)
     val txBd = hnx.io.lan.tx.getBundle(chn).get
 
@@ -123,11 +123,18 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
     }
   }
 
-  HardwareAssertion(true.B)
-  private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, true)
-  @public
-  val assertionOut = IO(assertionNode.assertion.cloneType)
-  @public
-  val assertionInfo = DomainInfo(assertionNode.desc)
-  assertionOut <> assertionNode.assertion
+  hnx.io.lan.tx.debug.foreach(_ := DontCare)
+
+  private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, moduleTop = true)
+  HardwareAssertion.release(assertionNode, "hwa", "home")
+  dontTouch(assertionNode.assertion)
+  assertionNode.assertion.ready := true.B
+  if(p(HardwareAssertionKey).enable) {
+    val dbgTx = hnxLans.filter(_.node.hfpId == 0).head.rx.debug.get
+    val dbgDat = WireInit(0.U.asTypeOf(new RingFlit(debugFlitBits)))
+    dbgDat.Payload := assertionNode.assertion.bits.asUInt
+    dbgTx.valid := assertionNode.assertion.valid
+    dbgTx.bits := dbgDat.asTypeOf(dbgTx.bits)
+    assertionNode.assertion.ready := dbgTx.ready
+  }
 }

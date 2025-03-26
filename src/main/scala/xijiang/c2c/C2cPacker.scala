@@ -2,14 +2,18 @@ package xijiang.c2c
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
+import xijiang.NodeType
 import xs.utils.ResetRRArbiter
+import xs.utils.debug.HardwareAssertionKey
+import zhujiang.chi.RingFlit
 import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 
-class C2cchiBundle(implicit p:Parameters) extends ZJBundle {
+class C2cChiBundle(implicit p:Parameters) extends ZJBundle {
   val req = Decoupled(UInt(rreqFlitBits.W))
   val rsp = Decoupled(UInt(respFlitBits.W))
   val dat = Decoupled(UInt(dataFlitBits.W))
   val snp = Decoupled(UInt(snoopFlitBits.W))
+  val dbg = Option.when(p(HardwareAssertionKey).enable)(Decoupled(UInt(debugFlitBits.W)))
 }
 
 class C2cTxDispatcher(implicit p:Parameters) extends ZJModule {
@@ -125,8 +129,8 @@ class C2cInitializer extends Module {
 class C2cPacker(implicit p:Parameters) extends ZJModule {
   val io = IO(new Bundle {
     val chi = new Bundle {
-      val tx = new C2cchiBundle
-      val rx = Flipped(new C2cchiBundle)
+      val tx = new C2cChiBundle
+      val rx = Flipped(new C2cChiBundle)
     }
     val userTx = Input(UInt(C2cUtils.slotDataBits.W))
     val userRx = Output(Valid(UInt(C2cUtils.slotDataBits.W)))
@@ -156,9 +160,17 @@ class C2cPacker(implicit p:Parameters) extends ZJModule {
   initializer.io.link.rx.bits := rxPipe.bits.asUInt
   //tx connections
   txreq.io.enq <> io.chi.rx.req
-  txrsp.io.enq <> io.chi.rx.rsp
   txdat.io.enq <> io.chi.rx.dat
   txsnp.io.enq <> io.chi.rx.snp
+
+  if(p(HardwareAssertionKey).enable) {
+    val rspArb = Module(new ResetRRArbiter(UInt(respFlitBits.W), 2))
+    rspArb.io.in.head <> io.chi.rx.rsp
+    rspArb.io.in.last <> io.chi.rx.dbg.get
+    txrsp.io.enq <> rspArb.io.out
+  } else {
+    txrsp.io.enq <> io.chi.rx.rsp
+  }
 
   private val txqSeq = Seq(txreq, txrsp, txdat, txsnp)
   for(txq <- txqSeq) {
@@ -183,12 +195,27 @@ class C2cPacker(implicit p:Parameters) extends ZJModule {
   io.chi.tx.rsp <> rxrsp.io.deq
   io.chi.tx.dat <> rxdat.io.deq
   io.chi.tx.snp <> rxsnp.io.deq
+
+  if(p(HardwareAssertionKey).enable) {
+    val rxRspFlit = rxrsp.io.deq.bits.asTypeOf(new RingFlit(respFlitBits))
+    val mnid = zjParams.island.filter(_.nodeType == NodeType.M).head.nodeId.U
+    val isDebug = rxRspFlit.TgtID === mnid
+    io.chi.tx.rsp.valid := rxrsp.io.deq.valid && !isDebug
+    rxrsp.io.deq.ready := io.chi.tx.rsp.ready && !isDebug
+    io.chi.tx.rsp.bits := rxrsp.io.deq.bits
+
+    io.chi.tx.dbg.get.valid := rxrsp.io.deq.valid && isDebug
+    rxrsp.io.deq.ready := io.chi.tx.dbg.get.ready && isDebug
+    io.chi.tx.dbg.get.bits := rxrsp.io.deq.bits
+  } else {
+    io.chi.tx.rsp <> rxrsp.io.deq
+  }
 }
 
 class C2cLoopBack(implicit p:Parameters) extends ZJModule {
   val io = IO(new Bundle {
-    val enq = Flipped(new C2cchiBundle)
-    val deq = new C2cchiBundle
+    val enq = Flipped(new C2cChiBundle)
+    val deq = new C2cChiBundle
     val p0UserIn = Input(UInt(C2cUtils.slotDataBits.W))
     val p0UserOut = Output(Valid(UInt(C2cUtils.slotDataBits.W)))
     val p1UserIn = Input(UInt(C2cUtils.slotDataBits.W))

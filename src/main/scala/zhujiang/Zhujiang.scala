@@ -7,7 +7,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.{NodeType, Ring}
 import dongjiang._
 import xijiang.router.base.IcnBundle
-import xs.utils.debug.{DomainInfo, HardwareAssertion}
+import xs.utils.debug.{DomainInfo, HardwareAssertion, HardwareAssertionKey}
 import xs.utils.sram.SramBroadcastBundle
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.axi.{AxiBundle, ExtAxiBundle}
@@ -17,7 +17,7 @@ import zhujiang.device.socket.{SocketIcnSide, SocketIcnSideBundle}
 import zhujiang.device.ddr.MemoryComplex
 import zhujiang.device.dma.Axi2Chi
 import zhujiang.device.home.HomeWrapper
-import zhujiang.device.reset.ResetDevice
+import zhujiang.device.misc.{MiscDevice, ResetDevice, ZJDebugBundle}
 
 import scala.math.pow
 
@@ -107,13 +107,6 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
     dma.axi
   })
 
-  private val resetDev = Module(new ResetDevice)
-  resetDev.clock := clock
-  resetDev.reset := reset
-  private val defaultCfg = cfgIcnSeq.filter(_.node.defaultHni).head
-  defaultCfg.resetInject.get := resetDev.io.resetInject
-  resetDev.io.resetState := defaultCfg.resetState.get
-
   require(ring.icnCcs.get.nonEmpty)
   private val ccnIcnSeq = ring.icnCcs.get
   private val ccnSocketSeq = ccnIcnSeq.map(icn => placeSocket("cc", icn, Some(icn.node.domainId)))
@@ -141,18 +134,25 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
     hfDevSeq(i).clock := clock
     hfDevSeq(i).io.dfx := dft
     hfDevSeq(i).suggestName(s"hnf_$bankId")
-    HardwareAssertion.fromDomain(hfDevSeq(i).assertionOut, hfDevSeq(i).assertionInfo, level = 0, s"hnf $bankId")
-    HardwareAssertion.placePipe(Int.MaxValue-1)
   }
 
-  private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, true)
+  require(ring.icnMns.get.nonEmpty)
+  private val mnIcn = ring.icnMns.get.head
+  private val mnDev = Module(new MiscDevice(mnIcn.node))
+  mnDev.io.icn <> mnIcn
+  mnIcn.resetInject.get := mnDev.io.icn.resetInject.get
+  mnDev.io.icn.resetState.get := mnIcn.resetState.get
+  mnDev.clock := clock
+  mnDev.reset := reset
+
   val io = IO(new Bundle {
     val ci = Input(UInt(ciIdBits.W))
     val onReset = Output(Bool())
-    val assertionOut = assertionNode.assertion.cloneType
     val dft = Input(new DftWires)
     val resetBypass = Output(AsyncReset())
+    val debug = Option.when(p(HardwareAssertionKey).enable)(Decoupled(new ZJDebugBundle))
   })
+  io.debug.foreach(_  <> mnDev.io.hwa.get)
   io.resetBypass := ResetGen(2, Some(io.dft.reset))
   dft := io.dft
   val ddrDrv = memAxiPorts
@@ -160,13 +160,8 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
   val dmaDrv = dmaAxiPorts
   val ccnDrv = ccnSocketSeq.map(_.io.socket)
   runIOAutomation()
-  io.assertionOut <> assertionNode.assertion
-  io.onReset := resetDev.io.onReset
+  io.onReset := mnDev.io.onReset
   ring.io_ci := io.ci
-  dontTouch(io.assertionOut)
-  HardwareAssertion.setTopNode(assertionNode)
-  val assertionInfo = DomainInfo(assertionNode.desc)
-  if(isTop) HardwareAssertion.release("hwa")
 }
 
 trait NocIOHelper {

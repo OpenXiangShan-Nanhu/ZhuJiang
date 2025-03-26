@@ -4,6 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.tfb.TrafficBoardFileManager.{allNodeTypeDefs, allNodeTypeMap}
 import xijiang.{Node, NodeType}
 import xs.utils.FileRegisters
+import xs.utils.debug.HardwareAssertionKey
 import zhujiang.ZJParametersKey
 import zhujiang.chi.{ChannelEncodings, DataFlit}
 
@@ -13,15 +14,15 @@ case class TrafficSimParams(
 )
 
 object TrafficSimFileManager {
-  def release(p: Parameters): Unit = {
+  def release(implicit p: Parameters): Unit = {
     FileRegisters.add("env/tfs/include", "traffic_sim.h", header, true)
     FileRegisters.add("env/tfs/src", "traffic_sim.cpp", source(p), true)
     FileRegisters.add("env/tfs/src", "main.cpp", mainStr, true)
     FileRegisters.add("", "xmake.lua", compScr, true)
   }
 
-  private val nodeTypeSeqStr: String = allNodeTypeMap.map(_._1.toUpperCase + "_TYPE").reduce((a: String, b: String) => s"$a, $b")
-  private val ejectsArraysInitFn: String = allNodeTypeMap.map(
+  private def nodeTypeSeqStr(implicit p:Parameters): String = allNodeTypeMap.map(_._1.toUpperCase + "_TYPE").reduce((a: String, b: String) => s"$a, $b")
+  private def ejectsArraysInitFn(implicit p:Parameters): String = allNodeTypeMap.map(
     elm => s"  type_ejects_map[${elm._1.toUpperCase}_TYPE] = {${elm._3.reduce((a: String, b: String) => s"$a, $b")}};\n"
   ).reduce(_ + _)
 
@@ -55,9 +56,10 @@ object TrafficSimFileManager {
        |
        |#endif""".stripMargin
 
-  def source(p: Parameters) = {
+  def source(implicit p:Parameters):String = {
     val maxFlitSize = new DataFlit()(p).getWidth
     val params = p(ZJParametersKey)
+    val hwa = p(HardwareAssertionKey).enable
     s"""
        |#include "traffic_sim.h"
        |#include "svdpi.h"
@@ -83,6 +85,7 @@ object TrafficSimFileManager {
        |#define DAT ${ChannelEncodings.DAT}
        |#define SNP ${ChannelEncodings.SNP}
        |#define ERQ ${ChannelEncodings.ERQ}
+       |${if(hwa) s"#define DBG ${ChannelEncodings.DBG}" else ""}
        |
        |#define NODE_ID_BITS ${params.nodeIdBits}
        |#define TGT_ID_OFF 0
@@ -191,18 +194,21 @@ object TrafficSimFileManager {
        |  chn_tx_flit_map[DAT] = array<uint8_t, FLIT_BUF_SIZE>();
        |  chn_tx_flit_map[SNP] = array<uint8_t, FLIT_BUF_SIZE>();
        |  chn_tx_flit_map[ERQ] = array<uint8_t, FLIT_BUF_SIZE>();
+       |  ${if(hwa) s"chn_tx_flit_map[DBG] = array<uint8_t, FLIT_BUF_SIZE>();" else ""}
        |  for(auto &[chn, _]: chn_tx_flit_map) tx_fire(chn);
        |  chn_rx_ready_timer_map[REQ] = 0;
        |  chn_rx_ready_timer_map[RSP] = 0;
        |  chn_rx_ready_timer_map[DAT] = 0;
        |  chn_rx_ready_timer_map[SNP] = 0;
        |  chn_rx_ready_timer_map[ERQ] = 0;
+       |  ${if(hwa) s"chn_rx_ready_timer_map[DBG] = 0;" else ""}
        |
        |  chn_tx_valid_timer_map[REQ] = 0;
        |  chn_tx_valid_timer_map[RSP] = 0;
        |  chn_tx_valid_timer_map[DAT] = 0;
        |  chn_tx_valid_timer_map[SNP] = 0;
        |  chn_tx_valid_timer_map[ERQ] = 0;
+       |  ${if(hwa) s"chn_tx_valid_timer_map[DBG] = 0;" else ""}
        |
        |  printf("  node: 0x%x\\n", node_id);
        |  for(const auto &[k, v]: legal_tgt_pool) {
@@ -214,8 +220,10 @@ object TrafficSimFileManager {
        |      printf("    DAT: ");
        |    } else if(k == SNP) {
        |      printf("    SNP: ");
-       |    } else {
+       |    } else if(k == ERQ) {
        |      printf("    ERQ: ");
+       |    } else {
+       |      printf("    DBG: ");
        |    }
        |    for(const auto &d: v){
        |      printf("0x%x ", d);
@@ -226,7 +234,7 @@ object TrafficSimFileManager {
        |
        |void NodeManager::rx_fire(uint8_t chn) {
        |  uniform_int_distribution<uint8_t> dist(0, RX_READY_MAX_DELAY);
-       |  if(chn > 4) {
+       |  if(chn > ${ChannelEncodings.MAX_LEGAL_PORT_CHN}) {
        |    TFS_ERR("illegal channel type %d!\\n", chn);
        |  } else {
        |    chn_rx_ready_timer_map[chn] = dist(random_gen);
@@ -234,7 +242,7 @@ object TrafficSimFileManager {
        |}
        |
        |void NodeManager::tx_fire(uint8_t chn) {
-       |  if(chn > 4) {
+       |  if(chn > ${ChannelEncodings.MAX_LEGAL_PORT_CHN}) {
        |    TFS_ERR("illegal channel type %d!\\n", chn);
        |    return;
        |  }
@@ -243,10 +251,14 @@ object TrafficSimFileManager {
        |  for(int i = 0; i < FLIT_BUF_SIZE - 1; i++) flit[i] = dist_flit(random_gen);
        |  flit[FLIT_BUF_SIZE - 1] = 0;
        |  uint8_t tgt_pool_size = legal_tgt_pool.at(chn).size();
-       |  uniform_int_distribution<uint8_t> dist_tgt_pos(0, tgt_pool_size - 1);
-       |  uint8_t pos = dist_tgt_pos(random_gen);
+       |  uint16_t pos = 0;
+       |  if(tgt_pool_size == 0) {
+       |    return;
+       |  } else if(tgt_pool_size > 1) {
+       |    uniform_int_distribution<uint8_t> dist_tgt_pos(0, tgt_pool_size - 1);
+       |    pos = dist_tgt_pos(random_gen);
+       |  }
        |  uint16_t tgt_id = legal_tgt_pool.at(chn).at(pos);
-       |
        |  uint64_t *head_ptr = (uint64_t *)flit;
        |  head_ptr[0] = clear_field(head_ptr[0], TGT_ID_OFF, NODE_ID_BITS) | (tgt_id << TGT_ID_OFF);
        |  head_ptr[0] = clear_field(head_ptr[0], TXN_ID_OFF, TXN_ID_BITS) | (txn_id << TXN_ID_OFF);
@@ -267,6 +279,7 @@ object TrafficSimFileManager {
        |  legal_tgt_pool[DAT] = vector<uint16_t>();
        |  legal_tgt_pool[SNP] = vector<uint16_t>();
        |  legal_tgt_pool[ERQ] = vector<uint16_t>();
+       |  ${if(hwa) s"legal_tgt_pool[DBG] = vector<uint16_t>();" else ""}
        |
        |  printf("tfs node manager target:\\n");
        |  for(int i = 0; i < ${allNodeTypeMap.size}; i++) {

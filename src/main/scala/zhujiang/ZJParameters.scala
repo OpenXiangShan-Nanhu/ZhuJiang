@@ -8,6 +8,7 @@ import xijiang.c2c.C2cParams
 import xijiang.tfb.TrafficBoardParams
 import xijiang.tfs.TrafficSimParams
 import xijiang.{Node, NodeParam, NodeType}
+import xs.utils.debug.HardwareAssertionKey
 import zhujiang.chi._
 import zhujiang.device.dma.DmaParams
 
@@ -248,6 +249,8 @@ trait HasZJParams {
   lazy val dataFlitBits = new DataFlit()(p).getWidth
   lazy val ringHrqFlitBits = hreqFlitBits.max(snoopFlitBits)
   lazy val maxFlitBits = Seq(rreqFlitBits, respFlitBits, snoopFlitBits, dataFlitBits, hreqFlitBits).max
+
+  lazy val debugFlitBits = niw + niw + p(HardwareAssertionKey).maxInfoBits
 }
 
 class ZJBundle(implicit val p: Parameters) extends Bundle with HasZJParams

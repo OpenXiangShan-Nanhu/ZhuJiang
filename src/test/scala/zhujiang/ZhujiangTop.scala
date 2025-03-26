@@ -6,11 +6,14 @@ import chisel3.stage.ChiselGeneratorAnnotation
 import circt.stage.{ChiselStage, FirtoolOption}
 import xijiang.tfb.TrafficBoardFileManager
 import xs.utils.FileRegisters
-import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+import xs.utils.debug.{HardwareAssertionKey, HwaParams}
+import xs.utils.perf.{DebugOptions, DebugOptionsKey, PerfCounterOptions, PerfCounterOptionsKey, XSPerfLevel}
 
 import scala.annotation.tailrec
 
 class ZhujiangTopConfig extends Config((site, here, up) => {
+  case HardwareAssertionKey => HwaParams(enable = true)
+  case PerfCounterOptionsKey => PerfCounterOptions(enablePerfPrint = false, enablePerfDB = false, XSPerfLevel.VERBOSE, 0)
   case ZJParametersKey => ZJParameters(
     nodeParams = Seq(
       NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 0),
@@ -23,7 +26,7 @@ class ZhujiangTopConfig extends Config((site, here, up) => {
 
       NodeParam(nodeType = NodeType.RI, attr = "main"),
       NodeParam(nodeType = NodeType.HI, defaultHni = true, attr = "main"),
-      NodeParam(nodeType = NodeType.P),
+      NodeParam(nodeType = NodeType.M),
 
       NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 1),
       NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),

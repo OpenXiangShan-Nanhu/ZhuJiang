@@ -6,6 +6,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.tfb.{FlitMonitor, NodeRegister}
 import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
+import xs.utils.debug.HardwareAssertionKey
 import zhujiang.chi._
 import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 
@@ -21,6 +22,7 @@ class RingSide(implicit p: Parameters) extends ZJBundle {
   val rsp = new ChannelBundle(new RingFlit(respFlitBits))
   val dat = new ChannelBundle(new RingFlit(dataFlitBits))
   val hrq = new ChannelBundle(new RingFlit(ringHrqFlitBits))
+  val dbg = Option.when(p(HardwareAssertionKey).enable)(new ChannelBundle(new RingFlit(debugFlitBits)))
 
   def getBundle(chn: String) = {
     chn match {
@@ -28,6 +30,7 @@ class RingSide(implicit p: Parameters) extends ZJBundle {
       case "RSP" => rsp
       case "DAT" => dat
       case "HRQ" => hrq
+      case "DBG" => dbg.get
     }
   }
 }
@@ -47,7 +50,7 @@ trait BaseRouterUtils {
   def node: Node
   override val desiredName = node.routerStr
   val tfbNodeType = node.nodeType.U
-  private val isDefaultHi = node.nodeType == NodeType.HI && node.defaultHni
+  private val isMiscNode = node.nodeType == NodeType.M
 
   val router = IO(new Bundle {
     val rings = Vec(2, new RouterRingIO)
@@ -59,7 +62,7 @@ trait BaseRouterUtils {
 
   private val resetReg0 = withReset(router.reset.rx(0).asAsyncReset)(RegInit(3.U(2.W)))
   private val resetReg1 = withReset(router.reset.rx(1).asAsyncReset)(RegInit(3.U(2.W)))
-  if(isDefaultHi) {
+  if(isMiscNode) {
     router.reset.tx := icn.resetInject.get
   } else {
     router.reset.tx(0) := resetReg0(0)
@@ -79,20 +82,24 @@ trait BaseRouterUtils {
     "SNP" -> new RingFlit(snoopFlitBits),
     "ERQ" -> new RingFlit(hreqFlitBits),
     "HRQ" -> new RingFlit(ringHrqFlitBits),
+    "DBG" -> new RingFlit(debugFlitBits)
   )
 
   private val ejectBufSizeMap = Map[String, Int](
     "REQ" -> p(ZJParametersKey).reqEjectBufDepth,
     "RSP" -> 3,
     "DAT" -> 3,
-    "HRQ" -> p(ZJParametersKey).reqEjectBufDepth
+    "HRQ" -> p(ZJParametersKey).reqEjectBufDepth,
+    "DBG" -> 3
   )
+
   val injectsMap = node.injects.map({inj =>
     val iw = Wire(Decoupled(flitMap(inj)))
     val in = icn.rx.getBundle(inj).get
     iw.valid := in.valid
     iw.bits := in.bits.asTypeOf(iw.bits)
     in.ready := iw.ready
+    if(inj == "DBG") iw.bits.TgtID := zjParams.island.filter(_.nodeType == NodeType.M).head.nodeId.U
     if(m.p(ZJParametersKey).tfsParams.isEmpty) {
       val ring = m.p(ZJParametersKey).island
       node.checkLegalInjectTarget(ring, inj, iw.bits.tgt.asTypeOf(new NodeIdBundle), iw.valid, nid)
@@ -211,5 +218,6 @@ class BaseRouter(val node: Node)(implicit p: Parameters) extends ZJModule with B
   connectRing("RSP")
   connectRing("DAT")
   connectRing("HRQ")
+  if(p(HardwareAssertionKey).enable) connectRing("DBG")
   print(node)
 }

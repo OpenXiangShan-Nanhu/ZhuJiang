@@ -42,4 +42,5 @@ class TrafficGen(node: Node)(implicit p: Parameters) extends ZJModule {
   generate("DAT")
   generate("SNP")
   generate("ERQ")
+  generate("DBG")
 }

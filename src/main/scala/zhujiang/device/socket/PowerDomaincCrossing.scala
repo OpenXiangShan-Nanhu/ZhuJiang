@@ -5,6 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.Node
 import xijiang.router.base.{DeviceIcnBundle, IcnBundle}
+import xs.utils.debug.HardwareAssertionKey
 import xs.utils.queue.FastQueue
 import zhujiang.{ZJBundle, ZJModule}
 
@@ -70,6 +71,7 @@ class ChiPdcTxBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
   val rsp = Option.when(node.ejects.contains("RSP"))(new PowerDomainCrossingBundle(UInt(respFlitBits.W)))
   val dat = Option.when(node.ejects.contains("DAT"))(new PowerDomainCrossingBundle(UInt(dataFlitBits.W)))
   val snp = Option.when(node.ejects.contains("SNP"))(new PowerDomainCrossingBundle(UInt(snoopFlitBits.W)))
+  val dbg = Option.when(node.ejects.contains("DBG") && p(HardwareAssertionKey).enable)(new PowerDomainCrossingBundle(UInt(debugFlitBits.W)))
 
   def getBundle(chn:String): PowerDomainCrossingBundle[UInt] = {
     chn match {
@@ -78,6 +80,7 @@ class ChiPdcTxBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
       case "DAT" => dat.get
       case "SNP" => snp.get
       case "ERQ" => req.get
+      case "DBG" => dbg.get
     }
   }
 }
@@ -94,6 +97,7 @@ class ChiPdcRxBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
   val rsp = Option.when(node.injects.contains("RSP"))(Flipped(new PowerDomainCrossingBundle(UInt(respFlitBits.W))))
   val dat = Option.when(node.injects.contains("DAT"))(Flipped(new PowerDomainCrossingBundle(UInt(dataFlitBits.W))))
   val snp = Option.when(node.injects.contains("SNP"))(Flipped(new PowerDomainCrossingBundle(UInt(snoopFlitBits.W))))
+  val dbg = Option.when(node.injects.contains("DBG") && p(HardwareAssertionKey).enable)(Flipped(new PowerDomainCrossingBundle(UInt(debugFlitBits.W))))
 
   def getBundle(chn:String): PowerDomainCrossingBundle[UInt] = {
     chn match {
@@ -102,6 +106,7 @@ class ChiPdcRxBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
       case "DAT" => dat.get
       case "SNP" => snp.get
       case "ERQ" => req.get
+      case "DBG" => dbg.get
     }
   }
 }
