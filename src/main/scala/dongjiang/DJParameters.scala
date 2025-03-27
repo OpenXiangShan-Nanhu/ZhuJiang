@@ -20,8 +20,8 @@ case class DJParam(
                   nrSnpTaskBuf:       Int = 32,
                   nrPoS:              Int = 128, // The number of outstanding
                   // ------------------------ Memblock ----------------------- //
-                  dataBufSizeInByte:  Int = 32 * 32,
-                  nrDataCM:           Int = 64,
+                  dataBufSizeInByte:  Int = 64 * 32,
+                  nrDataCM:           Int = 32,
                   // Data SRAM
                   nrDSBank:           Int = 4,
                   dataSetup:          Int = 3,
@@ -48,8 +48,9 @@ case class DJParam(
   // PoS Table
   lazy val posWays   = if(hasLLC) min(llcWays, sfWays) else sfWays
   lazy val posSets   = nrPoS / posWays
-  // Memblock
+  // Data
   lazy val nrDataBuf = dataBufSizeInByte / BeatByte
+  lazy val nrDsSet   = llcSets * llcWays
 
   require(llcSizeInKiB * 1024 >= CacheLine * llcWays, s"illegal llc size: ${llcSizeInKiB}B")
   require(sfSizeInKiB > 0)
@@ -57,7 +58,6 @@ case class DJParam(
   require(nrSnpTaskBuf >= 0)
   require(nrPoS > 0)
   require(isPow2(dataBufSizeInByte))
-  require(nrDataCM >= nrDataBuf)
   require(isPow2(nrDSBank))
   require(isPow2(nrDirBank))
   require(isPow2(llcWays))
@@ -240,11 +240,16 @@ trait HasDJParam extends HasParseZJParam {
   lazy val issueBufBits     = log2Ceil(nrIssueBuf)
 
 
-  // Memblock Parameters
+  // DataBlock Parameters
+  // dc/db
   lazy val dbIdBits         = log2Ceil(djparam.nrDataBuf)
   lazy val dcIdBits         = log2Ceil(djparam.nrDataCM)
-  require(dbIdBits <= dcIdBits)
-  require(dcIdBits <= ChiTxnIdBits)
+  //ds
+  lazy val dsBank           = djparam.nrDSBank
+  lazy val nrDsSet          = djparam.nrDsSet / dsBank
+  lazy val dsIdxBits        = log2Ceil(nrDsSet)
+  lazy val dsMuticycle      = djparam.dataLatency.max(if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup)
+  lazy val readDsLatency    = (if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup) + djparam.dataLatency
 
   // Replacement(PLRU) Parameters
   lazy val sReplWayBits     = djparam.llcWays - 1
@@ -261,6 +266,7 @@ trait HasDJParam extends HasParseZJParam {
 
 
   // TIMEOUT CHECK CNT VALUE
+  // TODO
   lazy val TIMEOUT_TASKBUF  = 20000 + 10000 // MSHR
   lazy val TIMEOUT_POS      = 10000 + 10000
   lazy val TIMEOUT_RETRYBUF =  5000 + 10000

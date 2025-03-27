@@ -13,7 +13,7 @@ import xs.utils.sram.{SinglePortSramTemplate, DualPortSramTemplate}
 import freechips.rocketchip.util.ReplacementPolicy
 
 class Shift(implicit p: Parameters) extends DJBundle {
-  // setup + hold + 1
+  // setup + hold + latency + 1
   val read  = UInt(readDirLatency.W)
   val write = UInt(readDirLatency.W)
   val repl  = UInt(readDirLatency.W)

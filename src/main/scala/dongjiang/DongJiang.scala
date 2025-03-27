@@ -44,6 +44,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
     val lan         = new DeviceIcnBundle(lanNode)
     val bbnOpt      = if(hasBBN) Some(new DeviceIcnBundle(bbnNode.get)) else None
   })
+  dontTouch(io)
 
   // TODO
   io.flushCache.ack := DontCare
@@ -117,7 +118,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   val frontends = Seq.tabulate(djparam.nrDirBank)(i => Module(new Frontend(i)))
   val backend   = Module(new Backend())
   val directory = Module(new Directory())
-  val dataCtrl  = Module(new DataCtrl())
+  val dataBlock = Module(new DataBlock())
   val chiXbar   = Module(new ChiXbar())
 
 
@@ -146,10 +147,10 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   // [backend].rxRsp <-> io.chi.rxRsp
   connIcn(backend.io.rxRsp, fastArb(icnVec.map(_.rx.resp.get)))
 
-  // [dataCtrl].rxDat <-> io.chi.rxDat
+  // [dataBlock].rxDat <-> io.chi.rxDat
   // [backend].rxDat  <-- io.chi.rxDat
   val rxDat = fastArb(icnVec.map(_.rx.data.get))
-  connIcn(dataCtrl.io.rxDat, rxDat)
+  connIcn(dataBlock.io.rxDat, rxDat)
   backend.io.rxDat.valid := rxDat.fire
   backend.io.rxDat.bits  := rxDat.bits.asTypeOf(backend.io.rxDat.bits)
 
@@ -165,8 +166,8 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   chiXbar.io.txRsp.in <> backend.io.txRsp
   chiXbar.io.txRsp.outVec.zip(icnVec.map(_.tx.resp.get)).foreach { case (a, b) => connIcn(b, a) }
 
-  // [dataCtrl].txDat <-> [ChiXbar] <-> io.chi.txDat
-  chiXbar.io.txDat.in <> dataCtrl.io.txDat
+  // [dataBlock].txDat <-> [ChiXbar] <-> io.chi.txDat
+  chiXbar.io.txDat.in <> dataBlock.io.txDat
   chiXbar.io.txDat.outVec.zip(icnVec.map(_.tx.data.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // Set CBusy in CHIXbar
@@ -202,11 +203,11 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   backend.io.cmtAllocVec.zip(frontends.map(_.io.cmtAlloc_s3)).foreach    { case(a, b) => a <> b }
   backend.io.cmAllocVec2.zip(frontends.map(_.io.cmAllocVec_s4)).foreach  { case(a, b) => a <> b }
   backend.io.posRespAddrVec.zip(frontends.map(_.io.posRespAddr)).foreach { case(a, b) => a := b }
-  backend.io.dataResp := dataCtrl.io.resp
+  backend.io.dataResp := dataBlock.io.resp
 
   /*
-   * Connect DataCtrl
+   * Connect dataBlock
    */
-  dataCtrl.io.reqDB <> fastArb(Seq(backend.io.reqDB) ++ frontends.map(_.io.reqDB_s1))
-  dataCtrl.io.task  <> fastArb(Seq(backend.io.dataTask) ++ frontends.map(_.io.fastData_s3))
+  dataBlock.io.reqDB <> fastArb(Seq(backend.io.reqDB) ++ frontends.map(_.io.reqDB_s1))
+  dataBlock.io.task  <> fastArb(Seq(backend.io.dataTask) ++ frontends.map(_.io.fastData_s3))
 }

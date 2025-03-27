@@ -16,17 +16,23 @@ import zhujiang.chi.ReqOpcode._
 import dongjiang.frontend._
 
 class CMState(implicit p: Parameters) extends DJBundle {
+  // internal
   val waitResp  = Bool() // Wait TaskCM Resp
-  val waitAck   = Bool() // Wait CompAck From RN
-  val resp2Rn   = Bool() // Send Resp To RN Or Data
-  val resp2Hn   = Bool() // Send Resp To HN Or Data
+  val waitRepl  = Bool() // Wait Replace Done
+  val waitData  = Bool() // Wait Data Done
   val reqDB     = Bool() // Req DB
-  val dbid2Rn   = Bool() // Send XDBIDResp To RN
-  val comp2Rn   = Bool() // Send Comp To RN
   val wriDir    = Bool() // Send Write Task To Replace
   val cleanPoS  = Bool() // Clean PoS Tag
   val canNest   = Bool() // Indicate PoS This Entry Can Be Nested
   val secTask   = Bool() // Send Task To TaskCM
+  // chi
+  val waitChiAck  = Bool() // Wait CompAck From RN
+  val respChi2Rn  = Bool() // Send Resp To RN Or Data
+  val respChi2Hn  = Bool() // Send Resp To HN Or Data
+  val dbidChi2Rn  = Bool() // Send XDBIDResp To RN
+  val compChi2Rn  = Bool() // Send Comp To RN
+  val waitChiDat0 = Bool() // Wait Data Beat 0
+  val waitChiDat1 = Bool() // Wait Data Beat 1
 }
 
 class CommitTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasPackPosIndex with HasPackDirMsg with HasAlrDB with HasPackCmtCode
@@ -90,24 +96,30 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * [REC] Receive Task IO
    */
   val alloc_rec       = io.alloc.bits
-  val wriHitSF_rec    = alloc_rec.chi.isReq(WriteEvictOrEvict) & alloc_rec.dir.sf.hit
-  val owoCanComp_rec  = alloc_rec.chi.isOWO & alloc_rec.dir.sf.hit
+  val wriHitSF_rec    = alloc_rec.chi.isReq(WriteEvictOrEvict) & alloc_rec.dir.sf.hit | alloc_rec.dir.llc.hit
+  val owoCanComp_rec  = alloc_rec.chi.isOWO & alloc_rec.commit.invalid
 
+  // msg
   msg_rec.chi     := alloc_rec.chi
   msg_rec.dir     := alloc_rec.dir
   msg_rec.alrDB   := alloc_rec.alrDB
+  // cm internal
   cm_rec.waitResp := alloc_rec.commit.invalid
-  cm_rec.waitAck  := alloc_rec.chi.expCompAck
-  cm_rec.resp2Rn  := alloc_rec.chi.isReq & alloc_rec.commit.commit
-  cm_rec.resp2Hn  := alloc_rec.chi.isSnp & alloc_rec.commit.commit
+  cm_rec.waitRepl := false.B
+  cm_rec.waitData := alloc_rec.alrDB.fast
   cm_rec.reqDB    := alloc_rec.chi.needSendDBID(alloc_rec.dir.sf.hit) & !alloc_rec.alrDB.reqs
-  cm_rec.dbid2Rn  := false.B
-  cm_rec.comp2Rn  := wriHitSF_rec & owoCanComp_rec
   cm_rec.wriDir   := alloc_rec.commit.wriSF | alloc_rec.commit.wriLLC
   cm_rec.cleanPoS := false.B
   cm_rec.canNest  := false.B
   cm_rec.secTask  := false.B
-
+  // cm chi
+  cm_rec.waitChiAck  := alloc_rec.chi.expCompAck
+  cm_rec.respChi2Rn  := alloc_rec.chi.isReq & alloc_rec.commit.commit
+  cm_rec.respChi2Hn  := alloc_rec.chi.isSnp & alloc_rec.commit.commit
+  cm_rec.dbidChi2Rn  := false.B
+  cm_rec.compChi2Rn  := wriHitSF_rec | owoCanComp_rec
+  cm_rec.waitChiDat0 := false.B
+  cm_rec.waitChiDat1 := false.B
 
 
   /*

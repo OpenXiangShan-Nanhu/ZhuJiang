@@ -18,6 +18,7 @@ import dongjiang.backend.snoop._
 import dongjiang.backend.read._
 import dongjiang.backend.dataless._
 import dongjiang.backend.wrioratm._
+import dongjiang.backend.replace._
 
 class Backend(implicit p: Parameters) extends DJModule {
   /*

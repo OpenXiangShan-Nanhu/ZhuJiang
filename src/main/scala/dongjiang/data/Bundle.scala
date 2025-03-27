@@ -21,12 +21,22 @@ trait HasAlrDB { this: DJBundle =>
 /*
  * HasDataOp -> DataOp -> HasPackDataOp -> PackDataOp
  */
+// Optional Combination
+// 1. read SRAM:                    read
+// 2. save in SRAM:                 save (must without reqs)
+// 3. send to CHI:                  send (must without reqs)
+// 4. read SRAM and send to CHI:    read -> send
+// 5. replace:                      read -> save -> send (must without reqs,  with repl and clean)
+// 6. send to CHI and save in SRAM: send -> save (must without reqs)
 trait HasDataOp { this: DJBundle =>
-  val reqs = Bool() // request buffer
-  val read = Bool() // sram -> buffer
-  val save = Bool() // buffer -> sram
-  val send = Bool() // buffer -> chi
-  val repl = Bool() // read -> buffer0; buffer0 -> chi / buffer1 -> sram
+  // flag
+  val reqs  = Bool() // Request DataBuffer
+  val repl  = Bool() // Replace
+  val clean = Bool() // Release DataBuffer
+  // operation (need resp to CommitCM)
+  val read  = Bool() // sram -> buffer
+  val save  = Bool() // buffer -> sram
+  val send  = Bool() // buffer -> chi
 }
 
 class DataOp(implicit p: Parameters) extends DJBundle with HasDataOp
@@ -36,18 +46,38 @@ trait HasPackDataOp { this: DJBundle => val dataOp = new DataOp }
 class PackDataOp(implicit p: Parameters) extends DJBundle with HasPackDataOp
 
 /*
- * HasLLCIndex
+ * HasDsIdx
  */
-trait HasLLCIndex { this: DJBundle =>
-  val llc   = new DJBundle() {
-    val set = UInt(llcSetBits.W)
-    val way = UInt(llcWayBits.W)
+trait HasDsIdx { this: DJBundle =>
+  val ds = new DJBundle {
+    val bank = UInt(dsBankBits.W)
+    val idx  = UInt(dsIdxBits.W)
   }
 }
 
 /*
  * DataTask -> DataTaskBundle
  */
-class DataTask(implicit p: Parameters) extends DJBundle with HasPackDataOp with HasPackLLCTxnID with HasChiSize with HasLLCIndex {
-  val txDat = new DataFlit
+class DataTask(implicit p: Parameters) extends DJBundle with HasPackDataOp with HasPackLLCTxnID with HasDsIdx {
+  val txDat   = new DataFlit
+  val useVec  = Vec(2, Bool())
 }
+
+/*
+ * HasDCID -> DCID
+ */
+trait HasDCID { this: DJBundle =>
+  val dcid = UInt(dcIdBits.W)
+}
+
+class DCID(implicit p: Parameters) extends DJBundle with HasDCID
+
+
+/*
+ * HasDBID -> DBID
+ */
+trait HasDBID { this: DJBundle =>
+  val dbid = UInt(dbIdBits.W)
+}
+
+class DBID(implicit p: Parameters) extends DJBundle with HasDBID

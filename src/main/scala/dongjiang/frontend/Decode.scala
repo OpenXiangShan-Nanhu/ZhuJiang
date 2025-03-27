@@ -83,6 +83,8 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.updNest_s3.bits.canNest:= true.B
   assert(io.updNest_s3.ready)
 
+
+
   // fastData
   val respCompData_s3 = cmt_s3.commit & cmt_s3.channel === ChiChannel.DAT & cmt_s3.commitOp === CompData
   // valid
@@ -100,12 +102,10 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.fastData_s3.bits.txDat.TgtID   := taskReg_s3.chi.nodeId
   NocType.setTx(io.fastData_s3.bits.txDat, taskReg_s3.chi.getNoC(io.config.ci))
   // other bits
-  io.fastData_s3.bits.dataOp.reqs   := true.B
   io.fastData_s3.bits.dataOp.read   := true.B
   io.fastData_s3.bits.dataOp.send   := true.B
-  io.fastData_s3.bits.size          := taskReg_s3.chi.size
-  io.fastData_s3.bits.llc.set       := taskReg_s3.Addr.llcSet
-  io.fastData_s3.bits.llc.way       := OHToUInt(io.respDir_s3.bits.dir.llc.wayOH)
+  io.fastData_s3.bits.useVec        := DontCare // TODO
+  io.fastData_s3.bits.ds            := DontCare // TODO
   io.fastData_s3.bits.llcTxnID.pos  := taskReg_s3.pos
   io.fastData_s3.bits.llcTxnID.dirBank := dirBank.U
 

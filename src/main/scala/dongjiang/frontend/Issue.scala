@@ -133,7 +133,6 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
         true.B      -> ops.valid
       ))
       HardwareAssertion.withEn(!ops.valid, toBeValid)
-      HardwareAssertion.withEn(ops.valid, toBeInvalid)
   }
 
   /*

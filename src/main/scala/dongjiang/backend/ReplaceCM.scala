@@ -1,4 +1,4 @@
-package dongjiang.backend
+package dongjiang.backend.replace
 
 import chisel3._
 import chisel3.util._
@@ -14,6 +14,7 @@ import dongjiang.frontend.decode.{HasPackCmtCode, _}
 import dongjiang.data._
 import zhujiang.chi.ReqOpcode._
 import dongjiang.frontend._
+import dongjiang.backend._
 
 class ReplaceCM(implicit p: Parameters) extends DJModule {
   /*
@@ -49,6 +50,32 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   HardwareAssertion(!io.alloc.valid)
   io <> DontCare
 
+  /*
+   * Reg and Wire declaration
+   */
+  val cmRegVec  = RegInit(VecInit(Seq.fill(nrReplaceCM) { 0.U.asTypeOf(new CMState) }))
+  val msgRegVec = Reg(Vec(nrReplaceCM, chiselTypeOf(io.alloc.bits)))
+
+
+  /*
+   * [REC] Receive Task IO
+   */
+  val cmVec_rec   = cmRegVec.map(!_.asUInt.orR) // Free Vec
+  val cmId_rec    = PriorityEncoder(cmVec_rec)
+  io.alloc.ready  := cmVec_rec.reduce(_ | _)
+
+  /*
+   * Modify Ctrl Machine Table
+   */
+  cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
+    case ((cm, msg), i) =>
+      val allocHit = io.alloc.fire & i.U === cmId_rec
+
+      // Store Msg From Frontend
+      when(allocHit) {
+        msg := io.alloc.bits
+      }
+  }
 
   /*
    * HardwareAssertion placePipe
