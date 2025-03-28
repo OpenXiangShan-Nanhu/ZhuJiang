@@ -60,7 +60,7 @@ class Backend(implicit p: Parameters) extends DJModule {
     val cmtAllocVec   = Vec(djparam.nrDirBank, Flipped(Valid(new CommitTask())))
     val cmAllocVec2   = Vec(djparam.nrDirBank, Vec(nrTaskCM, Flipped(Decoupled(new CMTask()))))
     // Send Task To DB
-    val reqDB         = Decoupled(new PackLLCTxnID with HasChiSize)
+    val reqDB         = Decoupled(new PackLLCTxnID with HasDataVec)
     val dataTask      = Decoupled(new DataTask())
     val dataResp      = Flipped(Valid(new PackLLCTxnID()))
     // Multicore Req running in LAN

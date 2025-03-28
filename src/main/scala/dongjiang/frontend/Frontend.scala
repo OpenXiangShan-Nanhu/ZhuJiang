@@ -25,7 +25,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val rxReq         = Flipped(Decoupled(new ReqFlit(false)))
     val rxSnp         = Flipped(Decoupled(new SnoopFlit()))
     // To Data
-    val reqDB_s1      = Decoupled(new PackLLCTxnID with HasChiSize)
+    val reqDB_s1      = Decoupled(new PackLLCTxnID with HasDataVec)
     val fastData_s3   = Decoupled(new DataTask)
     // DIR Read/Resp
     val readDir_s1    = Decoupled(new Addr with HasPackPosIndex)

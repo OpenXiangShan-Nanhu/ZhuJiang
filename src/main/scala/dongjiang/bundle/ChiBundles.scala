@@ -137,14 +137,3 @@ trait HasChiSnpField { this: Bundle =>
   def cantSnp = !snpAttr
   def illegalSnpField = snoopMe & !snpAttr
 }
-
-/*
- * Chi Size
- */
-trait HasChiSize { this: DJBundle =>
-  val size = UInt(ChiSizeBits.W)
-
-  def isFullSize    = size === ChiFullSize.U
-  def isHalfSize    = size === ChiHalfSize.U
-  def isNotFullSize = size <= ChiHalfSize.U
-}

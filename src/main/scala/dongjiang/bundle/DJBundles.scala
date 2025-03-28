@@ -116,11 +116,22 @@ trait HasPackLLCTxnID extends DJBundle { this: DJBundle =>
 class PackLLCTxnID(implicit p: Parameters) extends DJBundle with HasPackLLCTxnID
 
 /*
+ *
+ */
+trait HasDataVec extends DJBundle { this: DJBundle =>
+  val dataVec = Vec(2, Bool())
+  def isFullSize = dataVec.asUInt.andR
+  def isHalfSize = PopCount(dataVec) === 1.U
+  def getSize = Mux(isFullSize, 6.U, Mux(isHalfSize, 5.U, 0.U))
+}
+
+
+/*
  * Chi:
  * HasChi -> Chi -> HasPackChi -> PackChi
  */
 trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
-  with HasChiOrderAndExpCompAck with HasChiSnpField with HasChiSize =>
+  with HasChiOrderAndExpCompAck with HasChiSnpField with HasDataVec =>
   // REQ
   val txnID     = UInt(ChiTxnIdBits.W)
   val memAttr   = new MemAttr()
@@ -130,7 +141,7 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
   val retToSrc  = Bool()
   // Flag
   val toLAN     = Bool()
-  val dataId    = UInt(2.W)
+
 
   def needSendDBID(sfHit: Bool = false.B) = isAtomic | (isWrite & !reqIs(WriteEvictOrEvict)) | (!sfHit & reqIs(WriteEvictOrEvict))
 
@@ -148,7 +159,7 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
 }
 
 class Chi(implicit p: Parameters) extends DJBundle with HasNodeId with HasChiChannel
-  with HasChiOp with HasChiOrderAndExpCompAck with HasChiSnpField with HasChiSize with HasChi
+  with HasChiOp with HasChiOrderAndExpCompAck with HasChiSnpField with HasDataVec with HasChi
 
 trait HasPackChi { this: DJBundle => val chi = new Chi() }
 

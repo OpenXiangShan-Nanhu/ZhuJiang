@@ -40,17 +40,18 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
   task.opcode   := req.Opcode
   task.txnID    := req.TxnID
   // Use in req
-  task.dataId   := task.Addr.getDataId
   task.order    := req.Order
   task.snpAttr  := req.SnpAttr
   task.snoopMe  := req.SnoopMe
-  task.size     := req.Size
   task.memAttr  := req.MemAttr.asTypeOf(task.memAttr)
   task.expCompAck := req.ExpCompAck
   // Use in snoop
   task.fwdNID   := DontCare
   task.fwdTxnID := DontCare
   task.retToSrc := DontCare
+  // Use Data Vec
+  task.dataVec(1) := req.Size === 6.U | req.Addr(5)
+  task.dataVec(0) := req.Size === 6.U | !req.Addr(5)
 
   /*
    * HardwareAssertion
@@ -77,7 +78,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     HardwareAssertion(task.reqIsLegal)
     // Size
     HardwareAssertion.withEn(task.isFullSize, task.isAllocatingRead | task.isDataless | task.isWriteFull)
-    HardwareAssertion.withEn(task.isNotFullSize, task.isAtomic)
+    HardwareAssertion.withEn(task.isHalfSize, task.isAtomic)
     // Addr
     HardwareAssertion(task.Addr.bankId === io.config.bankId)
     HardwareAssertion.withEn(task.Addr.offset === 0.U, task.isAllocatingRead | task.isDataless | task.isWriteFull)
@@ -165,17 +166,18 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
   task.opcode   := snp.Opcode
   task.txnID    := snp.TxnID
   // Use in req
-  task.dataId   := DontCare
   task.order    := DontCare
   task.snpAttr  := DontCare
   task.snoopMe  := DontCare
-  task.size     := DontCare
   task.memAttr  := DontCare
   task.expCompAck := DontCare
   // Use in snoop
   task.fwdNID   := snp.FwdNID
   task.fwdTxnID := snp.FwdTxnID
   task.retToSrc := snp.RetToSrc
+  // Use Data Vec
+  task.dataVec(1) := true.B
+  task.dataVec(0) := true.B
 
   /*
    * HardwareAssertion

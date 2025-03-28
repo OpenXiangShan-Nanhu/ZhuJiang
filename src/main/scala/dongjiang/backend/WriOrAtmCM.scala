@@ -33,7 +33,7 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
     // Resp To Commit
     val respCmt       = Decoupled(new RespToCmt)
     // Req To Data
-    val reqDB         = Decoupled(new PackLLCTxnID with HasChiSize)
+    val reqDB         = Decoupled(new PackLLCTxnID with HasDataVec)
   })
   HardwareAssertion(!io.alloc.valid)
   io <> DontCare

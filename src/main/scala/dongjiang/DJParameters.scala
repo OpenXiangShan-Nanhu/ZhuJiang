@@ -137,7 +137,8 @@ trait HasDJParam extends HasParseZJParam {
   //            = [sfTag]    + [sfSet]  + [dirBank]
   //            = [posTag]   + [posSet] + [dirBank]
   //            = [ci]       + [unUse]
-  //            = [unUse]    + [dsBank]
+  // [ds]       = [llcSet]   + [llcWay] + [dirBank]
+  //            = [dsIndex]    + [dsBank]
   // full
   lazy val addrBits         = djparam.addressBits
   lazy val ciBits           = 4
@@ -194,9 +195,12 @@ trait HasDJParam extends HasParseZJParam {
   // posSet(per dirBank)
   lazy val posSet_ua_hi     = dirBankBits + posSetBits - 1
   lazy val posSet_ua_lo     = dirBankBits
+  // dsIndex
+  lazy val dsIdx_ds_hi      = llcSetBits + llcWayBits + dirBankBits - 1
+  lazy val dsIdx_ds_lo      = dsBankBits
   // dsBank
-  lazy val dsBank_ua_hi     = dsBankBits - 1
-  lazy val dsBank_ua_lo     = 0
+  lazy val dsBank_ds_hi     = dsBankBits - 1
+  lazy val dsBank_ds_lo     = 0
 
   // base
   def getCI       (a: UInt) = a(ci_ua_hi, ci_ua_lo)
@@ -214,8 +218,13 @@ trait HasDJParam extends HasParseZJParam {
   def getPosTag   (a: UInt) = getUseAddr(a)(posTag_ua_hi, posTag_ua_lo)
   def getPosSet   (a: UInt) = getUseAddr(a)(posSet_ua_hi, posSet_ua_lo)
   // ds
-  def getDSBank   (a: UInt) = getUseAddr(a)(dsBank_ua_hi, dsBank_ua_lo)
-
+  def getDS       (a: UInt, way: UInt) = {
+    require(way.getWidth == llcWayBits)
+    val temp = Cat(getLlcSet(a), way, getDirBank(a))
+    val idx  = temp(dsIdx_ds_hi,  dsIdx_ds_lo)
+    val bank = temp(dsBank_ds_hi, dsBank_ds_lo)
+    (idx, bank)
+  }
 
   // Data Parameters
   lazy val DataBits         = djparam.CacheLine * 8

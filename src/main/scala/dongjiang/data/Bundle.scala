@@ -13,8 +13,8 @@ import zhujiang.chi.DataFlit
  */
 trait HasAlrDB { this: DJBundle =>
   val alrDB   = new DJBundle {
-    val reqs  = Bool()
-    val fast  = Bool()
+    val reqs  = Bool() // Already request DataCM and DataBuf. If set it, commit will clean when done all
+    val fast  = Bool() // Already Send Task[reqs+read+send+clean] to DataBlock
   }
 }
 
@@ -30,9 +30,9 @@ trait HasAlrDB { this: DJBundle =>
 // 6. send to CHI and save in SRAM: send -> save (must without reqs)
 trait HasDataOp { this: DJBundle =>
   // flag
-  val reqs  = Bool() // Request DataBuffer
+  val reqs  = Bool() // Request DataCM and DataBuf
   val repl  = Bool() // Replace
-  val clean = Bool() // Release DataBuffer
+  val clean = Bool() // Release DataCM and DataBuf
   // operation (need resp to CommitCM)
   val read  = Bool() // sram -> buffer
   val save  = Bool() // buffer -> sram
@@ -50,8 +50,8 @@ class PackDataOp(implicit p: Parameters) extends DJBundle with HasPackDataOp
  */
 trait HasDsIdx { this: DJBundle =>
   val ds = new DJBundle {
-    val bank = UInt(dsBankBits.W)
     val idx  = UInt(dsIdxBits.W)
+    val bank = UInt(dsBankBits.W)
   }
 }
 
@@ -60,7 +60,7 @@ trait HasDsIdx { this: DJBundle =>
  */
 class DataTask(implicit p: Parameters) extends DJBundle with HasPackDataOp with HasPackLLCTxnID with HasDsIdx {
   val txDat   = new DataFlit
-  val useVec  = Vec(2, Bool())
+  val dataVec = Vec(2, Bool())
 }
 
 /*

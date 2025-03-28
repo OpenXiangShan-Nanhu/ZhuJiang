@@ -92,7 +92,6 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(io.respDir_s3.bits.dir.llc.hit, io.fastData_s3.valid)
   // txDat
   io.fastData_s3.bits               := DontCare
-  io.fastData_s3.bits.txDat.DataID  := taskReg_s3.chi.dataId
   io.fastData_s3.bits.txDat.DBID    := taskReg_s3.pos.getLLCTxnID(dirBank)
   io.fastData_s3.bits.txDat.Resp    := cmt_s3.resp
   io.fastData_s3.bits.txDat.Opcode  := CompData
@@ -102,10 +101,13 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.fastData_s3.bits.txDat.TgtID   := taskReg_s3.chi.nodeId
   NocType.setTx(io.fastData_s3.bits.txDat, taskReg_s3.chi.getNoC(io.config.ci))
   // other bits
+  io.fastData_s3.bits.dataOp.reqs   := true.B
   io.fastData_s3.bits.dataOp.read   := true.B
   io.fastData_s3.bits.dataOp.send   := true.B
-  io.fastData_s3.bits.useVec        := DontCare // TODO
-  io.fastData_s3.bits.ds            := DontCare // TODO
+  io.fastData_s3.bits.dataOp.clean  := true.B
+  io.fastData_s3.bits.dataVec       := taskReg_s3.chi.dataVec
+  io.fastData_s3.bits.ds.idx        := getDS(taskReg_s3.addr, OHToUInt(io.respDir_s3.bits.dir.llc.wayOH))._1
+  io.fastData_s3.bits.ds.bank       := getDS(taskReg_s3.addr, OHToUInt(io.respDir_s3.bits.dir.llc.wayOH))._2
   io.fastData_s3.bits.llcTxnID.pos  := taskReg_s3.pos
   io.fastData_s3.bits.llcTxnID.dirBank := dirBank.U
 

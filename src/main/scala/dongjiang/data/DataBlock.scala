@@ -19,7 +19,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
     val txDat = Decoupled(new DataFlit())
     val rxDat = Flipped(Decoupled(new DataFlit())) // Only use rxDat.Data/DataID/BE in DataCtrl
     // Task From Frontend or Backend
-    val reqDB = Flipped(Decoupled(new PackLLCTxnID with HasChiSize))
+    val reqDB = Flipped(Decoupled(new PackLLCTxnID with HasDataVec))
     val task  = Flipped(Decoupled(new DataTask()))
     val resp  = Valid(new PackLLCTxnID())
   })

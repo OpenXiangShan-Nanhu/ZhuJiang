@@ -59,7 +59,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
     // Resp To Commit
     val respCmt       = Decoupled(new RespToCmt)
     // Req To Data
-    val reqDB         = Decoupled(new PackLLCTxnID with HasChiSize)
+    val reqDB         = Decoupled(new PackLLCTxnID with HasDataVec)
   })
 
   /*
@@ -82,7 +82,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   val cmId_reqDB        = StepRREncoder(cmVec_reqDB, io.reqDB.fire)
   io.reqDB.valid        := cmVec_reqDB.reduce(_ | _)
   io.reqDB.bits.llcTxnID:= msgRegVec(cmId_reqDB).task.llcTxnID
-  io.reqDB.bits.size    := msgRegVec(cmId_reqDB).task.chi.size
+  io.reqDB.bits.dataVec := msgRegVec(cmId_reqDB).task.chi.dataVec
 
   /*
    * SendReq
@@ -98,7 +98,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   io.txReq.bits.MemAttr         := task_sReq.chi.memAttr.asUInt
   io.txReq.bits.Order           := Order.None
   io.txReq.bits.Addr            := task_sReq.addr
-  io.txReq.bits.Size            := task_sReq.chi.size
+  io.txReq.bits.Size            := task_sReq.chi.getSize
   io.txReq.bits.Opcode          := task_sReq.chi.opcode
   io.txReq.bits.ReturnTxnID.get := Mux(task_sReq.doDMT, task_sReq.chi.txnID,  task_sReq.llcTxnID.get)
   io.txReq.bits.ReturnNID.get   := Mux(task_sReq.doDMT, task_sReq.chi.nodeId, Fill(io.txReq.bits.ReturnNID.get.getWidth, 1.U)) // If set RetrunNID max value, it will be remap in SAM
@@ -191,7 +191,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
         allocHit    -> Mux(io.alloc.bits.needDB & !io.alloc.bits.alrDB.reqs, ReqDB, SendReq),
         reqDBHit    -> SendReq,
         sendReqHit  -> Mux(!msg.task.doDMT, WaitData0, Free),
-        recDataHit  -> Mux(msg.task.chi.isNotFullSize, Mux(msg.task.chi.expCompAck, SendCompAck, Free), Mux(cm.isWaitData0, WaitData0, WaitData1)),
+        recDataHit  -> Mux(msg.task.chi.isHalfSize, Mux(msg.task.chi.expCompAck, SendCompAck, Free), WaitData1),
         sendAckHit  -> Free,
         true.B      -> cm.state,
       ))

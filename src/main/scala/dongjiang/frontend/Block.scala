@@ -29,7 +29,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // Return to TaskBuf
     val retry_s1      = Output(Bool())
     // Send Req To Data
-    val reqDB_s1      = Decoupled(new PackLLCTxnID with HasChiSize)
+    val reqDB_s1      = Decoupled(new PackLLCTxnID with HasDataVec)
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
     val fastResp_s1   = Decoupled(new RespFlit())
     // Block Message(The number of resources already used)
@@ -101,7 +101,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   needRespDBIDReg_s1          := io.chiTask_s0.bits.needSendDBID()
   // Send Req To Data
   io.reqDB_s1.valid           := validReg_s1 & needRespDBIDReg_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
-  io.reqDB_s1.bits.size       := taskReg_s1.size
+  io.reqDB_s1.bits.dataVec    := taskReg_s1.dataVec
   io.reqDB_s1.bits.llcTxnID.pos     := io.posIdx_s1
   io.reqDB_s1.bits.llcTxnID.dirBank := dirBank.U
   // Send Fast Resp To CHI
