@@ -22,6 +22,7 @@ class ChiSnBridge(node: Node)(implicit p: Parameters) extends ZJModule {
 
   val icn = IO(new DeviceIcnBundle(node))
   val sn = IO(new IcnBundle(snNode))
+  val nodeId = IO(Input(UInt(niw.W)))
 
   private def compareTag(addr0: UInt, addr1: UInt): Bool = true.B
 
@@ -96,6 +97,8 @@ class ChiSnBridge(node: Node)(implicit p: Parameters) extends ZJModule {
   readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4)
   readDataPipe.io.enq.bits.TxnID := ctrlSel.txnId
   readDataPipe.io.enq.bits.SrcID := 0.U
+  readDataPipe.io.enq.bits.DBID := snDataBits.TxnID
+  readDataPipe.io.enq.bits.HomeNID := nodeId
   readDataPipe.io.enq.bits.TgtID := ctrlSel.srcId
   readDataPipe.io.enq.bits.Resp := "b010".U
 

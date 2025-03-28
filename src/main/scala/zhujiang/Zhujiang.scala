@@ -91,6 +91,7 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
     cfg.suggestName(nameStr)
     cfg.icn <> icn
     cfg.reset := placeResetGen(nameStr, icn)
+    cfg.nodeId := icn.node.nodeId.U
     cfg.axi
   }
 

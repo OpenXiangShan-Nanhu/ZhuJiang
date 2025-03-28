@@ -17,6 +17,7 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
 
   val icn = IO(new DeviceIcnBundle(node))
   val axi = IO(new AxiBundle(axiParams))
+  val nodeId = IO(Input(UInt(niw.W)))
 
   private def compareTag(addr0: UInt, addr1: UInt): Bool = true.B
 
@@ -105,6 +106,8 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
   readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4)
   readDataPipe.io.enq.bits.TxnID := ctrlSel.txnId
   readDataPipe.io.enq.bits.SrcID := 0.U
+  readDataPipe.io.enq.bits.DBID := axi.r.bits.id
+  readDataPipe.io.enq.bits.HomeNID := nodeId
   readDataPipe.io.enq.bits.TgtID := ctrlSel.srcId
   readDataPipe.io.enq.bits.Resp := "b010".U
 
