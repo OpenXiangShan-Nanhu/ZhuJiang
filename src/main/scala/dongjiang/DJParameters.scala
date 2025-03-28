@@ -50,11 +50,14 @@ case class DJParam(
   lazy val posSets   = nrPoS / posWays
   // Data
   lazy val nrDataBuf = dataBufSizeInByte / BeatByte
-  lazy val nrDsSet   = llcSets * llcWays
+  lazy val dsSets    = llcSets * llcWays
 
   require(llcSizeInB  >= CacheLine * llcWays, s"illegal llc size: ${llcSizeInB}B")
   require(sfSizeInB >= CacheLine * llcWays, s"illegal llc size: ${sfSizeInB}B")
   require(posSets / nrDirBank > 1, s"illegal pos size: ${nrPoS}")
+  require(llcSets >= nrDirBank)
+  require(sfSets >= nrDirBank)
+  require(dsSets >= nrDSBank)
   require(nrReqTaskBuf > 0)
   require(nrSnpTaskBuf >= 0)
   require(isPow2(dataBufSizeInByte))
@@ -62,7 +65,6 @@ case class DJParam(
   require(isPow2(nrDirBank))
   require(isPow2(llcWays))
   require(isPow2(sfWays))
-  require(nrBeat == 1 | nrBeat == 2 | nrBeat == 4)
 }
 
 
@@ -255,7 +257,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val dcIdBits         = log2Ceil(djparam.nrDataCM)
   //ds
   lazy val dsBank           = djparam.nrDSBank
-  lazy val nrDsSet          = djparam.nrDsSet / dsBank
+  lazy val nrDsSet          = djparam.dsSets / dsBank
   lazy val dsIdxBits        = log2Ceil(nrDsSet)
   lazy val dsMuticycle      = djparam.dataLatency.max(if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup)
   lazy val readDsLatency    = (if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup) + djparam.dataLatency
