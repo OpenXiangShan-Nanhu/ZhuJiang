@@ -12,8 +12,8 @@ import xs.utils.debug._
 case class DJParam(
                   // -------------------------- Size and DCT ---------------------------- //
                   addressBits:        Int = 48,
-                  llcSizeInKiB:       Int = 16 * 1024,
-                  sfSizeInKiB:        Int = 8 * 1024,
+                  llcSizeInB:         Int = 16 * 1024 * 1024, // 16M
+                  sfSizeInB:          Int = 8 * 1024 * 1024, // 8M
                   openDCT:            Boolean = true,
                   // ------------------------ Frontend -------------------------- //
                   nrReqTaskBuf:       Int = 64,
@@ -37,14 +37,14 @@ case class DJParam(
                   dirExtraHold:       Boolean = false,
                   dirLatency:         Int = 2,
                 ) {
-  lazy val hasLLC    = llcSizeInKiB != 0
+  lazy val hasLLC    = llcSizeInB != 0
   lazy val CacheLine = 64 // Bytes
   lazy val BeatByte  = 32
   lazy val nrBeat    = CacheLine / BeatByte
   // Last level Cache
-  lazy val llcSets   = llcSizeInKiB * 1024 / CacheLine / llcWays
+  lazy val llcSets   = llcSizeInB / CacheLine / llcWays
   // Snoop filter
-  lazy val sfSets    = sfSizeInKiB * 1024 / CacheLine / sfWays
+  lazy val sfSets    = sfSizeInB / CacheLine / sfWays
   // PoS Table
   lazy val posWays   = if(hasLLC) min(llcWays, sfWays) else sfWays
   lazy val posSets   = nrPoS / posWays
@@ -52,11 +52,11 @@ case class DJParam(
   lazy val nrDataBuf = dataBufSizeInByte / BeatByte
   lazy val nrDsSet   = llcSets * llcWays
 
-  require(llcSizeInKiB * 1024 >= CacheLine * llcWays, s"illegal llc size: ${llcSizeInKiB}B")
-  require(sfSizeInKiB > 0)
+  require(llcSizeInB  >= CacheLine * llcWays, s"illegal llc size: ${llcSizeInB}B")
+  require(sfSizeInB >= CacheLine * llcWays, s"illegal llc size: ${sfSizeInB}B")
+  require(posSets / nrDirBank > 1, s"illegal pos size: ${nrPoS}")
   require(nrReqTaskBuf > 0)
   require(nrSnpTaskBuf >= 0)
-  require(nrPoS > 0)
   require(isPow2(dataBufSizeInByte))
   require(isPow2(nrDSBank))
   require(isPow2(nrDirBank))

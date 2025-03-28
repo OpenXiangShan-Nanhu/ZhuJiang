@@ -87,8 +87,8 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  Support Protocol: CHI-G
        |  lanPortNum: ${nrLanIcn}
        |  bbnPortNum: ${nrBbnIcn}
-       |  llcSize: ${djparam.llcSizeInKiB} KiB
-       |  sfSize: ${djparam.sfSizeInKiB} KiB
+       |  llcSize: ${djparam.llcSizeInB} B
+       |  sfSize: ${djparam.sfSizeInB} B
        |  llcWays: ${djparam.llcWays}
        |  sfWays: ${djparam.sfWays}
        |  openDCT: ${djparam.openDCT}

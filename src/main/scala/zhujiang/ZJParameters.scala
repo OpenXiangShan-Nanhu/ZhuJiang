@@ -180,6 +180,7 @@ case class ZJParameters(
   cacheSizeInB: Int = 16 * 1024 * 1024,
   cacheWays: Int = 16,
   snoopFilterWays: Int = 16,
+  hnxOutstanding: Int = 64 * 4,
   hnxPipelineDepth: Int = 1,
   splitFlit:Boolean = true,
   r2rPos: Seq[Int] = Seq(),
@@ -208,13 +209,14 @@ case class ZJParameters(
   lazy val island: Seq[Node] = ZhujiangGlobal.getIsland(nodeNidBits, nodeAidBits, nodeParams, cpuSpaceBits, ciName)
 
   private lazy val bank = nodeParams.filter(_.hfpId == 0).count(_.nodeType == NodeType.HF)
-  private lazy val clusterTotalCacheSizeInKiB = clusterCacheSizeInB / 1024 * nrC
+  private lazy val clusterTotalCacheSizeInB = clusterCacheSizeInB * nrC
   lazy val djParams = DJParam(
-    llcSizeInKiB = cacheSizeInB / 1024 / bank,
-    sfSizeInKiB = clusterTotalCacheSizeInKiB * 2 / bank,
+    llcSizeInB = cacheSizeInB / bank,
+    sfSizeInB = clusterCacheSizeInB * 2 / bank,
     llcWays = cacheWays,
     sfWays = snoopFilterWays,
-    nrDirBank = 2
+    nrDirBank = 2,
+    nrPoS = hnxOutstanding / bank
   )
 }
 
