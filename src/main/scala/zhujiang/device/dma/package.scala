@@ -215,14 +215,15 @@ class CHIREntry(dmt : Boolean)(implicit p : Parameters) extends ZJBundle {
   val dbid           = if(dmt) Some(UInt(12.W))  else None
 
   def ARMesInit[T <: ARFlit](b: T): CHIREntry = {
-    this               := 0.U.asTypeOf(this)
-    this.double        := b.len(0).asBool
-    this.arId          := b.user
-    this.idx           := b.id
-    this.addr          := b.addr
-    this.size          := b.size
-    this.haveRcvRct    := Mux(b.cache(1), 1.U, 0.U)
-    this.memAttr       := Cat(b.cache(2), b.cache(3) | b.cache(2), !b.cache(1) & !b.cache(2) & !b.cache(3), b.cache(0) | b.cache(2) | b.cache(3))
+    this                  := 0.U.asTypeOf(this)
+    this.double           := b.len(0).asBool
+    this.arId             := b.user
+    this.idx              := b.id
+    this.addr             := b.addr
+    this.size             := b.size
+    this.haveRcvRct       := Mux(b.cache(1), 1.U, 0.U)
+    this.memAttr          := Cat(b.cache(2), b.cache(3) | b.cache(2), !b.cache(1) & !b.cache(2) & !b.cache(3), b.cache(0) | b.cache(2) | b.cache(3))
+    this.haveSendAck.get  := Mux(!b.cache(1) & !b.cache(2) & !b.cache(3), true.B, false.B)
     this
   }
 }
@@ -292,7 +293,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
     this.MemAttr  := c.memAttr
     this.SnpAttr  := Mux(c.memAttr(1), 0.U, 1.U)
     if(zjParams.dmaParams.readDMT){
-      this.ExpCompAck := true.B
+      this.ExpCompAck := Mux(c.memAttr(1), false.B, true.B)
     } else {this.ExpCompAck := false.B}
     this
   }
