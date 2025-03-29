@@ -140,7 +140,7 @@ class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
     this.byteMask       := Mux(Burst.isWrap(aw.burst), byteComp(aw.len, aw.size), 0.U)
     this.id             := aw.id
     this.size           := aw.size
-    this.len.get        := aw.len
+    this.len.get        := aw.len + 1.U
     this.cache          := aw.cache
     this
   }
