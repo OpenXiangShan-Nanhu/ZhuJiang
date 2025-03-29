@@ -139,7 +139,7 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   txAwBdl.burst      := Burst.INCR
   txAwBdl.id         := dHeadPtr.value
   txAwBdl.len        := Mux(!uTailE.cache(1) | Burst.isFix(uTailE.burst) | uTailE.exAddr(rni.offset - 1) |
-                          uTailE.exAddr(rni.pageBits - 1, rni.offset - 1) === uTailE.endAddr(rni.pageBits - 1, rni.offset - 1), 0.U, 1.U)
+                          (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits - 1, rni.offset)) & uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U, 0.U, 1.U)
 
 
 /* 
