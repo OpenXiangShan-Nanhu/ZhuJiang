@@ -93,8 +93,25 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
       }
   }
   //Merge Data Reg Logic
-  merDatReg    := Mux(io.dAxiW.fire, Mux(io.uAxiW.fire, maskData.asUInt & io.uAxiW.bits.data, 0.U), Mux(io.uAxiW.fire, merDatReg | maskData.asUInt & io.uAxiW.bits.data, merDatReg))
-  merMaskReg   := Mux(io.dAxiW.fire, Mux(io.uAxiW.fire, io.uAxiW.bits.strb, 0.U), Mux(io.uAxiW.fire, io.uAxiW.bits.strb | merMaskReg, merMaskReg))
+  private val rcvAndSend            =  io.dAxiW.fire &  io.uAxiW.fire
+  private val nRcvAndSend           =  io.dAxiW.fire & !io.uAxiW.fire
+  private val rcvAndNSendFixMerge   = !io.dAxiW.fire &  io.uAxiW.fire & !dAwEntrys(wDataPtr.value).dontMerge & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
+  private val rcvAndNSendNormal     = !io.dAxiW.fire &  io.uAxiW.fire & !(!dAwEntrys(wDataPtr.value).dontMerge & Burst.isFix(dAwEntrys(wDataPtr.value).burst))
+
+  merDatReg    := PriorityMux(Seq(
+    rcvAndSend          -> (maskData.asUInt & io.uAxiW.bits.data),
+    nRcvAndSend         -> 0.U,
+    rcvAndNSendFixMerge -> (maskData.asUInt & io.uAxiW.bits.data),
+    rcvAndNSendNormal   -> (merDatReg | maskData.asUInt & io.uAxiW.bits.data),
+    true.B              -> merDatReg
+  ))
+
+  merMaskReg   := PriorityMux(Seq(
+    rcvAndSend          -> (io.uAxiW.bits.strb),
+    nRcvAndSend         -> 0.U,
+    rcvAndNSendFixMerge -> (io.uAxiW.bits.strb),
+    rcvAndNSendNormal   -> (io.uAxiW.bits.strb | merMaskReg)
+  ))
 
   merComReg    := Mux(io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, merComReg))
   mergeLastReg := Mux(io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, mergeLastReg))
