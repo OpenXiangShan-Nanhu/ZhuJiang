@@ -73,11 +73,16 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
 /* 
  * Pointer Logic
  */
+  private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst)
+  private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst)
+  private val wDataPtrAdd            = (nextShiftHintLastValid || dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits.last & Burst.isFix(dAwEntrys(wDataPtr.value).burst) || dAwEntrys(wDataPtr.value).dontMerge) & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & io.uAxiW.fire
+  private val tailPtrAdd             = io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get)
+
   uHeadPtr   := Mux(rxAwPipe.io.deq.fire, uHeadPtr + 1.U, uHeadPtr)
-  uTailPtr   := Mux(io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get), uTailPtr + 1.U, uTailPtr)
-  dHeadPtr   := Mux(io.dAxiAw.fire, dHeadPtr + 1.U, dHeadPtr)
-  dTailPtr   := Mux(io.dAxiB.fire, dTailPtr + 1.U, dTailPtr)
-  wDataPtr   := Mux(io.uAxiW.fire & (io.uAxiW.bits.last | dAwEntrys(wDataPtr.value).nextShift === 0.U | Burst.isIncr(dAwEntrys(wDataPtr.value).burst)), wDataPtr + 1.U, wDataPtr)
+  uTailPtr   := Mux(tailPtrAdd          , uTailPtr + 1.U, uTailPtr)
+  dHeadPtr   := Mux(io.dAxiAw.fire      , dHeadPtr + 1.U, dHeadPtr)
+  dTailPtr   := Mux(io.dAxiB.fire       , dTailPtr + 1.U, dTailPtr)
+  wDataPtr   := Mux(wDataPtrAdd         , wDataPtr + 1.U, wDataPtr)
 
   maskData.zip(io.uAxiW.bits.strb.asBools).foreach{
     case(m, b) =>
@@ -90,9 +95,6 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   //Merge Data Reg Logic
   merDatReg    := Mux(io.dAxiW.fire, Mux(io.uAxiW.fire, maskData.asUInt & io.uAxiW.bits.data, 0.U), Mux(io.uAxiW.fire, merDatReg | maskData.asUInt & io.uAxiW.bits.data, merDatReg))
   merMaskReg   := Mux(io.dAxiW.fire, Mux(io.uAxiW.fire, io.uAxiW.bits.strb, 0.U), Mux(io.uAxiW.fire, io.uAxiW.bits.strb | merMaskReg, merMaskReg))
-
-  private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst)
-  private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst)
 
   merComReg    := Mux(io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, merComReg))
   mergeLastReg := Mux(io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, mergeLastReg))
@@ -127,7 +129,7 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
         e.size      :=  1.U(7.W) << uTailE.size
       }.elsewhen(io.uAxiW.fire & (wDataPtr.value === i.U)) {
         e.shift     := e.nextShift
-        e.nextShift := Mux(Burst.isFix(uTailE.burst), e.nextShift, e.nextShift + e.size)
+        e.nextShift := Mux(Burst.isFix(e.burst), e.nextShift, e.nextShift + e.size)
       }
   }
   txAwBdl            := 0.U.asTypeOf(txAwBdl)

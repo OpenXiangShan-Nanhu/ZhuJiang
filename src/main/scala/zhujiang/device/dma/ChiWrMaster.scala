@@ -69,8 +69,10 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   private val txIsAck    = io.rdDB.fire & io.rdDB.bits.withAck | io.chiTxRsp.fire
   private val tailPtrAdd = txBPtr =/= tailPtr & txAckPtr =/= tailPtr & txDatPtr =/=tailPtr
 
-  private val rxDatPtrAdd = io.axiW.fire & ((rxDatBeat === 1.U) | (rxDatBeat === 0.U) & !chiEntrys(rxDatPtr.value).double)
-  private val txDatPtrAdd = io.rdDB.fire & ((txDatBeat === 1.U) | (txDatBeat === 0.U) & !chiEntrys(txDatPtr.value).double)
+  private val rxDatPtrAdd  = io.axiW.fire & ((rxDatBeat === 1.U) | (rxDatBeat === 0.U) & !chiEntrys(rxDatPtr.value).double)
+  private val txDatPtrAdd  = io.rdDB.fire & ((txDatBeat === 1.U) | (txDatBeat === 0.U) & !chiEntrys(txDatPtr.value).double)
+  private val rxDatBeatAdd = (chiEntrys(rxDatPtr.value).double & (rxDatBeat === 0.U) || rxDatBeat === 1.U) & io.wrDB.fire
+  private val txDatBeatAdd = (chiEntrys(txDatPtr.value).double & (txDatBeat === 0.U) || txDatBeat === 1.U) & io.rdDB.fire
   
 /* 
  * Pointer logic
@@ -85,6 +87,8 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   txAckPtr  := Mux(txIsAck       , txAckPtr  + 1.U, txAckPtr )
   txBPtr    := Mux(io.axiB.fire  , txBPtr    + 1.U, txBPtr   )
   tailPtr   := Mux(tailPtrAdd    , tailPtr   + 1.U, tailPtr  )
+  rxDatBeat := Mux(rxDatBeatAdd  , rxDatBeat + 1.U, rxDatBeat)
+  txDatBeat := Mux(txDatBeatAdd  , txDatBeat + 1.U, txDatBeat)
 
 /* 
  * Assign logic
