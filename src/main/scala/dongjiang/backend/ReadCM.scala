@@ -216,7 +216,6 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   /*
    * HardwareAssertion placePipe
    */
-
   hwaVec2.transpose.zipWithIndex.foreach {
     case(vec, i) =>
       val idx = PriorityEncoder(vec)

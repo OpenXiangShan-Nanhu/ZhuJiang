@@ -19,25 +19,23 @@ class Shift(implicit p: Parameters) extends DJBundle {
   def recRead(fire: Bool) = this.read   := Cat(fire, read >> 1)
   def recWri (fire: Bool) = this.write  := Cat(fire, write >> 1)
 
-  private val hi = readDirLatency - 1
-  private val lo = readDirLatency - dirMuticycle
+  private val hi = readDsLatency - 1
+  private val lo = readDsLatency - dsMuticycle
   def req        = read | write
   def reqReady   = !req(hi, lo).orR
+  def getData    = read(1).asBool
   def outResp    = read(0).asBool
 }
 
-class DsRead(implicit p: Parameters) extends DJBundle with HasDCID {
-  val index = UInt(dsIdxBits.W)
-}
+class DsRead(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID
 
-class DsWrite(implicit p: Parameters) extends DJBundle {
-  val index = UInt(dsIdxBits.W)
+class DsWrite(implicit p: Parameters) extends DJBundle with HasDsIdx {
   val beat  = UInt(BeatBits.W)
   val mask  = UInt(MaskBits.W)
 }
 
 class DsResp(implicit p: Parameters) extends DJBundle with HasDCID {
-  val beat  = UInt(BeatBits.W)
+  val beat    = UInt(BeatBits.W)
 }
 
 class BeatStorage(implicit p: Parameters) extends DJModule {
@@ -65,6 +63,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
   val shiftReg    = RegInit(0.U.asTypeOf(new Shift))
   val rstDoneReg  = RegEnable(true.B, false.B, array.io.req.ready)
   val datRespVec  = Wire(Vec(djparam.BeatByte, UInt(8.W)))
+  val dataReg     = Reg(UInt(BeatBits.W))
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ------------------------------------------- Receive Req and Read/Write SRAM ------------------------------------------ //
@@ -74,7 +73,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
   val writeHit = io.write.valid
 
   array.io.req.valid          := (readHit | writeHit) & shiftReg.reqReady & rstDoneReg
-  array.io.req.bits.addr      := Mux(writeHit, io.write.bits.index, io.read.bits.index)
+  array.io.req.bits.addr      := Mux(writeHit, io.write.bits.ds.idx, io.read.bits.ds.idx)
   array.io.req.bits.write     := writeHit
   array.io.req.bits.mask.get  := io.write.bits.mask
   array.io.req.bits.data.zipWithIndex.foreach {
@@ -98,9 +97,12 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
 // -------------------------------------------- Get SRAM Resp and Output Resp ------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
   // pre-processing: reverse
-  datRespVec        := array.io.resp.bits.data.reverse
+  datRespVec  := array.io.resp.bits.data.reverse
+  dataReg     := Mux(shiftReg.getData, datRespVec.asUInt, dataReg)
+
+  // Output
   io.resp.valid     := shiftReg.outResp
-  io.resp.bits.beat := datRespVec.asUInt
+  io.resp.bits.beat := dataReg
   io.resp.bits.dcid := dcidPipe.io.deq.bits
 
   HardwareAssertion.withEn(dcidPipe.io.deq.valid, shiftReg.outResp)

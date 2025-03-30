@@ -260,7 +260,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val nrDsSet          = djparam.dsSets / dsBank
   lazy val dsIdxBits        = log2Ceil(nrDsSet)
   lazy val dsMuticycle      = djparam.dataLatency.max(if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup)
-  lazy val readDsLatency    = (if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup) + djparam.dataLatency
+  lazy val readDsLatency    = (if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup) + djparam.dataLatency + 1
 
   // Replacement(PLRU) Parameters
   lazy val sReplWayBits     = djparam.llcWays - 1

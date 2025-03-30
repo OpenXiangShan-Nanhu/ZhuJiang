@@ -39,22 +39,28 @@ class DataBlock(implicit p: Parameters) extends DJModule {
   io.resp := dataCtrl.io.resp
 
   // dataCtrl
-  dataCtrl.io.rxDat <> io.rxDat
-  dataCtrl.io.reqDB <> io.reqDB
-  dataCtrl.io.task <> io.task
-  dataCtrl.io.respDsVec.zipWithIndex.foreach { case(vec, i) =>
-    vec.zipWithIndex.foreach { case(v, j) =>
-      v := dataStorage(i)(j).io.resp
+  dataCtrl.io.rxDat   <> io.rxDat
+  dataCtrl.io.reqDB   <> io.reqDB
+  dataCtrl.io.task    <> io.task
+  dataCtrl.io.respDs  := fastArb(dataStorage.flatMap(_.map(_.io.resp)))
+  HardwareAssertion(PopCount(dataStorage.flatMap(_.map(_.io.resp.valid))) <= 1.U)
+
+  // dataStorage
+  dataCtrl.io.readDs.ready  := false.B
+  dataCtrl.io.writeDs.ready := false.B
+  dataStorage.zipWithIndex.foreach { case (vec, i) =>
+    vec.zipWithIndex.foreach { case (v, j) =>
+      val rHit = dataCtrl.io.readDs.valid  & dataCtrl.io.readDs.bits.ds.bank === i.U  & dataCtrl.io.readDs.bits.beatNum === j.U
+      val wHit = dataCtrl.io.writeDs.valid & dataCtrl.io.writeDs.bits.ds.bank === i.U & dataCtrl.io.writeDs.bits.beatNum === j.U
+      v.io.read.valid   := rHit
+      v.io.write.valid  := wHit
+      v.io.read.bits    := dataCtrl.io.readDs.bits
+      v.io.write.bits   := dataCtrl.io.writeDs.bits
+      when(rHit) { dataCtrl.io.readDs.ready   := v.io.read.ready  }
+      when(wHit) { dataCtrl.io.writeDs.ready  := v.io.write.ready  }
     }
   }
 
-  // dataStorage
-  dataStorage.zipWithIndex.foreach { case (vec, i) =>
-    vec.zipWithIndex.foreach { case (v, j) =>
-      v.io.read  <> dataCtrl.io.readDsVec(i)(j)
-      v.io.write <> dataCtrl.io.writeDsVec(i)(j)
-    }
-  }
   
   /*
    * HardwareAssertion placePipe

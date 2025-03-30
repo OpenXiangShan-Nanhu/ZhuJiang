@@ -116,7 +116,7 @@ trait HasPackLLCTxnID extends DJBundle { this: DJBundle =>
 class PackLLCTxnID(implicit p: Parameters) extends DJBundle with HasPackLLCTxnID
 
 /*
- *
+ * HasDataVec
  */
 trait HasDataVec extends DJBundle { this: DJBundle =>
   val dataVec = Vec(2, Bool())

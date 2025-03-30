@@ -16,12 +16,12 @@ class DBIDPool(implicit p: Parameters) extends DJModule {
     val enq1    = Flipped(Valid(UInt(dbIdBits.W)))
     val deq0    = Decoupled(UInt(dbIdBits.W))
     val deq1    = Decoupled(UInt(dbIdBits.W))
-    val hasOne  = Output(Bool())
-    val hasTwo  = Output(Bool())
   })
   dontTouch(io)
   val q0 = Module(new FastQueue(UInt(dbIdBits.W), djparam.nrDataBuf/2, true))
   val q1 = Module(new FastQueue(UInt(dbIdBits.W), djparam.nrDataBuf/2, true))
+  dontTouch(q0.io)
+  dontTouch(q1.io)
 
   // reset
   val rstCounter = Counter(djparam.nrDataBuf/2)
@@ -30,40 +30,47 @@ class DBIDPool(implicit p: Parameters) extends DJModule {
   // enq
   val enqOne  = io.enq0.valid ^ io.enq1.valid
   val enqTwo  = io.enq0.valid & io.enq1.valid
-  val enqSel0 = q0.io.count === q1.io.count
-  HardwareAssertion.withEn(!io.enq1.valid, enqOne)
+  val enqSel0 = io.enq0.valid
+  val selQ0   = q0.io.count === q1.io.count
+  dontTouch(enqOne)
+  dontTouch(enqTwo)
+  dontTouch(enqSel0)
+  dontTouch(selQ0)
   HardwareAssertion(q0.io.count >= q1.io.count)
   HardwareAssertion(q0.io.count - q1.io.count <= 1.U)
 
   // Reset
-  q0.io.enq <> DontCare
-  q1.io.enq <> DontCare
+  q0.io.enq.valid := false.B
+  q1.io.enq.valid := false.B
+  q0.io.enq.bits  := 0.U
+  q1.io.enq.bits  := 0.U
   when(!rstDoneReg) {
     q0.io.enq.valid := true.B
     q1.io.enq.valid := true.B
     q0.io.enq.bits  := Cat(0.U, rstCounter.value)
     q1.io.enq.bits  := Cat(1.U, rstCounter.value)
   // Enq
-  }.elsewhen(enqOne & enqSel0) {
-    q0.io.enq.valid := io.enq0.valid
-    q0.io.enq.bits  := io.enq0.bits
-  }.elsewhen(enqOne & !enqSel0) {
-    q1.io.enq.valid := io.enq0.valid
-    q1.io.enq.bits  := io.enq0.bits
+  }.elsewhen(enqOne & selQ0) {
+    q0.io.enq.valid := true.B
+    q0.io.enq.bits  := Mux(enqSel0, io.enq0.bits, io.enq1.bits)
+  }.elsewhen(enqOne & !selQ0) {
+    q1.io.enq.valid := true.B
+    q1.io.enq.bits  := Mux(enqSel0, io.enq0.bits, io.enq1.bits)
   }.elsewhen(enqTwo) {
-    q0.io.enq.valid := io.enq0.valid
+    q0.io.enq.valid := true.B
     q0.io.enq.bits  := io.enq0.bits
-    q1.io.enq.valid := io.enq1.valid
+    q1.io.enq.valid := true.B
     q1.io.enq.bits  := io.enq1.bits
   }
   HardwareAssertion.withEn(q0.io.enq.ready, q0.io.enq.valid)
-  HardwareAssertion.withEn(q0.io.enq.ready, q0.io.enq.valid)
+  HardwareAssertion.withEn(q1.io.enq.ready, q1.io.enq.valid)
 
   // Deq
   io.deq0 <> q0.io.deq
   io.deq1 <> q1.io.deq
-  io.hasOne := q0.io.deq.ready
-  io.hasTwo := q1.io.deq.ready
+  io.deq0.valid := q0.io.deq.valid & rstDoneReg
+  io.deq1.valid := q1.io.deq.valid & rstDoneReg
+  HardwareAssertion.withEn(rstDoneReg, io.enq0.valid | io.enq1.valid | io.deq0.ready | io.deq1.ready)
 
   /*
    * HardwareAssertion placePipe
