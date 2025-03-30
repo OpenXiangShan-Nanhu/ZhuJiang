@@ -26,7 +26,7 @@ class DftWires extends Bundle {
   val func = new SramBroadcastBundle
 }
 
-class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule with NocIOHelper {
+class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   require(p(ZJParametersKey).tfsParams.isEmpty)
 
   print(

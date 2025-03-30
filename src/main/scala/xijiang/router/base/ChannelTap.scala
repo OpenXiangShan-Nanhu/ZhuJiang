@@ -3,10 +3,10 @@ package xijiang.router.base
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
-import xijiang.{Node, NodeType}
+import xijiang.Node
 import xs.utils.ResetRRArbiter
+import zhujiang.chi.{NodeIdBundle, RingFlit}
 import zhujiang.{ZJModule, ZJParametersKey}
-import zhujiang.chi.{Flit, NodeIdBundle, RingFlit}
 
 class SingleChannelTap[T <: RingFlit](gen: T, channel: String)(implicit p: Parameters) extends ZJModule {
   private val ringSize = p(ZJParametersKey).island.size

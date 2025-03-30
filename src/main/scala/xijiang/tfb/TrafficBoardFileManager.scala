@@ -5,7 +5,7 @@ import xijiang.{Node, NodeType}
 import xs.utils.FileRegisters
 import xs.utils.debug.HardwareAssertionKey
 import zhujiang.ZJParametersKey
-import zhujiang.chi.{ChannelEncodings, DataFlit, ReqFlit}
+import zhujiang.chi.{ChannelEncodings, DataFlit}
 
 case class TrafficBoardParams(
   timeOut: Int = 500

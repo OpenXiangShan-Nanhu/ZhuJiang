@@ -4,13 +4,13 @@ import chisel3._
 import chisel3.experimental.hierarchy.{instantiable, public}
 import chisel3.util._
 import dongjiang.DongJiang
-import zhujiang.{DftWires, ZJModule, ZJRawModule}
 import org.chipsalliance.cde.config.Parameters
-import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
+import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
-import xs.utils.debug.{DomainInfo, HardwareAssertion, HardwareAssertionKey}
-import zhujiang.chi.{ChiBuffer, HReqFlit, NodeIdBundle, ReqAddrBundle, RingFlit}
+import xs.utils.debug.{HardwareAssertion, HardwareAssertionKey}
+import zhujiang.chi.{ChiBuffer, HReqFlit, ReqAddrBundle, RingFlit}
+import zhujiang.{DftWires, ZJRawModule}
 
 @instantiable
 class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends ZJRawModule with ImplicitClock with ImplicitReset {

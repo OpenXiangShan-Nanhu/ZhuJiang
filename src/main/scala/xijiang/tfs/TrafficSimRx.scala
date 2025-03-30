@@ -3,7 +3,6 @@ package xijiang.tfs
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
-import zhujiang.chi.Flit
 import zhujiang.{HasZJParams, ZJParametersKey}
 
 class TrafficSimRx(implicit val p: Parameters) extends BlackBox with HasBlackBoxInline with HasZJParams {

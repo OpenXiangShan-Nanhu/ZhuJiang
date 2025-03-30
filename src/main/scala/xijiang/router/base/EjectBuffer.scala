@@ -3,9 +3,8 @@ package xijiang.router.base
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
-import xs.utils.PickOneLow
 import zhujiang.ZJModule
-import zhujiang.chi.{Flit, NodeIdBundle, RingFlit}
+import zhujiang.chi.{NodeIdBundle, RingFlit}
 
 class VipTable[T <: Data](gen:T, size: Int) extends Module {
   val io = IO(new Bundle {

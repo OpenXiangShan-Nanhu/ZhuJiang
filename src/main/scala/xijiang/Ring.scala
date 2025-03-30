@@ -3,11 +3,10 @@ package xijiang
 import chisel3._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.router.base.IcnBundle
-import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 import xijiang.tfs._
 import xs.utils.{DFTResetSignals, ResetGen}
-import zhujiang.chi.NodeIdBundle
 import zhujiang.device.misc.ResetDevice
+import zhujiang.{ZJModule, ZJParametersKey}
 
 class Ring(implicit p: Parameters) extends ZJModule {
   private val tfs = p(ZJParametersKey).tfsParams.isDefined

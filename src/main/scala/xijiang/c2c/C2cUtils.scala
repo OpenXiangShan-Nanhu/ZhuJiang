@@ -1,7 +1,7 @@
 package xijiang.c2c
 import chisel3._
 import chisel3.util._
-import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, MimoQueue, UIntToMask}
+import xs.utils.queue.{CircularQueuePtr, HasCircularQueuePtrHelper, MimoQueue}
 
 case class C2cParams(
   reqRxSize:Int = 16,

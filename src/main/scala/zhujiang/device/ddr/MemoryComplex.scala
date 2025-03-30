@@ -1,10 +1,9 @@
 package zhujiang.device.ddr
 
 import chisel3._
-import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
-import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
+import xijiang.{Node, NodeType}
 import zhujiang.ZJModule
 import zhujiang.axi.{AxiBuffer, AxiBundle, AxiParams, BaseAxiXbar}
 import zhujiang.device.bridge.axi.AxiBridge

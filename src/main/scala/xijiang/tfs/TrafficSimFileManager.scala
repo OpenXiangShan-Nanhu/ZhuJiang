@@ -2,7 +2,6 @@ package xijiang.tfs
 
 import org.chipsalliance.cde.config.Parameters
 import xijiang.tfb.TrafficBoardFileManager.{allNodeTypeDefs, allNodeTypeMap}
-import xijiang.{Node, NodeType}
 import xs.utils.FileRegisters
 import xs.utils.debug.HardwareAssertionKey
 import zhujiang.ZJParametersKey

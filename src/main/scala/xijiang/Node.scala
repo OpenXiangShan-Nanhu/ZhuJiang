@@ -6,8 +6,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.router._
 import xijiang.router.base.BaseRouter
 import xs.utils.debug.HardwareAssertionKey
-import zhujiang.ZJParametersKey
-import zhujiang.chi.{MemAttr, NodeIdBundle, ReqAddrBundle, SnpAddrBundle}
+import zhujiang.chi.{MemAttr, NodeIdBundle, ReqAddrBundle}
 
 object NodeType {
   val CC: Int = 0

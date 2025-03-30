@@ -10,8 +10,6 @@ import xs.utils.debug.HardwareAssertionKey
 import zhujiang.chi._
 import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 
-import scala.collection.mutable
-
 class ChannelBundle[T <: RingFlit](gen: T)(implicit p: Parameters) extends ZJBundle {
   val flit = Valid(gen)
   val rsvd = Valid(UInt(niw.W))
