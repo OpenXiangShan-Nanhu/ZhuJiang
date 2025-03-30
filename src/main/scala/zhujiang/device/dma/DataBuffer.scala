@@ -10,28 +10,7 @@ import zhujiang.chi.DataFlit
 import xs.utils.sram.DualPortSramTemplate
 import zhujiang.chi.ReqOpcode
 import zhujiang.chi.DatOpcode
-import freechips.rocketchip.diplomacy.BufferParams.pipe
 
-class ChiDataBufferCtrlEntry(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val buf = Vec(512 / dw, UInt(log2Ceil(bufferSize).W))
-  val num = UInt(3.W)
-}
-
-class ChiDataBufferTxReq(ctrlSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val idxOH = UInt(ctrlSize.W)
-  val flit  = new DataFlit
-}
-
-class writeRdDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val set    = UInt(log2Ceil(bufferSize).W)
-  val data   = UInt(dw.W)
-}
-
-class writeWrDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val set   = UInt(log2Ceil(bufferSize).W)
-  val data  = UInt(dw.W)
-  val mask  = UInt(bew.W)
-}
 class ChiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private class ChiDataBufferFreelistPtr extends CircularQueuePtr[ChiDataBufferFreelistPtr](bufferSize)
   private object ChiDataBufferFreelistPtr {
@@ -44,7 +23,7 @@ class ChiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
   }
   val io = IO(new Bundle {
     val req     = Flipped(Decoupled(Bool()))
-    val resp    = Valid(new ChiDataBufferCtrlEntry(bufferSize))
+    val resp    = Valid(new DataBufferAlloc(bufferSize))
     val release = Input(Valid(UInt(log2Ceil(bufferSize).W)))
     val idle    = Output(Bool())
   })
@@ -145,7 +124,7 @@ class DataBufferForRead(axiParams: AxiParams, bufferSize: Int, ctrlSize: Int)(im
     val axiR     = Decoupled(new RFlit(axiParams))
     val wrDB     = Flipped(Decoupled(new writeRdDataBuffer(bufferSize)))
     val rdDB     = Flipped(Decoupled(new readRdDataBuffer(bufferSize, axiParams)))
-    val allocRsp = Valid(new ChiDataBufferCtrlEntry(bufferSize))
+    val allocRsp = Valid(new DataBufferAlloc(bufferSize))
   })
 
   private val dataBuffer   = Module(new ChiDataBufferRdRam(axiParams, bufferSize))
@@ -179,7 +158,7 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
     way = bew,
   ))
 
-  private val maskRam = RegInit(0.U.asTypeOf(Vec(zjParams.dmaParams.bufferSize, UInt(bew.W))))
+  private val maskRam = RegInit(0.U.asTypeOf(Vec(bufferSize, UInt(bew.W))))
 
 
   private val wrRamQ            = Module(new Queue(new writeWrDataBuffer(bufferSize), entries = 2, flow = false, pipe = false))
@@ -240,7 +219,7 @@ class DataBufferForWrite(bufferSize: Int, ctrlSize: Int)(implicit p: Parameters)
     val dData = Decoupled(new DataFlit)
     val wrDB  = Flipped(Decoupled(new writeWrDataBuffer(bufferSize)))
     val rdDB  = Flipped(Decoupled(new readWrDataBuffer(bufferSize)))
-    val allocRsp = Valid(new ChiDataBufferCtrlEntry(bufferSize))
+    val allocRsp = Valid(new DataBufferAlloc(bufferSize))
   })
   
 

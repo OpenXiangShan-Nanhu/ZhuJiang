@@ -11,78 +11,65 @@ import zhujiang.axi._
 import zhujiang.chi._
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 import zhujiang.chi.FlitHelper.connIcn
-
-case class DmaParams(
-  chiEntrySize: Int = 16,
-  idBits: Int = 12,
-  axiEntrySize: Int = 4,
-  bufferSize: Int = 16,
-  nrBeats: Int = 2,
-  axiSpiltSize: Int = 4,
-  shiftAddrBits: Int = 6,
-)
+import dongjiang.utils.fastArb
+import freechips.rocketchip.util.DataToAugmentedData
 
 class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
+  private val rni = zjParams.dmaParams
   require(node.nodeType == NodeType.RI)
-  private val dmaParams = zjParams.dmaParams
-  private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = dmaParams.idBits, attr = node.attr)
-  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(dmaParams.chiEntrySize), userBits = axiParams.idBits)
-  require(axiParams.idBits >= log2Ceil(dmaParams.chiEntrySize))
+  require(rni.idBits >= log2Ceil(rni.chiEntrySize))
+  private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = rni.idBits, attr = node.attr)
+  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(rni.chiEntrySize), userBits = axiParams.idBits)
+
   val axi = IO(Flipped(new AxiBundle(axiParams)))
   val icn = IO(new DeviceIcnBundle(node))
 
-  // For Debug
-  if (p(DebugOptionsKey).EnableDebug) {
+  if(p(DebugOptionsKey).EnableDebug) {
     dontTouch(axi)
     dontTouch(icn)
   }
+  //SubModule
+  private val axiRdSlave  = Module(new AxiRdSlave)
+  private val axiWrSlave  = Module(new AxiWrSlave)
+  private val chiRdMaster = Module(new ChiRdMaster)
+  private val chiWrMaster = Module(new ChiWrMaster)
+  private val rdDB        = Module(new DataBufferForRead(axiParams = axiParams, rni.dbEntrySize, rni.chiEntrySize))
+  private val wrDB        = Module(new DataBufferForWrite(rni.dbEntrySize, rni.chiEntrySize))
 
-//SubModule
-  private val axiRSpilt   = Module(new AxiRSpilt)
-  private val axiWSpilt   = Module(new AxiWSpilt)
-  private val chiRdE      = Module(new ChiRdCtrl)
-  private val rdDB        = Module(new DataBufferForRead(axiParamsUser, dmaParams.bufferSize, dmaParams.chiEntrySize))
-  private val chiWrE      = Module(new ChiWrCtrl)
-  private val wrDB        = Module(new DataBufferForWrite(dmaParams.bufferSize, dmaParams.chiEntrySize))
+  private val arbReqOut   = Wire(chiWrMaster.io.chiReq.cloneType)
+  private val arbRspOut   = Wire(chiWrMaster.io.chiTxRsp.cloneType)
 
-  axiRSpilt.io.dAxiAr <> chiRdE.io.axiAr
-  axiRSpilt.io.dAxiR  <> rdDB.io.axiR
 
-  chiRdE.io.reqDB  <> rdDB.io.alloc
-  chiRdE.io.respDB <> rdDB.io.allocRsp
-  connIcn(chiRdE.io.chiRsp, icn.rx.resp.get)
-  connIcn(chiRdE.io.chiDat, icn.rx.data.get)
-  chiRdE.io.wrDB   <> rdDB.io.wrDB
-  chiRdE.io.rdDB   <> rdDB.io.rdDB
+  axiRdSlave.io.dAxiAr <> chiRdMaster.io.axiAr
+  axiRdSlave.io.dAxiR  <> rdDB.io.axiR
+  axiRdSlave.io.uAxiAr <> axi.ar
+  axiRdSlave.io.uAxiR  <> axi.r
 
-  axi.ar <> axiRSpilt.io.uAxiAr
-  axi.r  <> axiRSpilt.io.uAxiR
-
-  chiRdE.io.chiRsp.bits    := icn.rx.resp.get.bits.asTypeOf(chiRdE.io.chiRsp.bits)
-  chiWrE.io.chiRxRsp.bits  := icn.rx.resp.get.bits.asTypeOf(chiWrE.io.chiRxRsp.bits)
-  chiRdE.io.chiRsp.valid   := icn.rx.resp.get.valid
-  chiWrE.io.chiRxRsp.valid := icn.rx.resp.get.valid
+  axiWrSlave.io.uAxiAw <> axi.aw
+  axiWrSlave.io.uAxiW  <> axi.w
+  axiWrSlave.io.uAxiB  <> axi.b
+  axiWrSlave.io.dAxiAw <> chiWrMaster.io.axiAw
+  axiWrSlave.io.dAxiW  <> chiWrMaster.io.axiW
+  axiWrSlave.io.dAxiB  <> chiWrMaster.io.axiB
   
-  icn.rx.resp.get.ready    := chiRdE.io.chiRsp.ready & chiWrE.io.chiRxRsp.ready
 
-// Write Logic Connection
-  private val arbOut = Wire(chiWrE.io.chiReq.cloneType)
-  connIcn(icn.tx.req.get, arbOut)
-  FastArbiter(Seq(chiRdE.io.chiReq, chiWrE.io.chiReq), arbOut)
-  axiWSpilt.io.dAxiAw <> chiWrE.io.axiAw
-  axiWSpilt.io.dAxiW  <> chiWrE.io.axiW
-  axiWSpilt.io.dAxiB  <> chiWrE.io.axiB
+  rdDB.io.alloc        <> chiRdMaster.io.reqDB
+  rdDB.io.allocRsp     <> chiRdMaster.io.respDB
+  rdDB.io.rdDB         <> chiRdMaster.io.rdDB
+  rdDB.io.wrDB         <> chiRdMaster.io.wrDB
 
-  connIcn(icn.tx.resp.get, chiWrE.io.chiTxRsp)
-  chiWrE.io.reqDB    <> wrDB.io.alloc
-  chiWrE.io.respDB   <> wrDB.io.allocRsp
-  chiWrE.io.wrDB     <> wrDB.io.wrDB
-  chiWrE.io.rdDB     <> wrDB.io.rdDB
+  wrDB.io.alloc        <> chiWrMaster.io.reqDB
+  wrDB.io.allocRsp     <> chiWrMaster.io.respDB
+  wrDB.io.rdDB         <> chiWrMaster.io.rdDB
+  wrDB.io.wrDB         <> chiWrMaster.io.wrDB
 
+  FastArbiter(Seq(chiRdMaster.io.chiReq      , chiWrMaster.io.chiReq  ), arbReqOut)
+  FastArbiter(Seq(chiRdMaster.io.chiTxRsp.get, chiWrMaster.io.chiTxRsp), arbRspOut)
 
-  axi.aw <> axiWSpilt.io.uAxiAw
-  axi.w  <> axiWSpilt.io.uAxiW
-  axi.b  <> axiWSpilt.io.uAxiB
-
-  connIcn(icn.tx.data.get, wrDB.io.dData)
+  connIcn(icn.tx.req.get         , arbReqOut      )
+  connIcn(icn.tx.resp.get        , arbRspOut      )
+  connIcn(icn.tx.data.get        , wrDB.io.dData  )
+  connIcn(chiRdMaster.io.chiDat  , icn.rx.data.get)
+  connIcn(chiRdMaster.io.chiRxRsp, icn.rx.resp.get)
+  connIcn(chiWrMaster.io.chiRxRsp, icn.rx.resp.get)
 }
