@@ -8,34 +8,55 @@ case class AxiParams(
   idBits: Int = 5,
   userBits: Int = 0,
   dataBits: Int = 64,
-  attr:String = ""
+  attr:String = "",
+  lenBits: Int = 8,
+  sizeBits: Int = 3,
+  burstBits: Int = 2,
+  cacheBits: Int = 4,
+  lockBits: Int = 2,
+  qosBits:Int = 4,
+  regionBits:Int = 4
+)
+
+class AxiLiteParams(addrBits:Int, idBits:Int, dataBits:Int, attr:String = "") extends AxiParams(
+  addrBits = addrBits,
+  idBits = idBits,
+  userBits = 0,
+  dataBits = dataBits,
+  lenBits = 0,
+  sizeBits = 0,
+  burstBits = 0,
+  cacheBits = 0,
+  lockBits = 0,
+  qosBits = 0,
+  regionBits = 0
 )
 
 class AWFlit(params: AxiParams) extends Bundle {
   val id = UInt(params.idBits.W)
   val addr = UInt(params.addrBits.W)
-  val len = UInt(8.W)
-  val size = UInt(3.W)
-  val burst = UInt(2.W)
-//  val lock = UInt(2.W)
-  val cache = UInt(4.W)
+  val len = UInt(params.lenBits.W)
+  val size = UInt(params.sizeBits.W)
+  val burst = UInt(params.burstBits.W)
+//  val lock = UInt(params.lockBits.W)
+  val cache = UInt(params.cacheBits.W)
 //  val prot = UInt(3.W)
-//  val qos = UInt(4.W)
-//  val region = UInt(4.W)
+//  val qos = UInt(params.qosBits.W)
+//  val region = UInt(params.regionBits.W)
   val user = UInt(params.userBits.W)
 }
 
 class ARFlit(params: AxiParams) extends Bundle {
   val id = UInt(params.idBits.W)
   val addr = UInt(params.addrBits.W)
-  val len = UInt(8.W)
-  val size = UInt(3.W)
-  val burst = UInt(2.W)
-//  val lock = UInt(2.W)
-  val cache = UInt(4.W)
+  val len = UInt(params.lenBits.W)
+  val size = UInt(params.sizeBits.W)
+  val burst = UInt(params.burstBits.W)
+//  val lock = UInt(params.lockBits.W)
+  val cache = UInt(params.cacheBits.W)
 //  val prot = UInt(3.W)
-//  val qos = UInt(4.W)
-//  val region = UInt(4.W)
+//  val qos = UInt(params.qosBits.W)
+//  val region = UInt(params.regionBits.W)
   val user = UInt(params.userBits.W)
 }
 
@@ -100,28 +121,28 @@ class ExtAxiBundle(val params: AxiParams) extends Bundle {
   val awready = Input(Bool())
   val awid = Output(UInt(params.idBits.W))
   val awaddr = Output(UInt(params.addrBits.W))
-  val awlen = Output(UInt(8.W))
-  val awsize = Output(UInt(3.W))
-  val awburst = Output(UInt(2.W))
-  //  val awlock = Output(UInt(2.W))
-  val awcache = Output(UInt(4.W))
+  val awlen = Output(UInt(params.lenBits.W))
+  val awsize = Output(UInt(params.sizeBits.W))
+  val awburst = Output(UInt(params.burstBits.W))
+  //  val awlock = Output(UInt(params.lockBits.W))
+  val awcache = Output(UInt(params.cacheBits.W))
   //  val awprot = Output(UInt(3.W))
-  //  val awqos = Output(UInt(4.W))
-  //  val awregion = Output(UInt(4.W))
+  //  val awqos = Output(UInt(params.qosBits.W))
+  //  val awregion = Output(UInt(params.regionBits.W))
   val awuser = Output(UInt(params.userBits.W))
 
   val arvalid = Output(Bool())
   val arready = Input(Bool())
   val arid = Output(UInt(params.idBits.W))
   val araddr = Output(UInt(params.addrBits.W))
-  val arlen = Output(UInt(8.W))
-  val arsize = Output(UInt(3.W))
-  val arburst = Output(UInt(2.W))
-  //  val arlock = Output(UInt(2.W))
-  val arcache = Output(UInt(4.W))
+  val arlen = Output(UInt(params.lenBits.W))
+  val arsize = Output(UInt(params.sizeBits.W))
+  val arburst = Output(UInt(params.burstBits.W))
+  //  val arlock = Output(UInt(params.lockBits.W))
+  val arcache = Output(UInt(params.cacheBits.W))
   //  val arprot = Output(UInt(3.W))
-  //  val arqos = Output(UInt(4.W))
-  //  val arregion = Output(UInt(4.W))
+  //  val arqos = Output(UInt(params.qosBits.W))
+  //  val arregion = Output(UInt(params.regionBits.W))
   val aruser = Output(UInt(params.userBits.W))
 
   val wvalid = Output(Bool())

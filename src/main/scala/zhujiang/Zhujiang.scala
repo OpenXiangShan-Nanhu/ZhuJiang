@@ -151,18 +151,19 @@ class Zhujiang(isTop:Boolean = false)(implicit p: Parameters) extends ZJModule w
     val onReset = Output(Bool())
     val dft = Input(new DftWires)
     val resetBypass = Output(AsyncReset())
-    val debug = Option.when(p(HardwareAssertionKey).enable)(Decoupled(new ZJDebugBundle))
+    val intr = Option.when(p(HardwareAssertionKey).enable)(Output(Bool()))
   })
-  io.debug.foreach(_  <> mnDev.io.hwa.get)
   io.resetBypass := ResetGen(2, Some(io.dft.reset))
   dft := io.dft
   val ddrDrv = memAxiPorts
   val cfgDrv = cfgAxiPorts
   val dmaDrv = dmaAxiPorts
   val ccnDrv = ccnSocketSeq.map(_.io.socket)
+  val hwaDrv = mnDev.io.axi
   runIOAutomation()
   io.onReset := mnDev.io.onReset
   ring.io_ci := io.ci
+  io.intr.foreach(_ := mnDev.io.intr.get)
 }
 
 trait NocIOHelper {
@@ -171,27 +172,37 @@ trait NocIOHelper {
   def cfgDrv: Seq[AxiBundle]
   def dmaDrv: Seq[AxiBundle]
   def ccnDrv: Seq[SocketIcnSideBundle]
+  def hwaDrv: Option[AxiBundle]
 
   lazy val ddrIO: Seq[ExtAxiBundle] = ddrDrv.map(drv => IO(new ExtAxiBundle(drv.params)))
   lazy val cfgIO: Seq[ExtAxiBundle] = cfgDrv.map(drv => IO(new ExtAxiBundle(drv.params)))
   lazy val dmaIO: Seq[ExtAxiBundle] = dmaDrv.map(drv => IO(Flipped(new ExtAxiBundle(drv.params))))
   lazy val ccnIO: Seq[SocketIcnSideBundle] = ccnDrv.map(drv => IO(new SocketIcnSideBundle(drv.node)(p)))
+  lazy val hwaIO: Option[ExtAxiBundle] = hwaDrv.map(drv => IO(Flipped(new ExtAxiBundle(drv.params))))
 
   def runIOAutomation():Unit = {
     ddrIO.zip(ddrDrv).zipWithIndex.foreach({ case((a, b), i) =>
       a.suggestName(s"m_axi_mem_${b.params.attr}")
       a <> b
+      dontTouch(a)
     })
     cfgIO.zip(cfgDrv).zipWithIndex.foreach({ case((a, b), i) =>
       a.suggestName(s"m_axi_cfg_${b.params.attr}")
       a <> b
+      dontTouch(a)
     })
     dmaIO.zip(dmaDrv).zipWithIndex.foreach({ case((a, b), i) =>
       a.suggestName(s"s_axi_dma_${b.params.attr}")
       a <> b
+      dontTouch(a)
     })
     ccnIO.zip(ccnDrv).foreach({ case (a, b) =>
       a.suggestName(s"ccn_0x${b.node.nodeId.toHexString}")
+      a <> b
+      dontTouch(a)
+    })
+    hwaIO.zip(hwaDrv).foreach({ case (a, b) =>
+      a.suggestName(s"s_axi_hwa")
       a <> b
       dontTouch(a)
     })
