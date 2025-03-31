@@ -59,11 +59,9 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
 
   private val rxAwPipe       = Module(new Queue(gen = new AxiWrEntry(isPipe = true), entries = 2, pipe = false, flow = false))
   private val bIdQueue       = Module(new Queue(gen = UInt(axiParams.idBits.W), entries = 2, pipe = false, flow = false))
+  private val mergeReg       = Module(new MergeReg)
   private val merComReg      = RegInit(false.B)
   private val mergeLastReg   = RegInit(false.B)
-  private val merDatReg      = RegInit(0.U(dw.W))
-  private val merMaskReg     = RegInit(0.U(bew.W))
-  private val maskData       = WireInit(VecInit.fill(dw/8){0.U(8.W)})
 
   private val rxAwBdl        = WireInit(0.U.asTypeOf(new AxiWrEntry(isPipe = true)))
   private val txAwBdl        = WireInit(0.U.asTypeOf(new AWFlit(axiParams)))
@@ -73,8 +71,8 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
 /* 
  * Pointer Logic
  */
-  private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst)
-  private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst)
+  private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
+  private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
   private val wDataPtrAdd            = (nextShiftHintLastValid || dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits.last & Burst.isFix(dAwEntrys(wDataPtr.value).burst) || dAwEntrys(wDataPtr.value).dontMerge) & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & io.uAxiW.fire
   private val tailPtrAdd             = io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get)
 
@@ -84,37 +82,9 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   dTailPtr   := Mux(io.dAxiB.fire       , dTailPtr + 1.U, dTailPtr)
   wDataPtr   := Mux(wDataPtrAdd         , wDataPtr + 1.U, wDataPtr)
 
-  maskData.zip(io.uAxiW.bits.strb.asBools).foreach{
-    case(m, b) =>
-      when(b === 1.U){
-        m := 255.U
-      }.otherwise{
-        m := 0.U
-      }
-  }
   //Merge Data Reg Logic
-  private val rcvAndSend            =  io.dAxiW.fire &  io.uAxiW.fire
-  private val nRcvAndSend           =  io.dAxiW.fire & !io.uAxiW.fire
-  private val rcvAndNSendFixMerge   = !io.dAxiW.fire &  io.uAxiW.fire & !dAwEntrys(wDataPtr.value).dontMerge & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
-  private val rcvAndNSendNormal     = !io.dAxiW.fire &  io.uAxiW.fire & !(!dAwEntrys(wDataPtr.value).dontMerge & Burst.isFix(dAwEntrys(wDataPtr.value).burst))
-
-  merDatReg    := PriorityMux(Seq(
-    rcvAndSend          -> (maskData.asUInt & io.uAxiW.bits.data),
-    nRcvAndSend         -> 0.U,
-    rcvAndNSendFixMerge -> (maskData.asUInt & io.uAxiW.bits.data),
-    rcvAndNSendNormal   -> (merDatReg | maskData.asUInt & io.uAxiW.bits.data),
-    true.B              -> merDatReg
-  ))
-
-  merMaskReg   := PriorityMux(Seq(
-    rcvAndSend          -> (io.uAxiW.bits.strb),
-    nRcvAndSend         -> 0.U,
-    rcvAndNSendFixMerge -> (io.uAxiW.bits.strb),
-    rcvAndNSendNormal   -> (io.uAxiW.bits.strb | merMaskReg)
-  ))
-
   merComReg    := Mux(io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, merComReg))
-  mergeLastReg := Mux(io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, mergeLastReg))
+  mergeLastReg := Mux(io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire & io.dAxiW.bits.last, false.B, mergeLastReg))
 
   uAwEntrys.zipWithIndex.foreach {
     case(e, i) =>
@@ -144,20 +114,24 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
         e.shift     :=  uTailE.exAddr(rni.offset - 1, 0)
         e.nextShift :=  Mux(Burst.isFix(uTailE.burst), uTailE.exAddr(rni.offset - 1, 0), uTailE.exAddr + (1.U((rni.offset + 1).W) << uTailE.size))
         e.size      :=  1.U(7.W) << uTailE.size
+        e.specWrap  :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & !uTailE.byteMask(rni.offset)
+        e.fullWrap  :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & (uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1))
       }.elsewhen(io.uAxiW.fire & (wDataPtr.value === i.U)) {
         e.shift     := e.nextShift
         e.nextShift := Mux(Burst.isFix(e.burst), e.nextShift, e.nextShift + e.size)
       }
+      when(io.dAxiW.fire & e.specWrap & (wDataPtr.value === i.U)){
+        e.specWrap  := false.B
+      }
   }
   txAwBdl            := 0.U.asTypeOf(txAwBdl)
-  txAwBdl.addr       := Cat(uTailE.preAddr, uTailE.exAddr)
+  txAwBdl.addr       := Mux(uTailE.cache(1) & Burst.isWrap(uTailE.burst), Mux(uTailE.byteMask(rni.offset) ^  uTailE.byteMask(rni.offset - 1), Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset), 0.U(rni.offset.W)), Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U((rni.offset - 1).W))), Cat(uTailE.preAddr, uTailE.exAddr))
   txAwBdl.size       := Mux(!uTailE.cache(1) || Burst.isFix(uTailE.burst), uTailE.size, log2Ceil(dw/8).U)
   txAwBdl.cache      := uTailE.cache
   txAwBdl.burst      := Burst.INCR
   txAwBdl.id         := dHeadPtr.value
-  txAwBdl.len        := Mux(!uTailE.cache(1) | Burst.isFix(uTailE.burst) | uTailE.exAddr(rni.offset - 1) |
-                          (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits - 1, rni.offset)) & uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U, 0.U, 1.U)
-
+  txAwBdl.len        := Mux(!uTailE.cache(1) | Burst.isFix(uTailE.burst) | uTailE.exAddr(rni.offset - 1) & Burst.isIncr(uTailE.burst) |
+                          (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits - 1, rni.offset)) & (uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U) & (uTailE.endAddr(rni.offset - 1, 0) =/= uTailE.exAddr(rni.offset - 1, 0)), 0.U, 1.U)
 
 /* 
  * IO Connection Logic
@@ -170,11 +144,18 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   io.dAxiAw.valid    := uHeadPtr =/= uTailPtr & !isFull(dHeadPtr, dTailPtr)
   io.dAxiAw.bits     := txAwBdl
   io.dAxiW.bits      := 0.U.asTypeOf(io.dAxiW.bits)
-  io.dAxiW.bits.data := merDatReg
-  io.dAxiW.bits.strb := merMaskReg
-  io.dAxiW.bits.last := mergeLastReg
-  io.dAxiW.valid     := merComReg
+  io.dAxiW.bits.data := mergeReg.io.dataOut.bits.data
+  io.dAxiW.bits.strb := mergeReg.io.dataOut.bits.strb
+  io.dAxiW.bits.last := mergeLastReg & !dAwEntrys(wDataPtr.value).fullWrap
+  io.dAxiW.valid     := merComReg || mergeLastReg
   io.dAxiB.ready     := bIdQueue.io.enq.ready
+
+  mergeReg.io.dataIn.valid         := io.uAxiW.fire
+  mergeReg.io.dataIn.bits.fixMerge := !dAwEntrys(wDataPtr.value).dontMerge & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
+  mergeReg.io.dataIn.bits.strb     := io.uAxiW.bits.strb
+  mergeReg.io.dataIn.bits.beat     := dAwEntrys(wDataPtr.value).shift(rni.offset - 1)
+  mergeReg.io.dataIn.bits.data     := io.uAxiW.bits.data
+  mergeReg.io.dataOut.ready        := mergeLastReg || merComReg
 
   bIdQueue.io.deq.ready   := io.uAxiB.ready
   bIdQueue.io.enq.valid   := dAwEntrys(dTailPtr.value).last & io.dAxiB.fire

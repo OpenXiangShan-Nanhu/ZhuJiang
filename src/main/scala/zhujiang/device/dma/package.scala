@@ -150,7 +150,7 @@ class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
      val wrapMerge     = Burst.isWrap(burst) & modify
      val incrMerge     = Burst.isIncr(burst) & modify
      //number compute
-     val wrapMergeNum  = Mux(range(rni.pageBits - 1, rni.offset).orR, range(rni.pageBits - 1, rni.offset), 1.U)
+     val wrapMergeNum  = Mux(range(rni.pageBits - 1, rni.offset + 1).orR, Mux(exAddr(rni.offset - 1, 0).orR, range(rni.pageBits - 1, rni.offset) + 1.U, range(rni.pageBits - 1, rni.offset)), 1.U)
      val incrMergeNum  = endAddr(rni.pageBits - 1, rni.offset) + endAddr(rni.offset - 1, 0).orR - exAddr(rni.pageBits - 1, rni.offset)
      val fixMergeNum   = 1.U
      PriorityMux(Seq(
@@ -163,8 +163,8 @@ class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
   def entryInit[T <: AxiWrEntry](info : T): AxiWrEntry = {
     this.preAddr        := info.preAddr
     this.exAddr         := info.exAddr
-    this.endAddr        := info.endAddr
-    this.num.get        := getNum(info.cache(1), info.exAddr, info.len.get, info.burst, info.range.get, info.endAddr)
+    this.endAddr        := Mux(Burst.isWrap(info.burst), info.exAddr, info.endAddr)
+    this.num.get        := getNum(info.cache(1), info.exAddr, info.len.get, info.burst, info.byteMask, info.endAddr)
     this.burst          := info.burst
     this.cnt.get        := 0.U
     this.byteMask       := info.byteMask
@@ -329,6 +329,8 @@ class AxiWMstEntry(implicit p: Parameters) extends ZJBundle {
   val id        = UInt(zjParams.dmaParams.idBits.W)
   val last      = Bool()
   val dontMerge = Bool()
+  val specWrap  = Bool()
+  val fullWrap  = Bool()
 }
 
 class CHIWEntry(implicit p: Parameters) extends ZJBundle {
