@@ -88,7 +88,7 @@ object ZhujiangTop extends App {
     FirtoolOption("--lowering-options=noAlwaysComb," +
       " disallowLocalVariables, disallowMuxInlining," +
       " emittedLineLength=120, explicitBitcast, locationInfoStyle=plain"),
-    ChiselGeneratorAnnotation(() => new Zhujiang(true)(config))
+    ChiselGeneratorAnnotation(() => new Zhujiang()(config))
   ))
   if(config(ZJParametersKey).tfbParams.isDefined) TrafficBoardFileManager.release(config)
   FileRegisters.write()
