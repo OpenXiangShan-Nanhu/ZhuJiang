@@ -14,10 +14,7 @@ import dongjiang.data._
 import xijiang._
 import xijiang.router.base.DeviceIcnBundle
 import zhujiang.chi.FlitHelper.connIcn
-import xs.utils.ResetRRArbiter
-import xs.utils.debug.{DomainInfo, HardwareAssertion}
 import dongjiang.frontend.decode.Decode._
-import zhujiang.chi
 
 
 class DJConfigIO(implicit p: Parameters) extends DJBundle {

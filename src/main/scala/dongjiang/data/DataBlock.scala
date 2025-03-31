@@ -7,7 +7,7 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
-import xs.utils.debug.{DomainInfo, HardwareAssertion}
+import xs.utils.debug.HardwareAssertion
 import xs.utils.sram.SinglePortSramTemplate
 
 class DataBlock(implicit p: Parameters) extends DJModule {

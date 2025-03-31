@@ -7,7 +7,7 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
-import xs.utils.debug.{DomainInfo, HardwareAssertion}
+import xs.utils.debug.HardwareAssertion
 import xs.utils.queue.FastQueue
 import dongjiang.data.State._
 import xs.utils.sram.DualPortSramTemplate

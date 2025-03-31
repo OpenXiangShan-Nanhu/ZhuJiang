@@ -7,7 +7,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.{NodeType, Ring}
 import dongjiang._
 import xijiang.router.base.IcnBundle
-import xs.utils.debug.{DomainInfo, HardwareAssertion, HardwareAssertionKey}
+import xs.utils.debug.HardwareAssertionKey
 import xs.utils.sram.SramBroadcastBundle
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.axi.{AxiBundle, ExtAxiBundle}

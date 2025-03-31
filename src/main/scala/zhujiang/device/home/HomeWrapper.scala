@@ -9,6 +9,7 @@ import xijiang.router.base.DeviceIcnBundle
 import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
 import xs.utils.debug.{HardwareAssertion, HardwareAssertionKey}
+import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.chi.{ChiBuffer, HReqFlit, ReqAddrBundle, RingFlit}
 import zhujiang.{DftWires, ZJRawModule}
 
@@ -125,16 +126,18 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
 
   hnx.io.lan.tx.debug.foreach(_ := DontCare)
 
-  private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, moduleTop = true)
+  private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, moduleTop = true).map(_.head)
   HardwareAssertion.release(assertionNode, "hwa", "home")
-  dontTouch(assertionNode.assertion)
-  assertionNode.assertion.ready := true.B
+  assertionNode.foreach(_.hassert.bus.get.ready := true.B)
   if(p(HardwareAssertionKey).enable) {
     val dbgTx = hnxLans.filter(_.node.hfpId == 0).head.rx.debug.get
-    val dbgDat = WireInit(0.U.asTypeOf(new RingFlit(debugFlitBits)))
-    dbgDat.Payload := assertionNode.assertion.bits.asUInt
-    dbgTx.valid := assertionNode.assertion.valid
-    dbgTx.bits := dbgDat.asTypeOf(dbgTx.bits)
-    assertionNode.assertion.ready := dbgTx.ready
+    val dbgBd = WireInit(0.U.asTypeOf(Decoupled(new RingFlit(debugFlitBits))))
+    if(assertionNode.isDefined) {
+      dontTouch(assertionNode.get.hassert)
+      dbgBd.bits.Payload := assertionNode.get.hassert.bus.get.bits
+      dbgBd.valid := assertionNode.get.hassert.bus.get.valid
+      assertionNode.get.hassert.bus.get.ready := dbgBd.ready
+    }
+    connIcn(dbgTx, dbgBd)
   }
 }
