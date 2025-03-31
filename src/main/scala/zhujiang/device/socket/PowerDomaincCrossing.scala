@@ -47,7 +47,7 @@ class PowerDomainCrossingRx[T <: Data](gen:T) extends Module {
   })
   private val rxq = Module(new Queue(gen = gen, entries = 5, flow = true))
   private val rxv = RegNext(io.pdc.valid, false.B)
-  private val rxd = RegEnable(io.pdc.bits, io.pdc.valid)
+  private val rxd = RegNext(io.pdc.bits)
   private val txg = RegNext(io.deq.fire, false.B)
   rxq.io.enq.valid := rxv
   rxq.io.enq.bits := rxd
