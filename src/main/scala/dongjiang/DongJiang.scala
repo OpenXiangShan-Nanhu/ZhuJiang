@@ -100,6 +100,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  dirSetup: ${djparam.dirSetup}
        |  dirLatency: ${djparam.dirLatency}
        |  dirExtraHold: ${djparam.dirExtraHold}
+       |  ccNodeIdSeq: $ccNodeIdSeq
+       |  rniNodeIdSeq: $rniNodeIdSeq
+       |  snNodeIdSeq: $snNodeIdSeq
        |  address slice:
        |    [fullAddr(${djparam.addressBits-1}:0)] = [useAddr1(${useAddr_hi}:${bankId_hi+1})] + [bankId(${bankId_hi}:${bankId_lo})] + [useAddr0(${bankId_lo-1}:${useAddr_lo})] + [offset(${offset_hi}:${offset_lo})]
        |    [useAddr(${useAddrBits-1}:0)]  = [useAddr1(${useAddrBits-1}:${bankId_lo-offsetBits})] + [useAddr0(${bankId_lo-offsetBits-1}:0)]

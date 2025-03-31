@@ -61,7 +61,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     // QoS
     // TgtID
     // SrcID
-    HardwareAssertion.withEn(task.fromCcRnf | task.fromCcRni | task.fromRniDma, task.fromLAN, cf"SrcID => [${task.nodeId}]")
+    HardwareAssertion.withEn(task.fromCcRnf | task.fromCcRni | task.fromRniDma, task.fromLAN, cf"Invalid NodeID, fromCcRnF: ${task.fromCcRnf}, fromCcRni: ${task.fromCcRni}, fromRniDma: ${task.fromRniDma}, SrcID: [${task.nodeId}]\t\nccNodeIdSeq: ${ccNodeIdSeq}\t\nrniNodeIdSeq: ${rniNodeIdSeq}\t\nsnNodeIdSeq:${snNodeIdSeq}")
     HardwareAssertion.withEn(task.toLAN(io.config.ci), task.fromBBN, cf"SrcID => [${task.nodeId}]")
     // TxnID
     // ReturnNID
@@ -80,17 +80,17 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     HardwareAssertion.withEn(task.isFullSize, task.isAllocatingRead | task.isDataless | task.isWriteFull)
     HardwareAssertion.withEn(task.isHalfSize, task.isAtomic)
     // Addr
-    HardwareAssertion(task.Addr.bankId === io.config.bankId)
-    HardwareAssertion.withEn(task.Addr.offset === 0.U, task.isAllocatingRead | task.isDataless | task.isWriteFull)
+    HardwareAssertion(task.Addr.bankId === io.config.bankId, cf"BankId is not matched, bankdId = addr[${bankId_hi}:${bankId_lo}], task.Addr.bankID = ${task.Addr.bankId}, io.config.bankId = ${io.config.bankId}")
+    HardwareAssertion.withEn(task.Addr.offset === 0.U, task.isAllocatingRead | task.isDataless | task.isWriteFull, "Offset should be 0 in allocatingRead/dataless/write transactions")
     // NS
     // NSE
     // LikelyShared
     // AllowRetry
     // Order
-    HardwareAssertion.withEn(task.noOrder, task.fromCcRnf)
-    HardwareAssertion.withEn(task.isEO,    task.fromCcRni)
-    HardwareAssertion.withEn(task.isEO,    task.fromRni & task.isRead)
-    HardwareAssertion.withEn(task.isOWO,   task.fromRni & task.isWrite)
+    HardwareAssertion.withEn(task.noOrder, task.fromCcRnf, "Requests from CC-RNF should not have any order(i.e. order = None)")
+    HardwareAssertion.withEn(task.isEO,    task.fromCcRni, "Requests from CC-RNI should use EndpointOrder(EO)")
+    HardwareAssertion.withEn(task.isEO,    task.fromRni & task.isRead, "Requests from RNI should use EndpointOrder(EO) in read transactions")
+    HardwareAssertion.withEn(task.isOWO,   task.fromRni & task.isWrite, "Requests from RNI should use OrderedWriteOrder(OWO) in write transactions")
     HardwareAssertion.withEn(task.noOrder, task.fromBBN)
     // PCrdType
     // MemAttr
@@ -109,14 +109,14 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     // LPID
     // Excl
     // SnoopMe
-    HardwareAssertion.withEn(!task.snoopMe, task.fromCcRni)
-    HardwareAssertion.withEn(!task.snoopMe, task.fromRni)
+    HardwareAssertion.withEn(!task.snoopMe, task.fromCcRni, "Requests from CC-RNI shoule not expect to be snooped")
+    HardwareAssertion.withEn(!task.snoopMe, task.fromRni, "Requests from RNI shoule not expect to be snooped")
     // CAH
     // ExpCompAck
-    HardwareAssertion.withEn(task.expCompAck,  task.fromCcRnf & task.isRead)
-    HardwareAssertion.withEn(!task.expCompAck, task.fromCcRnf & !task.isRead)
-    HardwareAssertion.withEn(!task.expCompAck, task.fromCcRni)
-    HardwareAssertion.withEn(!task.expCompAck, task.fromRni)
+    HardwareAssertion.withEn(task.expCompAck,  task.fromCcRnf & task.isRead, "Reuqests from CC-RNF should assert ExpCompAck in read transactions")
+    HardwareAssertion.withEn(!task.expCompAck, task.fromCcRnf & !task.isRead, "Reuqests from CC-RNF should not assert ExpCompAck while transaction is not read")
+    HardwareAssertion.withEn(!task.expCompAck, task.fromCcRni, "Reuqests from CC-RNI should not assert ExpCompAck")
+    HardwareAssertion.withEn(!task.expCompAck, task.fromRni, "Reuqests from RNI should not assert ExpCompAck")
     // TagOp
     // TraceTag
     // MPAM
