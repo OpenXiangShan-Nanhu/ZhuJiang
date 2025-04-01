@@ -91,16 +91,12 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
       when(rxAwPipe.io.deq.fire & (uHeadPtr.value === i.U)){
         e.entryInit(rxAwPipe.io.deq.bits)
       }.elsewhen((uTailPtr.value === i.U) & io.dAxiAw.fire){
-        val incrNotModify  = !e.cache(1) &  Burst.isIncr(e.burst)
-        val otherNotModify = !e.cache(1) & !Burst.isIncr(e.burst)
-        val incrModify     =  e.cache(1) &  Burst.isIncr(e.burst)
-        val otherModify    =  e.cache(1) & !Burst.isIncr(e.burst)
+        val notModify      = !e.cache(1) 
+        val modify         =  e.cache(1)
         e.cnt.get         := e.cnt.get + 1.U
         e.exAddr          := PriorityMux(Seq(
-          incrNotModify   -> (e.exAddr + (1.U << e.size)),
-          otherNotModify  -> (~e.byteMask & e.exAddr | (e.exAddr + (1.U((rni.offset + 1).W) << e.size)) & e.byteMask),
-          incrModify      -> (Cat(e.exAddr(rni.pageBits - 1, rni.offset) + 1.U, 0.U(rni.offset.W))),
-          otherModify     -> (Cat(e.exAddr(rni.pageBits - 1, rni.offset) + 1.U, 0.U(rni.offset.W)) & e.byteMask | ~e.byteMask & e.exAddr)
+          notModify       -> (~e.byteMask & e.exAddr | (e.exAddr + (1.U((rni.offset).W) << e.size)) & e.byteMask),
+          modify          -> (Cat(e.exAddr(rni.pageBits - 1, rni.offset) + 1.U, 0.U(rni.offset.W)) & e.byteMask | ~e.byteMask & e.exAddr)
         ))
       }
   }
@@ -112,14 +108,14 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
         e.id           :=  uTailE.id
         e.last         := (uTailE.cnt.get + 1.U) === uTailE.num.get
         e.shift        :=  uTailE.exAddr(rni.offset - 1, 0)
-        e.mask         :=  Mux(Burst.isIncr(uTailE.burst), "b111111".U, uTailE.byteMask(rni.offset - 1, 0))
-        e.nextShift    :=  Mux(Burst.isFix(uTailE.burst), uTailE.exAddr(rni.offset - 1, 0), Mux(Burst.isIncr(uTailE.burst), uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size), (uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size)) & uTailE.byteMask))
+        e.mask         :=  uTailE.byteMask(rni.offset - 1, 0)
+        e.nextShift    :=  (uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size)) & uTailE.byteMask(rni.offset - 1, 0) | uTailE.exAddr(rni.offset - 1, 0) & ~uTailE.byteMask(rni.offset - 1, 0)
         e.size         :=  1.U(6.W) << uTailE.size
         e.specWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & !uTailE.byteMask(rni.offset)
         e.fullWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & (uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1))
       }.elsewhen(io.uAxiW.fire & (wDataPtr.value === i.U)) {
         e.shift     := e.nextShift
-        e.nextShift := Mux(Burst.isFix(e.burst), e.nextShift, (e.nextShift + e.size) & e.mask)
+        e.nextShift := (e.nextShift + e.size) & e.mask | e.nextShift & ~e.mask
       }
       when(io.dAxiW.fire & e.specWrap & (wDataPtr.value === i.U)){
         e.specWrap  := false.B

@@ -167,7 +167,7 @@ class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
     this.num.get        := getNum(info.cache(1), info.exAddr, info.len.get, info.burst, info.range.get, info.endAddr)
     this.burst          := info.burst
     this.cnt.get        := 0.U
-    this.byteMask       := info.byteMask
+    this.byteMask       := Mux(Burst.isIncr(info.burst), 0xFFF.U, Mux(Burst.isWrap(info.burst), info.byteMask, 0.U))
     this.size           := info.size
     this.cache          := info.cache
     this.id             := info.id
