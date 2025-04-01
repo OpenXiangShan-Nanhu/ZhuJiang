@@ -69,7 +69,8 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   private val txIsAck    = io.rdDB.fire & io.rdDB.bits.withAck | io.chiTxRsp.fire
   private val tailPtrAdd = txBPtr =/= tailPtr & txAckPtr =/= tailPtr & txDatPtr =/=tailPtr
 
-  private val rxDatPtrAdd  = io.axiW.fire & ((rxDatBeat === 1.U) | (rxDatBeat === 0.U) & !chiEntrys(rxDatPtr.value).double)
+  // private val rxDatPtrAdd  = io.axiW.fire & ((rxDatBeat === 1.U) | (rxDatBeat === 0.U) & !chiEntrys(rxDatPtr.value).double)
+  private val rxDatPtrAdd  = io.axiW.fire & io.axiW.bits.last
   private val txDatPtrAdd  = io.rdDB.fire & ((txDatBeat === 1.U) | (txDatBeat === 0.U) & !chiEntrys(txDatPtr.value).double)
   private val rxDatBeatAdd = (chiEntrys(rxDatPtr.value).double & (rxDatBeat === 0.U) || rxDatBeat === 1.U) & io.wrDB.fire
   private val txDatBeatAdd = (chiEntrys(txDatPtr.value).double & (txDatBeat === 0.U) || txDatBeat === 1.U) & io.rdDB.fire

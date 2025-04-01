@@ -12,7 +12,6 @@ import zhujiang.chi._
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 import zhujiang.chi.FlitHelper.connIcn
 import dongjiang.utils.fastArb
-import freechips.rocketchip.util.DataToAugmentedData
 
 class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val rni = zjParams.dmaParams

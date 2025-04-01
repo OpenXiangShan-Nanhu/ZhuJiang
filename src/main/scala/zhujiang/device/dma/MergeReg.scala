@@ -10,7 +10,6 @@ import zhujiang.axi._
 import xs.utils.sram._
 import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
-import chisel3.SpecifiedDirection.Flip
 
 class MergeDataIn(implicit p: Parameters) extends ZJBundle {
   val rni        = zjParams.dmaParams

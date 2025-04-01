@@ -164,7 +164,7 @@ class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
     this.preAddr        := info.preAddr
     this.exAddr         := info.exAddr
     this.endAddr        := Mux(Burst.isWrap(info.burst), info.exAddr, info.endAddr)
-    this.num.get        := getNum(info.cache(1), info.exAddr, info.len.get, info.burst, info.byteMask, info.endAddr)
+    this.num.get        := getNum(info.cache(1), info.exAddr, info.len.get, info.burst, info.range.get, info.endAddr)
     this.burst          := info.burst
     this.cnt.get        := 0.U
     this.byteMask       := info.byteMask
@@ -324,6 +324,7 @@ class DmaRspFlit(implicit p: Parameters) extends RespFlit {
 class AxiWMstEntry(implicit p: Parameters) extends ZJBundle {
   val shift     = UInt(6.W)
   val nextShift = UInt(6.W)
+  val mask      = UInt(6.W)
   val size      = UInt(6.W)
   val burst     = UInt(2.W)
   val id        = UInt(zjParams.dmaParams.idBits.W)

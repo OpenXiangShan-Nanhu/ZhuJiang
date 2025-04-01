@@ -73,7 +73,7 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
  */
   private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
   private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
-  private val wDataPtrAdd            = (nextShiftHintLastValid || dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits.last & Burst.isFix(dAwEntrys(wDataPtr.value).burst) || dAwEntrys(wDataPtr.value).dontMerge) & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & io.uAxiW.fire
+  private val wDataPtrAdd            = (nextShiftHintLastValid || !dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits.last & Burst.isFix(dAwEntrys(wDataPtr.value).burst) || dAwEntrys(wDataPtr.value).dontMerge || io.uAxiW.bits.last) & io.uAxiW.fire & !dAwEntrys(wDataPtr.value).fullWrap
   private val tailPtrAdd             = io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get)
 
   uHeadPtr   := Mux(rxAwPipe.io.deq.fire, uHeadPtr + 1.U, uHeadPtr)
@@ -107,21 +107,23 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   dAwEntrys.zipWithIndex.foreach {
     case(e, i) =>
       when(io.dAxiAw.fire & (dHeadPtr.value === i.U)) {
-        e.burst     :=  uTailE.burst
-        e.dontMerge := !uTailE.cache(1)
-        e.id        :=  uTailE.id
-        e.last      := (uTailE.cnt.get + 1.U) === uTailE.num.get
-        e.shift     :=  uTailE.exAddr(rni.offset - 1, 0)
-        e.nextShift :=  Mux(Burst.isFix(uTailE.burst), uTailE.exAddr(rni.offset - 1, 0), uTailE.exAddr + (1.U((rni.offset + 1).W) << uTailE.size))
-        e.size      :=  1.U(7.W) << uTailE.size
-        e.specWrap  :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & !uTailE.byteMask(rni.offset)
-        e.fullWrap  :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & (uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1))
+        e.burst        :=  uTailE.burst
+        e.dontMerge    := !uTailE.cache(1)
+        e.id           :=  uTailE.id
+        e.last         := (uTailE.cnt.get + 1.U) === uTailE.num.get
+        e.shift        :=  uTailE.exAddr(rni.offset - 1, 0)
+        e.mask         :=  Mux(Burst.isIncr(uTailE.burst), "b111111".U, uTailE.byteMask(rni.offset - 1, 0))
+        e.nextShift    :=  Mux(Burst.isFix(uTailE.burst), uTailE.exAddr(rni.offset - 1, 0), Mux(Burst.isIncr(uTailE.burst), uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size), (uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size)) & uTailE.byteMask))
+        e.size         :=  1.U(6.W) << uTailE.size
+        e.specWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & !uTailE.byteMask(rni.offset)
+        e.fullWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & (uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1))
       }.elsewhen(io.uAxiW.fire & (wDataPtr.value === i.U)) {
         e.shift     := e.nextShift
-        e.nextShift := Mux(Burst.isFix(e.burst), e.nextShift, e.nextShift + e.size)
+        e.nextShift := Mux(Burst.isFix(e.burst), e.nextShift, (e.nextShift + e.size) & e.mask)
       }
       when(io.dAxiW.fire & e.specWrap & (wDataPtr.value === i.U)){
         e.specWrap  := false.B
+        e.fullWrap  := false.B
       }
   }
   txAwBdl            := 0.U.asTypeOf(txAwBdl)
@@ -130,8 +132,8 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   txAwBdl.cache      := uTailE.cache
   txAwBdl.burst      := Burst.INCR
   txAwBdl.id         := dHeadPtr.value
-  txAwBdl.len        := Mux(!uTailE.cache(1) | Burst.isFix(uTailE.burst) | uTailE.exAddr(rni.offset - 1) & Burst.isIncr(uTailE.burst) |
-                          (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits - 1, rni.offset)) & (uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U) & (uTailE.endAddr(rni.offset - 1, 0) =/= uTailE.exAddr(rni.offset - 1, 0)), 0.U, 1.U)
+  txAwBdl.len        := Mux(!uTailE.cache(1) | Burst.isFix(uTailE.burst) | uTailE.exAddr(rni.offset - 1) & Burst.isIncr(uTailE.burst) | Burst.isWrap(uTailE.burst) & (uTailE.exAddr(rni.offset - 1) & uTailE.byteMask(rni.offset) | !uTailE.byteMask(rni.offset - 1)) |
+                          (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits - 1, rni.offset)) & (uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U) & uTailE.exAddr(rni.offset - 1, 0) =/= uTailE.endAddr(rni.offset - 1, 0), 0.U, 1.U)
 
 /* 
  * IO Connection Logic
