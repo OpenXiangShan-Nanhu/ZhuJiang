@@ -185,16 +185,19 @@ trait NocIOHelper {
       a.suggestName(s"m_axi_mem_${b.params.attr}")
       a <> b
       dontTouch(a)
+      dontTouch(b)
     })
     cfgIO.zip(cfgDrv).zipWithIndex.foreach({ case((a, b), i) =>
       a.suggestName(s"m_axi_cfg_${b.params.attr}")
       a <> b
       dontTouch(a)
+      dontTouch(b)
     })
     dmaIO.zip(dmaDrv).zipWithIndex.foreach({ case((a, b), i) =>
       a.suggestName(s"s_axi_dma_${b.params.attr}")
       a <> b
       dontTouch(a)
+      dontTouch(b)
     })
     ccnIO.zip(ccnDrv).foreach({ case (a, b) =>
       a.suggestName(s"ccn_0x${b.node.nodeId.toHexString}")
@@ -205,6 +208,7 @@ trait NocIOHelper {
       a.suggestName(s"s_axi_hwa")
       a <> b
       dontTouch(a)
+      dontTouch(b)
     })
   }
 }
