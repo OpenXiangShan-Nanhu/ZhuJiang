@@ -10,7 +10,7 @@ import zhujiang.{ZJModule, ZJParametersKey}
 
 class Ring(implicit p: Parameters) extends ZJModule {
   private val tfs = p(ZJParametersKey).tfsParams.isDefined
-  override val desiredName = zjParams.ciName
+  override val desiredName = zjParams.ringName
   val io_ci = IO(Input(UInt(ciIdBits.W)))
   val dfx_reset = IO(Input(new DFTResetSignals))
   val reset_state = if(tfs) Some(IO(Output(Bool()))) else None

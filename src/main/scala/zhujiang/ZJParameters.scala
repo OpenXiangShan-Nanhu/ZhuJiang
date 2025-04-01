@@ -205,6 +205,7 @@ case class ZJParameters(
   private lazy val nrG = nodeParams.count(_.nodeType == NodeType.HI)
   private lazy val cacheSizeInMiB = cacheSizeInB / 1024 / 1024
   lazy val ciName: String = s"ZCI${nrX}X${nrC}C${nrP}P${nrD}D${nrM}M${nrG}G$cacheSizeInMiB$ciSuffix"
+  lazy val ringName: String = s"ZRING${nrX}X${nrC}C${nrP}P${nrD}D${nrM}M${nrG}G$cacheSizeInMiB$ciSuffix"
 
   lazy val island: Seq[Node] = ZhujiangGlobal.getIsland(nodeNidBits, nodeAidBits, nodeParams, cpuSpaceBits, ciName)
 

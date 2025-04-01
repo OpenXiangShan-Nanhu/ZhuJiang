@@ -2,24 +2,19 @@ package zhujiang
 
 import chisel3._
 import chisel3.experimental.hierarchy.{Definition, Instance}
-import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
-import xijiang.{NodeType, Ring}
-import dongjiang._
 import xijiang.router.base.IcnBundle
+import xijiang.{NodeType, Ring}
 import xs.utils.debug.HardwareAssertionKey
 import xs.utils.sram.SramBroadcastBundle
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.axi.{AxiBundle, ExtAxiBundle}
 import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
-import zhujiang.device.socket.{SocketIcnSide, SocketIcnSideBundle}
-import zhujiang.device.ddr.MemoryComplex
 import zhujiang.device.dma.Axi2Chi
 import zhujiang.device.home.HomeWrapper
-import zhujiang.device.misc.{MiscDevice, ResetDevice, ZJDebugBundle}
-
-import scala.math.pow
+import zhujiang.device.misc.MiscDevice
+import zhujiang.device.socket.{SocketIcnSide, SocketIcnSideBundle}
 
 class DftWires extends Bundle {
   val reset = new DFTResetSignals
@@ -28,10 +23,10 @@ class DftWires extends Bundle {
 
 class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   require(p(ZJParametersKey).tfsParams.isEmpty)
-
+  override val desiredName = zjParams.ciName
   print(
     s"""
-       |ZhuJiang Info: {
+       |${desiredName} Info: {
        |  Support Protocol: CHI-G
        |  nodeIdBits: ${niw}
        |  requestAddrBits: ${raw}
@@ -68,45 +63,47 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   }
 
   private val memDatIcns = ring.icnSns.get
-  private val memAxiPorts = for(icn <- memDatIcns) yield {
+  private val (memDevSeq, memNameSeq) = memDatIcns.map({ icn =>
     val nidStr = icn.node.nodeId.toHexString
     val attrStr = if(icn.node.attr == "") "" else "_" + icn.node.attr
     val bridge = Module(new AxiBridge(icn.node.copy(attr = s"0x$nidStr$attrStr")))
-    val nameStr = s"chi_bridge_mem_0x$nidStr"
-    bridge.suggestName(nameStr)
+    val nameStr = s"chi_to_axi_0x$nidStr"
     bridge.reset := placeResetGen(nameStr, icn)
     bridge.icn <> icn
-    bridge.axi
-  }
+    (bridge, nameStr)
+  }).unzip
+  memDevSeq.zip(memNameSeq).foreach({case(a, b) => a.suggestName(b)})
+  private val memAxiPorts = memDevSeq.map(_.axi)
 
   private val cfgIcnSeq = ring.icnHis.get
   require(cfgIcnSeq.nonEmpty)
   require(cfgIcnSeq.count(_.node.defaultHni) == 1)
-  private val cfgAxiPorts = for(icn <- cfgIcnSeq) yield {
+  private val (cfgDevSeq, cfgNameSeq) = cfgIcnSeq.map({ icn =>
     val nidStr = icn.node.nodeId.toHexString
-    val default = icn.node.defaultHni
     val attrStr = if(icn.node.attr == "") "" else "_" + icn.node.attr
-    val nameStr = if(default) "chi_bridge_cfg_default" else s"chi_bridge_cfg_0x$nidStr"
+    val nameStr = s"chi_to_axi_lite_0x$nidStr"
     val cfg = Module(new AxiLiteBridge(icn.node.copy(attr = s"0x$nidStr$attrStr"), 64, 3))
-    cfg.suggestName(nameStr)
     cfg.icn <> icn
     cfg.reset := placeResetGen(nameStr, icn)
     cfg.nodeId := icn.node.nodeId.U
-    cfg.axi
-  }
+    (cfg, nameStr)
+  }).unzip
+  cfgDevSeq.zip(cfgNameSeq).foreach({case(a, b) => a.suggestName(b)})
+  private val cfgAxiPorts = cfgDevSeq.map(_.axi)
 
   private val dmaIcnSeq = ring.icnRis.get
   require(dmaIcnSeq.nonEmpty)
-  private val dmaAxiPorts = dmaIcnSeq.zipWithIndex.map({case(icn, idx) =>
+  private val (dmaDevSeq, dmaNameSeq) = dmaIcnSeq.zipWithIndex.map({case(icn, idx) =>
     val nidStr = icn.node.nodeId.toHexString
     val attrStr = if(icn.node.attr == "") "" else "_" + icn.node.attr
-    val nameStr = s"chi_bridge_dma_0x$nidStr"
+    val nameStr = s"axi_to_chi_0x$nidStr"
     val dma = Module(new Axi2Chi(icn.node.copy(attr = s"0x$nidStr$attrStr")))
     dma.icn <> icn
     dma.reset := placeResetGen(nameStr, icn)
-    dma.suggestName(nameStr)
-    dma.axi
-  })
+    (dma, nameStr)
+  }).unzip
+  dmaDevSeq.zip(dmaNameSeq).foreach({case(a, b) => a.suggestName(b)})
+  private val dmaAxiPorts = dmaDevSeq.map(_.axi)
 
   require(ring.icnCcs.get.nonEmpty)
   private val ccnIcnSeq = ring.icnCcs.get
