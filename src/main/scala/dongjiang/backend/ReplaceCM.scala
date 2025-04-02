@@ -142,11 +142,12 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.cmAllocVec(CMID.SNP).bits.chi.toLAN    := DontCare
   io.cmAllocVec(CMID.SNP).bits.addr         := msg_repl.addr
   io.cmAllocVec(CMID.SNP).bits.llcTxnID     := msg_repl.llcTxnID
+  io.cmAllocVec(CMID.SNP).bits.needDB       := true.B
   io.cmAllocVec(CMID.SNP).bits.alrDB        := msg_repl.alrDB
   io.cmAllocVec(CMID.SNP).bits.snpVec       := msg_repl.dir.sf.metaVec.map(_.state.asBool)
   io.cmAllocVec(CMID.SNP).bits.fromRepl     := true.B
-  io.cmAllocVec(CMID.SNP).bits.ds.bank      := getDS(msg_repl.addr, msg_repl.dir.sf.way)._1
-  io.cmAllocVec(CMID.SNP).bits.ds.idx       := getDS(msg_repl.addr, msg_repl.dir.sf.way)._2
+  io.cmAllocVec(CMID.SNP).bits.ds.bank      := DontCare
+  io.cmAllocVec(CMID.SNP).bits.ds.idx       := DontCare
   io.cmAllocVec(CMID.SNP).bits.cbResp       := DontCare
   // REQ
   io.cmAllocVec(CMID.WOA).valid             := cmRegVec(cmId_repl).replLLC & !(io.writeDir.llc.fire | io.writeDir.sf.fire)
@@ -198,7 +199,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   /*
    * Modify Ctrl Machine Table
    */
-  val hwaVec2 = WireInit(VecInit(Seq.fill(djparam.nrDataCM) { VecInit(Seq.fill(8) { true.B }) }))
+  val hwaVec2 = WireInit(VecInit(Seq.fill(nrReplaceCM) { VecInit(Seq.fill(8) { true.B }) }))
   cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
     case ((cm, msg), i) =>
       val allocHit    = io.alloc.fire & cmId_rec === i.U

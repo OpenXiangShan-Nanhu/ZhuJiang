@@ -46,8 +46,8 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   // DataBuffer -> db
   val datBuf  = Module(new DualPortSramTemplate(
     gen       = new DJBundle {
-      val b   = UInt(BeatBits.W) // byte
-      val m   = UInt(MaskBits.W) // mask
+      val b   = UInt(8.W) // byte
+      val m   = Bool()    // mask
     },
     set       = djparam.nrDataBuf,
     way       = djparam.BeatByte
