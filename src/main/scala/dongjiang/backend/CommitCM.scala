@@ -464,12 +464,12 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
               cm.chi.s.compChi2Rn := false.B
             }
             // chi wait
-            cm.chi.w.waitChiAck   := io.rxRsp.fire & io.rxRsp.bits.Opcode === CompAck  & io.rxRsp.bits.TxnID === llcTxnID.get
-            cm.chi.w.waitChiDat0  := io.rxDat.fire & io.rxDat.bits.Opcode === CompData & io.rxDat.bits.TxnID === llcTxnID.get & io.rxDat.bits.DataID === "b00".U
-            cm.chi.w.waitChiDat1  := io.rxDat.fire & io.rxDat.bits.Opcode === CompData & io.rxDat.bits.TxnID === llcTxnID.get & io.rxDat.bits.DataID === "b10".U
+            cm.chi.w.waitChiAck   := cm.chi.w.waitChiAck  & !(io.rxRsp.fire & io.rxRsp.bits.Opcode === CompAck  & io.rxRsp.bits.TxnID === llcTxnID.get)
+            cm.chi.w.waitChiDat0  := cm.chi.w.waitChiDat0 & !(io.rxDat.fire & io.rxDat.bits.Opcode === CompData & io.rxDat.bits.TxnID === llcTxnID.get & io.rxDat.bits.DataID === "b00".U)
+            cm.chi.w.waitChiDat1  := cm.chi.w.waitChiDat1 & !(io.rxDat.fire & io.rxDat.bits.Opcode === CompData & io.rxDat.bits.TxnID === llcTxnID.get & io.rxDat.bits.DataID === "b10".U)
             // clean and valid
-            cm.clean            := !(cm.intl.s.asUInt | cm.intl.w.asUInt | cm.chi.s.asUInt | cm.chi.w.asUInt).orR
-            cm.valid            := cm.valid & !cmPoS_clean.idxMatch(i, j)
+            cm.clean  := !(cm.intl.s.asUInt | cm.intl.w.asUInt | cm.chi.s.asUInt | cm.chi.w.asUInt).orR
+            cm.valid  := cm.valid & !cmPoS_clean.idxMatch(i, j)
           }
       }
   }

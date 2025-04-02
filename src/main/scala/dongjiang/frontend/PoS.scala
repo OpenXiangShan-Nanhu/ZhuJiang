@@ -44,8 +44,6 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val busy        = Output(UInt(2.W))
   })
 
-  io.respAddr := DontCare // TODO
-
   /*
    * Reg and Wire declaration
    */
@@ -61,13 +59,19 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val isSnp     = Bool()
   }))
 
+  /*
+   * Get Full Addr In PoS
+   */
+  val tag = tagTable(io.getAddr.set)(io.getAddr.way)
+  io.respAddr.Addr.catPoS(io.config.bankId, tag, io.getAddr.set, dirBank.U)
+
 
   /*
    * Receive req from taskBuf
    *
-   * 1. req is CHIREQ: not block by addr
+   * 1. req is CHIREQ: block by addr
    * 2. req is CHISNP:
-   *  a. not block by addr
+   *  a. block by addr
    *  b. nest someone
    */
   // get block message

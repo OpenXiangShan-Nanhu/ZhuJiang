@@ -12,9 +12,40 @@ import dongjiang.directory.{DirEntry, DirMsg}
 import dongjiang.frontend._
 import dongjiang.frontend.decode._
 import zhujiang.chi.RspOpcode._
+import zhujiang.chi.DatOpcode._
+import dongjiang.bundle.ChiChannel._
 import dongjiang.backend._
-import dongjiang.backend.read.State._
+import dongjiang.backend.snoop.State._
 import dongjiang.data.DataTask
+
+
+object State {
+  val width       = 6
+  val FREE        = "b000000".U
+  val REQDB       = "b000001".U
+  val SENDSNP     = "b000010".U
+  val WAITRESP    = "b000100".U
+  val CLEANDATA   = "b001000".U
+  val WAITDATA    = "b010000".U
+  val RESP        = "b100000".U
+}
+
+class CMState(implicit p: Parameters) extends DJBundle {
+  // CHI: Free --> ReqDB --> SendSnp --> WaitResp0 --> WaitResp1 --> CleanData --> WaitData --> Resp --> Free
+  val state       = UInt(State.width.W)
+  val alrSendVec  = Vec(nrSfMetas, Bool())
+  val getRespVec  = Vec(nrSfMetas, Bool())
+  val getDataVec  = Vec(2, Bool())
+
+  def isValid     = state.orR
+  def isFree      = !isValid
+  def isReqDB     = state(0)
+  def isSendSnp   = state(1)
+  def isWaitResp  = state(2)
+  def isCleanData = state(3)
+  def isWaitData  = state(4)
+  def isResp      = state(5)
+}
 
 
 class SnoopCM(implicit p: Parameters) extends DJModule {
@@ -39,8 +70,209 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
     // Resp To Replace
     val respRepl    = Decoupled(new PackLLCTxnID() with HasChiChannel with HasChiResp)
   })
-  HardwareAssertion(!io.alloc.valid)
-  io <> DontCare
+
+
+  /*
+   * Reg and Wire declaration
+   */
+  val cmRegVec    = RegInit(VecInit(Seq.fill(nrReadCM) { 0.U.asTypeOf(new CMState) }))
+  val msgRegVec   = Reg(Vec(nrReadCM, new PackCMTask with HasPackTaskInst))
+  val nodeId_sSnp = Wire(new NodeId())
+  val rspNodeId   = WireInit(0.U.asTypeOf(new NodeId()))
+  val datNodeId   =  WireInit(0.U.asTypeOf(new NodeId()))
+
+  /*
+   * Get metaId
+   */
+  rspNodeId.fromLAN := NocType.rxIs(io.rxRsp.bits, LAN)
+  datNodeId.fromLAN := NocType.rxIs(io.rxDat.bits, LAN)
+  rspNodeId.nodeId  := io.rxRsp.bits.SrcID
+  datNodeId.nodeId  := io.rxDat.bits.SrcID
+  val rspMetaId     = rspNodeId.metaId
+  val datMetaId     = datNodeId.metaId
+
+  /*
+   * Receive Task IO
+   */
+  val cmVec_rec   = cmRegVec.map(!_.isValid) // Free Vec
+  val cmId_rec    = PriorityEncoder(cmVec_rec)
+  io.alloc.ready  := cmVec_rec.reduce(_ | _)
+  HardwareAssertion.withEn(io.alloc.bits.snpVec.asUInt.orR, io.alloc.valid)
+
+  /*
+   * Req DB
+   */
+  val cmVec_reqDB = cmRegVec.map(_.isReqDB)
+  val cmId_reqDB  = StepRREncoder(cmVec_reqDB, io.reqDB.fire)
+  io.reqDB.valid  := cmVec_reqDB.reduce(_ | _)
+  io.reqDB.bits.llcTxnID  := msgRegVec(cmId_reqDB).task.llcTxnID
+  io.reqDB.bits.dataVec   := msgRegVec(cmId_reqDB).task.chi.dataVec
+
+  /*
+   * Send Snp
+   */
+  val cmVec_sSnp  = cmRegVec.map(_.isSendSnp)
+  val cmId_sSnp   = StepRREncoder(cmVec_sSnp, io.txSnp.fire)
+  val task_sSnp   = msgRegVec(cmId_sSnp).task
+  val cm_sSnp     = cmRegVec(cmId_sSnp)
+  val metaId_sSnp = OHToUInt(task_sSnp.snpVec.asUInt ^ cm_sSnp.alrSendVec.asUInt)
+  val snpIsFst    = cm_sSnp.alrSendVec.asUInt === 0.U
+  nodeId_sSnp.setNodeId(metaId_sSnp)
+  // valid
+  io.txSnp.valid  := cmVec_sSnp.reduce(_ | _)
+  // bits
+  io.txSnp.bits             := DontCare
+  io.txSnp.bits.RetToSrc    := Mux(snpIsFst, task_sSnp.chi.retToSrc, false.B)
+  io.txSnp.bits.DoNotGoToSD := false.B
+  io.txSnp.bits.Addr        := task_sSnp.addr
+  io.txSnp.bits.Opcode      := Mux(snpIsFst, task_sSnp.chi.opcode, task_sSnp.chi.getNoFwdSnpOp)
+  io.txSnp.bits.FwdTxnID    := task_sSnp.chi.txnID
+  io.txSnp.bits.FwdNID      := task_sSnp.chi.nodeId
+  io.txSnp.bits.TxnID       := task_sSnp.llcTxnID.get
+  io.txSnp.bits.SrcID       := DontCare
+  io.txSnp.bits.TgtID       := nodeId_sSnp.nodeId
+  // set tgt noc type
+  NocType.setTx(io.txSnp.bits, Mux(nodeId_sSnp.fromLAN, LAN.U, BBN.U))
+
+
+  /*
+   * Clean Data
+   */
+  val cmVec_clean = cmRegVec.map(_.isCleanData)
+  val cmId_clean  = StepRREncoder(cmVec_clean, io.dataTask.fire)
+  val task_clean  = msgRegVec(cmId_clean).task
+  // valid
+  io.dataTask.valid := cmVec_clean.reduce(_ | _)
+  // bits
+  io.dataTask.bits              := DontCare
+  io.dataTask.bits.dataOp.clean := true.B
+  io.dataTask.bits.llcTxnID     := task_clean.llcTxnID
+
+
+  /*
+   * Send Resp To Commit
+   */
+  val cmVec_resp  = cmRegVec.map(_.isResp)
+  val cmId_resp   = StepRREncoder(cmVec_resp, io.respCmt.fire)
+  val msg_resp    = msgRegVec(cmId_resp)
+  // valid
+  io.respCmt.valid  := cmVec_resp.reduce(_ | _) & !msg_resp.task.fromRepl
+  io.respRepl.valid := cmVec_resp.reduce(_ | _) & msg_resp.task.fromRepl
+  // bits
+  io.respCmt.bits.llcTxnID    := msg_resp.task.llcTxnID
+  io.respCmt.bits.inst        := msg_resp.inst
+  io.respCmt.bits.inst.valid  := true.B
+  io.respCmt.bits.alrDB       := msg_resp.task.alrDB
+  io.respRepl.bits.channel    := SNP
+  io.respRepl.bits.llcTxnID   := msg_resp.task.llcTxnID
+  io.respRepl.bits.resp       := msg_resp.inst.resp
+
+
+  /*
+   * Modify Ctrl Machine Table
+   */
+  val hwaVec2 = WireInit(VecInit(Seq.fill(nrReadCM) {
+    VecInit(Seq.fill(6) {
+      true.B
+    })
+  }))
+  cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
+    case ((cm, msg), i) =>
+      val allocHit    = io.alloc.fire    & i.U === cmId_rec
+      val reqDBHit    = io.reqDB.fire    & i.U === cmId_reqDB
+      val sendSnpHit  = io.txSnp.fire    & i.U === cmId_sSnp
+      val recRespHit  = io.rxRsp.fire    & msg.task.llcTxnID.get === io.rxRsp.bits.TxnID
+      val recDataHit  = io.rxDat.fire    & msg.task.llcTxnID.get === io.rxDat.bits.TxnID
+      val cleanHit    = io.dataTask.fire & i.U === cmId_clean
+      val respHit     = io.dataResp.fire & msg.task.llcTxnID.get === io.dataResp.bits.llcTxnID.get
+      val respCmtHit  = io.respCmt.fire  & i.U === cmId_resp
+
+      // Store Msg From Frontend
+      val rspIsFwd = io.rxRsp.bits.Opcode === SnpRespFwded & recRespHit
+      val datIsFwd = io.rxDat.bits.Opcode === SnpRespData & recDataHit
+      when(allocHit) {
+        msg.task := io.alloc.bits
+        msg.inst := 0.U.asTypeOf(new TaskInst)
+      // Store AlrReqDB
+      }.elsewhen(reqDBHit) {
+        msg.task.alrDB.reqs := true.B
+      // Store Message
+      }.elsewhen(recDataHit | recRespHit) {
+        // inst
+        msg.inst.valid    := true.B
+        msg.inst.fwdValid := msg.inst.fwdValid | rspIsFwd | datIsFwd
+        msg.inst.fwdResp  := PriorityMux(Seq(
+          rspIsFwd -> io.rxRsp.bits.FwdState,
+          datIsFwd -> io.rxDat.bits.FwdState,
+          true.B   -> msg.inst.fwdResp,
+        ))
+        msg.inst.channel := PriorityMux(Seq(
+          recDataHit -> DAT,
+          recRespHit -> Mux(msg.inst.channel === DAT, DAT, RSP),
+          true.B     -> msg.inst.channel,
+        ))
+        msg.inst.opcode := PriorityMux(Seq(
+          recDataHit -> io.rxDat.bits.Opcode,
+          recRespHit -> Mux(msg.inst.channel === DAT, msg.inst.opcode, io.rxRsp.bits.Opcode),
+          true.B     -> msg.inst.opcode,
+        ))
+        msg.inst.resp := PriorityMux(Seq(
+          recDataHit -> io.rxDat.bits.Resp,
+          recRespHit -> Mux(msg.inst.channel === DAT, msg.inst.resp, io.rxRsp.bits.Resp),
+          true.B     -> msg.inst.resp,
+        ))
+      // Release
+      }.elsewhen(respCmtHit) {
+        msg := 0.U.asTypeOf(msg)
+      }
+
+      // Update
+      when(respCmtHit) {
+        cm.alrSendVec := 0.U.asTypeOf(cm.alrSendVec)
+        cm.getRespVec := 0.U.asTypeOf(cm.getRespVec)
+        cm.getDataVec := 0.U.asTypeOf(cm.getDataVec)
+      }.otherwise {
+        // alrSendVec
+        cm.alrSendVec(metaId_sSnp) := cm.alrSendVec(metaId_sSnp) & !sendSnpHit
+        // getDataVec
+        val beatId = Mux(io.rxDat.bits.DataID === "b10".U, 1.U, 0.U)
+        cm.getDataVec(beatId) := cm.getDataVec(beatId) & !recDataHit
+        // getRespVec
+        cm.getRespVec.zipWithIndex.foreach { case(get, i) =>
+          val rspHit = recRespHit & rspMetaId === i.U
+          val datHit = recDataHit & datMetaId === i.U
+          get := get | rspHit | datHit
+          HardwareAssertion(PopCount(Seq(rspHit, datHit)) <= 1.U)
+          HardwareAssertion.withEn(!rspHit, get)
+        }
+      }
+
+
+      // Get Next State
+      val alrSnpAll = PopCount(msg.task.snpVec.asUInt ^ cm.alrSendVec.asUInt) === 1.U
+      val alrGetAll = PopCount(msg.task.snpVec.asUInt ^ cm.getRespVec.asUInt) === 0.U & cm.getDataVec.asUInt === msg.task.chi.dataVec.asUInt
+      val needRepl  = msg.task.fromRepl & msg.inst.resp =/= ChiState.I
+      cm.state := PriorityMux(Seq(
+        allocHit   -> Mux(io.alloc.bits.needDB & !io.alloc.bits.alrDB.reqs, REQDB, SENDSNP),
+        reqDBHit   -> SENDSNP,
+        sendSnpHit -> Mux(alrSnpAll, WAITDATA, SENDSNP),
+        recRespHit -> Mux(alrGetAll, Mux(needRepl, CLEANDATA, RESP), RESP),
+        recDataHit -> Mux(alrGetAll, Mux(needRepl, CLEANDATA, RESP), RESP),
+        cleanHit   -> WAITDATA,
+        respHit    -> RESP,
+        respCmtHit -> FREE,
+        true.B     -> cm.state,
+      ))
+
+      HardwareAssertion.withEn(cm.isFree,       allocHit)
+      HardwareAssertion.withEn(cm.isReqDB,      reqDBHit)
+      HardwareAssertion.withEn(cm.isSendSnp,    sendSnpHit)
+      HardwareAssertion.withEn(cm.isWaitResp,   recRespHit)
+      HardwareAssertion.withEn(cm.isWaitResp,   recDataHit)
+      HardwareAssertion.withEn(cm.isCleanData,  cleanHit)
+      HardwareAssertion.withEn(cm.isWaitData,   respHit)
+      HardwareAssertion.withEn(cm.isResp,       respCmtHit)
+  }
 
   /*
    * HardwareAssertion placePipe

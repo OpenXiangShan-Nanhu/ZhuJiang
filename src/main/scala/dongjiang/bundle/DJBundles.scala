@@ -12,9 +12,6 @@ import zhujiang.chi.ReqOpcode.WriteEvictOrEvict
  * NoC Type
  */
 object NocType {
-  val LAN = 1.U
-  val BBN = 0.U
-
   def setRx(filt: Flit, t: Int) : Unit = filt.tgt := t.U
   def setRx(filt: Flit, t: UInt): Unit = filt.tgt := t
   def rxIs (filt: Flit, t: Int) : Bool = filt.tgt === t.U
@@ -145,7 +142,7 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
 
   def needSendDBID(sfHit: Bool = false.B) = isAtomic | (isWrite & !reqIs(WriteEvictOrEvict)) | (!sfHit & reqIs(WriteEvictOrEvict))
 
-  def getNoC = Mux(toLAN, NocType.LAN, NocType.BBN)
+  def getNoC = Mux(toLAN, LAN.U, BBN.U)
 
   def getChiInst: ChiInst = {
     val inst = Wire(new ChiInst)

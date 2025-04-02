@@ -212,7 +212,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
 
       // Message
       val wriAll      = WireInit(false.B)
-      val needSecRepl = cmRespHit & io.respRepl.bits.state =/= ChiState.I & io.respRepl.bits.isSnp
+      val needSecRepl = cmRespHit & !io.respRepl.bits.isInvalid & io.respRepl.bits.isSnp
       when(allocHit) {
         msg := io.alloc.bits
       }.elsewhen(writeHit) {
@@ -229,7 +229,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
         msg.wriLLC        := true.B
         msg.dir.llc.wayOH := DontCare
         msg.dir.llc.hit   := false.B
-        msg.dir.llc.metaVec.head.state := io.respRepl.bits.state
+        msg.dir.llc.metaVec.head.state := Mux(io.respRepl.bits.passDirty, ChiState.UD, ChiState.SC)
       }.elsewhen(respHit) {
         msg := 0.U.asTypeOf(msg)
       }

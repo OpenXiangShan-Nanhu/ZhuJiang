@@ -29,7 +29,7 @@ object State {
 }
 
 class CMState(implicit p: Parameters) extends DJBundle {
-  // CHI: Free --> SendReq  --> CanNest --> WaitDBID --> DataTask --> WaitData/WaitComp --> RespCmt/RespRepl  --> Free
+  // CHI: Free --> SendReq  --> CanNest --> WaitDBID --> DataTask --> WaitData/WaitComp --> RespCmt/RespRepl --> Free
   val state       = UInt(State.width.W)
 
   def isValid     = state.orR
@@ -158,7 +158,7 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   io.respCmt.bits.alrDB         := task_resp.alrDB
   io.respRepl.bits.llcTxnID     := task_resp.llcTxnID
   io.respRepl.bits.channel      := ChiChannel.REQ
-  io.respRepl.bits.state        := ChiState.I
+  io.respRepl.bits.resp         := ChiState.I
 
 
   /*

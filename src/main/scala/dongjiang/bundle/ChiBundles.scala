@@ -31,16 +31,16 @@ object ChiResp {
 }
 
 trait HasChiResp { this: Bundle =>
-  val state = UInt(ChiResp.width.W)
+  val resp      = UInt(ChiResp.width.W)
 
   val baseWidth = ChiResp.width-2
 
-  def isInvalid = state(baseWidth, 0) === ChiResp.I(baseWidth, 0)
-  def isShared  = state(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | state(baseWidth, 0) === ChiResp.SD(baseWidth, 0)
-  def isUnique  = state(baseWidth, 0) === ChiResp.UC(baseWidth, 0) | state(baseWidth, 0) === ChiResp.UD(baseWidth, 0)
-  def isClean   = state(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | state(baseWidth, 0) === ChiResp.UC(baseWidth, 0)
-  def isDirty   = state(baseWidth, 0) === ChiResp.UD(baseWidth, 0) | state(baseWidth, 0) === ChiResp.SD(baseWidth, 0)
-  def passDirty = state(ChiResp.width-1)
+  def isInvalid = resp(baseWidth, 0) === ChiResp.I(baseWidth, 0)
+  def isShared  = resp(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | resp(baseWidth, 0) === ChiResp.SD(baseWidth, 0)
+  def isUnique  = resp(baseWidth, 0) === ChiResp.UC(baseWidth, 0) | resp(baseWidth, 0) === ChiResp.UD(baseWidth, 0)
+  def isClean   = resp(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | resp(baseWidth, 0) === ChiResp.UC(baseWidth, 0)
+  def isDirty   = resp(baseWidth, 0) === ChiResp.UD(baseWidth, 0) | resp(baseWidth, 0) === ChiResp.SD(baseWidth, 0)
+  def passDirty = resp(ChiResp.width-1)
 }
 
 class ChiResp extends Bundle with HasChiResp

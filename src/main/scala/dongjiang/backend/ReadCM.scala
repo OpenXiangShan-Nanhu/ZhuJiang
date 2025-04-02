@@ -67,7 +67,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   val msgRegVec   = Reg(Vec(nrReadCM, new PackCMTask with HasPackTaskInst))
 
   /*
-   * [REC] Receive Task IO
+   * Receive Task IO
    */
   val cmVec_rec     = cmRegVec.map(!_.valid) // Free Vec
   val cmId_rec      = PriorityEncoder(cmVec_rec)
