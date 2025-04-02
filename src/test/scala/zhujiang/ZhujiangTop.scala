@@ -1,13 +1,14 @@
 package zhujiang
 
-import org.chipsalliance.cde.config.{Config, Parameters}
-import xijiang.{NodeParam, NodeType}
 import chisel3.stage.ChiselGeneratorAnnotation
-import circt.stage.{ChiselStage, FirtoolOption}
+import circt.stage.FirtoolOption
+import org.chipsalliance.cde.config.{Config, Parameters}
 import xijiang.tfb.TrafficBoardFileManager
+import xijiang.{NodeParam, NodeType}
 import xs.utils.FileRegisters
 import xs.utils.debug.{HardwareAssertionKey, HwaParams}
-import xs.utils.perf.{DebugOptions, DebugOptionsKey, PerfCounterOptions, PerfCounterOptionsKey, XSPerfLevel}
+import xs.utils.perf._
+import xs.utils.stage.XsStage
 
 import scala.annotation.tailrec
 
@@ -78,7 +79,7 @@ object ZhujiangTopParser {
 
 object ZhujiangTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
-  (new ChiselStage).execute(firrtlOpts, Seq(
+  (new XsStage).execute(firrtlOpts, Seq(
     FirtoolOption("-O=release"),
     FirtoolOption("--disable-all-randomization"),
     FirtoolOption("--disable-annotation-unknown"),

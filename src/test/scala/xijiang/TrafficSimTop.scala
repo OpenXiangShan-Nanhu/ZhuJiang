@@ -2,13 +2,14 @@ package xijiang
 
 import chisel3._
 import chisel3.stage.ChiselGeneratorAnnotation
-import circt.stage.{ChiselStage, FirtoolOption}
+import circt.stage.FirtoolOption
 import org.chipsalliance.cde.config.{Config, Parameters}
 import xijiang.tfb.TrafficBoardFileManager
 import xijiang.tfs.{TrafficSimFileManager, TrafficSimParams}
 import xs.utils.FileRegisters
 import xs.utils.debug.{HardwareAssertionKey, HwaParams}
 import xs.utils.perf.{PerfCounterOptions, PerfCounterOptionsKey, XSPerfLevel}
+import xs.utils.stage.XsStage
 import zhujiang.{ZJModule, ZJParameters, ZJParametersKey}
 
 import scala.annotation.tailrec
@@ -84,7 +85,7 @@ class TrafficSimTop(implicit p: Parameters) extends ZJModule {
 
 object TrafficSimTopMain extends App {
   val (config, firrtlOpts) = TfsTopParser(args)
-  (new ChiselStage).execute(firrtlOpts, Seq(
+  (new XsStage).execute(firrtlOpts, Seq(
     FirtoolOption("-O=release"),
     FirtoolOption("--disable-all-randomization"),
     FirtoolOption("--disable-annotation-unknown"),
