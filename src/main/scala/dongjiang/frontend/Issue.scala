@@ -85,7 +85,7 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * [S4] Save cmTask
    */
-  val freeVec_s3  = taskOpsVecReg_s4.map(!_.asUInt.orR)
+  val freeVec_s3  = taskOpsVecReg_s4.map(!_.valid)
   val freeId_s3   = PriorityEncoder(freeVec_s3)
   val deqOpHit_s3 = io.cmAllocVec_s4.zipWithIndex.map { case(alloc, i) => alloc.fire & task_s3.code.cmid === i.U }.reduce(_ | _)
   val nid_s3      = PopCount(taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === task_s3.code.cmid))
