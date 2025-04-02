@@ -3,7 +3,7 @@ package zhujiang.device.bridge.tlul
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
-import xijiang.Node
+import xijiang.{Node, NodeType}
 import zhujiang.device.bridge.BaseCtrlMachine
 import zhujiang.tilelink.{AFlit, AOpcode, TilelinkParams}
 
@@ -15,8 +15,8 @@ class TLULBridgeCtrlMachine(
   compareTag: (UInt, UInt) => Bool
 )(implicit p: Parameters) extends BaseCtrlMachine(
   genOpVec = new TLULBridgeCtrlOpVec,
-  genInfo = new TLULCtrlInfo(ioDataBits),
-  genRsEntry = new TLULRsEntry(ioDataBits),
+  genInfo = new TLULCtrlInfo(ioDataBits, icnNode.nodeType == NodeType.S),
+  genRsEntry = new TLULRsEntry(ioDataBits, icnNode.nodeType == NodeType.S),
   node = icnNode,
   outstanding = outstanding,
   ioDataBits = ioDataBits,

@@ -52,10 +52,10 @@ package object tlul {
     def wakeup:Bool = d.wreq && d.rreq
   }
 
-  class TLULCtrlInfo(ioDataBits: Int)(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, mem = false)
+  class TLULCtrlInfo(ioDataBits: Int, sn:Boolean)(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, mem = sn)
 
-  class TLULRsEntry(dataBits: Int)(implicit p: Parameters) extends IcnIoDevRsEntryCommon[TLULBridgeCtrlOpVec, TLULCtrlInfo] {
+  class TLULRsEntry(dataBits: Int, sn:Boolean)(implicit p: Parameters) extends IcnIoDevRsEntryCommon[TLULBridgeCtrlOpVec, TLULCtrlInfo] {
     val state = new TLULBridgeCtrlOpVec
-    val info = new TLULCtrlInfo(dataBits)
+    val info = new TLULCtrlInfo(dataBits, sn)
   }
 }

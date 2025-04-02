@@ -12,7 +12,7 @@ import zhujiang.tilelink.{DOpcode, TLULBundle, TilelinkParams}
 
 class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Parameters) extends ZJModule {
   private val compareTagBits = 16
-  require(node.nodeType == NodeType.HI)
+  require(node.nodeType == NodeType.HI || node.nodeType == NodeType.S)
   private val tlParams = TilelinkParams(sourceBits = log2Ceil(node.outstanding), dataBits = busDataBits)
 
   val icn = IO(new DeviceIcnBundle(node))
@@ -63,10 +63,12 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
   for((cm, idx) <- cms.zipWithIndex) {
     cm.icn.rx.req.valid := icn.rx.req.get.valid && enqCtrl.bits(idx)
     cm.icn.rx.req.bits := icn.rx.req.get.bits.asTypeOf(new ReqFlit)
-    cm.icn.rx.resp.get.valid := icn.rx.resp.get.valid && icn.rx.resp.get.bits.asTypeOf(new RespFlit).TxnID === idx.U
-    cm.icn.rx.resp.get.bits := icn.rx.resp.get.bits.asTypeOf(new RespFlit)
     cm.icn.rx.data.valid := icn.rx.data.get.valid && icn.rx.data.get.bits.asTypeOf(new DataFlit).TxnID === idx.U
     cm.icn.rx.data.bits := icn.rx.data.get.bits.asTypeOf(new DataFlit)
+    cm.icn.rx.resp.foreach({r =>
+      r.valid := icn.rx.resp.get.valid && icn.rx.resp.get.bits.asTypeOf(new RespFlit).TxnID === idx.U
+      r.bits := icn.rx.resp.get.bits.asTypeOf(new RespFlit)
+    })
 
     cm.io.readDataFire := tl.d.fire && tl.d.bits.source === idx.U
     cm.io.readDataLast := true.B
@@ -84,12 +86,19 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
   readDataPipe.io.enq.bits.Data := Fill(dw / busDataBits, tl.d.bits.data)
   readDataPipe.io.enq.bits.Opcode := Mux(tl.d.bits.opcode === DOpcode.AccessAckData, DatOpcode.CompData, 0.U)
   readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4)
-  readDataPipe.io.enq.bits.TxnID := ctrlSel.txnId
   readDataPipe.io.enq.bits.SrcID := 0.U
-  readDataPipe.io.enq.bits.DBID := tl.d.bits.source
-  readDataPipe.io.enq.bits.HomeNID := nodeId
-  readDataPipe.io.enq.bits.TgtID := ctrlSel.srcId
   readDataPipe.io.enq.bits.Resp := "b010".U
+  if(node.nodeType == NodeType.S) {
+    readDataPipe.io.enq.bits.TxnID := ctrlSel.returnTxnId.get
+    readDataPipe.io.enq.bits.TgtID := ctrlSel.returnNid.get
+    readDataPipe.io.enq.bits.HomeNID := ctrlSel.srcId
+    readDataPipe.io.enq.bits.DBID := ctrlSel.txnId
+  } else {
+    readDataPipe.io.enq.bits.TxnID := ctrlSel.txnId
+    readDataPipe.io.enq.bits.TgtID := ctrlSel.srcId
+    readDataPipe.io.enq.bits.HomeNID := nodeId
+    readDataPipe.io.enq.bits.DBID := tl.d.bits.source
+  }
 
   icn.tx.data.get.valid := readDataPipe.io.deq.valid && readDataPipe.io.deq.bits.Opcode === DatOpcode.CompData
   icn.tx.data.get.bits := readDataPipe.io.deq.bits.asTypeOf(icn.tx.data.get.bits)
