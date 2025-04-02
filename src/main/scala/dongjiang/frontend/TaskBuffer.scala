@@ -28,7 +28,7 @@ class CtrlEntry(sort: Boolean, nidBits: Int)(implicit p: Parameters) extends DJB
   def isSleep   = state(3)
 }
 
-
+// TODO: can receive device
 class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration

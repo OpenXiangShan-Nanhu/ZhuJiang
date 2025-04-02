@@ -110,9 +110,9 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.fastResp_s1.bits.TgtID   := taskReg_s1.nodeId
   io.fastResp_s1.bits.TxnID   := taskReg_s1.txnID
   io.fastResp_s1.bits.Opcode  := PriorityMux(Seq(
-    (taskReg_s1.isRead  & taskReg_s1.isEO)      -> ReadReceipt,
-    (taskReg_s1.isWrite & !taskReg_s1.noOrder)  -> DBIDResp,
-    (taskReg_s1.isWrite)                        -> CompDBIDResp,
+    (taskReg_s1.isRead  & taskReg_s1.isEO)        -> ReadReceipt,
+    (taskReg_s1.isWrite & taskReg_s1.memAttr.ewa) -> CompDBIDResp, // TODO: Commit need to send Comp when get Comp from SN
+    (taskReg_s1.isWrite)                          -> DBIDResp,
   ))
   io.fastResp_s1.bits.RespErr := RespErr.NormalOkay
   io.fastResp_s1.bits.DBID    := io.posIdx_s1.getLLCTxnID(dirBank)

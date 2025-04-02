@@ -34,24 +34,24 @@ object Read_LAN_DCT_DMT {
     // I I UD -> UD I I
     (sfMiss | llcIs(UD)) -> first(cmtDat(CompData) | resp(UD_PD) | wriSRC(true) | wriLLC(I)),
     // I V I
-    (srcMiss | othHit | llcIs(I))  -> (snpOth(SnpNotSharedDirtyFwd) | needDB, Seq(
-      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(SC)) -> second(wriSRC(true)), // SC SC I
-      (datIs(SnpRespDataFwded)  | respIs(SC)    | fwdIs(SC)) -> second(wriSRC(true)), // SC SC I
-      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(SC)) -> second(wriSRC(true)), // SC I  I
-      (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(SC)) -> second(wriSRC(true)), // SC I  I
-      (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(SC)) -> second(wriOrAtm(WriteNoSnpFull), wriSRC(true)), // SC SC I
-      (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(SC)) -> second(wriOrAtm(WriteNoSnpFull), wriSRC(true)), // SC I  I
-      (rspIs(SnpResp)           | respIs(I))                 -> second(read(ReadNoSnp), wriSRC(true)) // UC I  I // No Fwd
+    (srcMiss | othHit | llcIs(I))  -> (snpOne(SnpNotSharedDirtyFwd) | needDB, Seq(
+      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(SC)) -> second(wriSRC(true) | wriSNP(true)),  // SC SC I
+      (datIs(SnpRespDataFwded)  | respIs(SC)    | fwdIs(SC)) -> second(wriSRC(true) | wriSNP(true)),  // SC SC I
+      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(SC)) -> second(wriSRC(true) | wriSNP(false)), // SC I  I
+      (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(SC)) -> second(wriSRC(true) | wriSNP(false)), // SC I  I
+      (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(SC)) -> second(wriOrAtm(WriteNoSnpFull), wriSRC(true) | wriSNP(true)),  // SC SC I
+      (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(SC)) -> second(wriOrAtm(WriteNoSnpFull), wriSRC(true) | wriSNP(false)), // SC I  I
+      (rspIs(SnpResp)           | respIs(I))                 -> second(read(ReadNoSnp), wriSRC(true) | wriSNP(false)) // UC I  I // No Fwd
     )),
     // V I I -> UC I I
     (srcHit | othMiss | llcIs(I))  -> first(read(ReadNoSnp), noCmt),
     // V V I
-    (srcHit | othHit | llcIs(I))  -> (snpOth(SnpNotSharedDirtyFwd) | needDB, Seq(
+    (srcHit | othHit | llcIs(I))  -> (snpOne(SnpNotSharedDirtyFwd) | needDB, Seq(
       (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(SC)) -> second(noCmt), // SC SC I
       (datIs(SnpRespDataFwded)  | respIs(SC)    | fwdIs(SC)) -> second(noCmt), // SC SC I
-      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(SC)) -> second(noCmt), // SC I  I
-      (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(SC)) -> second(noCmt), // SC I  I
-      (rspIs(SnpResp)           | respIs(I))                 -> second(read(ReadNoSnp), noCmt) // UC I  I // No Fwd
+      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(SC)) -> second(wriSNP(false)), // SC I  I
+      (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(SC)) -> second(wriSNP(false)), // SC I  I
+      (rspIs(SnpResp)           | respIs(I))                 -> second(read(ReadNoSnp), wriSNP(false)) // UC I  I // No Fwd
     )),
   ))
 
@@ -67,17 +67,17 @@ object Read_LAN_DCT_DMT {
     (sfMiss | llcIs(UD)) -> first(cmtDat(CompData) | resp(UD_PD) | wriSRC(true) | wriLLC(I)),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (snpOth(SnpUniqueFwd) | needDB, Seq(
-      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(UC))    -> second(wriSRC(true)), // UC I I
-      (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(UD_PD)) -> second(wriSRC(true)), // UD I I
-      (datIs(SnpRespData)       | respIs(I_PD))                 -> second(cmtDat(CompData) | resp(UD) | wriSRC(true)), // UD I I // No Fwd
-      (rspIs(SnpResp)           | respIs(I))                    -> second(read(ReadNoSnp), wriSRC(true)) // UC I I // No Fwd
+      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(UC))    -> second(wriSRC(true) | wriSNP(false)), // UC I I
+      (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(UD_PD)) -> second(wriSRC(true) | wriSNP(false)), // UD I I
+      (datIs(SnpRespData)       | respIs(I_PD))                 -> second(cmtDat(CompData) | resp(UD) | wriSRC(true) | wriSNP(false)), // UD I I // No Fwd
+      (rspIs(SnpResp)           | respIs(I))                    -> second(read(ReadNoSnp), wriSRC(true) | wriSNP(false)) // UC I I // No Fwd
     )),
     // V I I -> UC I I
     (srcHit | othMiss | llcIs(I)) -> first(read(ReadNoSnp), noCmt),
     // V V I
     (srcHit | othHit | llcIs(I))  -> (snpOth(SnpUniqueFwd) | needDB, Seq(
       (rspIs(SnpRespFwded)  | respIs(I) | fwdIs(UC))  -> second(noCmt), // UC I I
-      (rspIs(SnpResp)       | respIs(I))              -> second(read(ReadNoSnp), noCmt) // UC I I // No Fwd
+      (rspIs(SnpResp)       | respIs(I))              -> second(read(ReadNoSnp), wriSNP(false)) // UC I I // No Fwd
     )),
   ))
 

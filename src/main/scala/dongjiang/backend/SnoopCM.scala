@@ -14,6 +14,7 @@ import dongjiang.frontend.decode._
 import zhujiang.chi.RspOpcode._
 import dongjiang.backend._
 import dongjiang.backend.read.State._
+import dongjiang.data.DataTask
 
 
 class SnoopCM(implicit p: Parameters) extends DJModule {
@@ -32,6 +33,11 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
     val respCmt     = Decoupled(new RespToCmt)
     // Req To Data
     val reqDB       = Decoupled(new PackLLCTxnID with HasDataVec)
+    // DataTask
+    val dataTask    = Decoupled(new DataTask)
+    val dataResp    = Flipped(Valid(new PackLLCTxnID()))
+    // Resp To Replace
+    val respRepl    = Decoupled(new PackLLCTxnID() with HasChiChannel with HasChiResp)
   })
   HardwareAssertion(!io.alloc.valid)
   io <> DontCare

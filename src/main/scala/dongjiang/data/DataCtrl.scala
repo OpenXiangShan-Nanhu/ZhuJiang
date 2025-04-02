@@ -29,7 +29,6 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
     val writeDs = Decoupled(new DsWrite() with HasBeatNum)
     val respDs  = Flipped(Valid(new DsResp()))
   })
-  io <> DontCare
 
   /*
    * SRAM, Module, Reg and Wire declaration
@@ -58,7 +57,6 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   val txDatQ  = Module(new FastQueue(new DataFlit(), 2, false))
   val replQ   = Module(new FastQueue(new DataFlit(), 4, false)) // TODO
   val replNumReg = RegInit(0.U(2.W))
-  datBuf.io <> DontCare
 
   /*
    * [FREE] Receive Req or Task
@@ -248,7 +246,8 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
         (taskHit & io.task.bits.dataOp.read) -> Mux(io.task.bits.dataVec(0), READ0, READ1),
         (taskHit & io.task.bits.dataOp.send) -> Mux(io.task.bits.dataVec(0), SAVE0, SAVE1),
         (taskHit & io.task.bits.dataOp.save) -> Mux(io.task.bits.dataVec(0), SAVE0, SAVE1),
-        (readHit | waitHit | sendHit | saveHit | respHit) -> nxs
+        (readHit | waitHit | sendHit | saveHit | respHit) -> nxs,
+        true.B -> dc._1.state
       ))
 
 

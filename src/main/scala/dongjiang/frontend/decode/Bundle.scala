@@ -78,14 +78,19 @@ trait HasOperations { this: Bundle =>
   }
 }
 
-class Operations(implicit p: Parameters) extends Bundle with HasOperations
+class Operations extends Bundle with HasOperations
+
+trait HasPackOperations { this: Bundle => val ops = new Operations() }
 
 object SnpTgt {
   val width       = 3
+  val NONE        = "b000".U
   val ALL         = "b001".U
   val ONE         = "b010".U // Select first other
   val OTH         = "b100".U
 }
+
+trait HasSnpTgt { this: Bundle => val snpTgt = UInt(SnpTgt.width.W) }
 
 trait HasTaskCode { this: Bundle with HasOperations =>
   // Common
@@ -103,6 +108,8 @@ trait HasTaskCode { this: Bundle with HasOperations =>
   def snpAll      = snpTgt(0).asBool
   def snpOne      = snpTgt(1).asBool
   def snpOth      = snpTgt(2).asBool
+
+  // TODO: MemAttr
 }
 
 class TaskCode extends Bundle with HasOperations with HasTaskCode
@@ -114,6 +121,7 @@ trait HasWriDirCode { this: Bundle =>
   val wriSF       = UInt(SnpTgt.width.W)
   val wriLLC      = Bool()
   val srcValid    = Bool()
+  val snpValid    = Bool()
   val llcState    = UInt(ChiState.width.W)
 
   def wriDir      = wriSF | wriLLC
@@ -250,6 +258,7 @@ object Code {
 
   // CommitCode Write SF/LLC
   def wriSRC  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.srcValid   := x.asBool;    temp.wriSF := true.B;   temp.asUInt }
+  def wriSNP  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.snpValid   := x.asBool;    temp.wriSF := true.B;   temp.asUInt }
   def wriLLC  (x: UInt)    : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.llcState   := toState(x);  temp.wriLLC := true.B;  require(x.getWidth == DecodeCHI.width); temp.asUInt }
 
 

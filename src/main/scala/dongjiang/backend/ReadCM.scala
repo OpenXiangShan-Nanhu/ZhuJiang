@@ -15,6 +15,7 @@ import zhujiang.chi.RspOpcode._
 import dongjiang.backend._
 import dongjiang.backend.read.State._
 
+// TODO: Unified coding style
 object State {
   val width       = 5
   val Free        = "b00000".U
@@ -27,11 +28,10 @@ object State {
 
 class CMState(implicit p: Parameters) extends DJBundle {
   // CHI: Free --> ReqDB --> SendReq --> WaitData0 --> WaitData1 --> SendCompAck --> Free
-  //                                  ^                           ^
-  // Internal:                     CantNest                    RespCmt
+  //                                                              ^
+  // Internal:                                                 RespCmt // TODO
   val valid     = Bool()
   val state     = UInt(State.width.W)
-  val cantNest  = Bool()
   val respCmt   = Bool()
 
   def isReqDB       = state(0)
@@ -54,8 +54,6 @@ class ReadCM(implicit p: Parameters) extends DJModule {
     val txReq         = Decoupled(new ReqFlit(true))
     val txRsp         = Decoupled(new RespFlit())
     val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
-    // Update PoS Message
-    val updPosNestVec = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasNest))
     // Resp To Commit
     val respCmt       = Decoupled(new RespToCmt)
     // Req To Data
@@ -125,20 +123,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
 
 
   /*
-   * Update PoS Message
-   */
-  val fire_nest   = io.updPosNestVec.map(_.fire).reduce(_ | _)
-  val cmVec_nest  = cmRegVec.map(_.cantNest)
-  val cmId_nest   = StepRREncoder(cmVec_nest, fire_nest)
-  val task_nest   = msgRegVec(cmId_nest).task
-  // valid
-  io.updPosNestVec.zipWithIndex.foreach { case(upd, i) => upd.valid := cmVec_nest.reduce(_ | _) & task_nest.llcTxnID.dirBank === i.U }
-  // bits
-  io.updPosNestVec.foreach(_.bits.pos     := task_nest.llcTxnID.pos)
-  io.updPosNestVec.foreach(_.bits.canNest := false.B)
-
-  /*
-   * Update PoS Message
+   * Send Resp To Commit
    */
   val cmVec_resp  = cmRegVec.map(_.respCmt)
   val cmId_resp   = StepRREncoder(cmVec_resp, io.respCmt.fire)
@@ -158,7 +143,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   /*
    * Modify Ctrl Machine Table
    */
-  val hwaVec2 = WireInit(VecInit(Seq.fill(nrReadCM) { VecInit(Seq.fill(7) { true.B }) }))
+  val hwaVec2 = WireInit(VecInit(Seq.fill(nrReadCM) { VecInit(Seq.fill(6) { true.B }) }))
   cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
     case ((cm, msg), i) =>
       val allocHit    = io.alloc.fire   & i.U === cmId_rec
@@ -166,7 +151,6 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       val sendReqHit  = io.txReq.fire   & i.U === cmId_sReq
       val recDataHit  = io.rxDat.fire   & msg.task.llcTxnID.get === io.rxDat.bits.TxnID
       val sendAckHit  = io.txRsp.fire   & i.U === cmId_sAck
-      val updNestHit  = fire_nest       & i.U === cmId_nest
       val respCmtHit  = io.respCmt.fire & i.U === cmId_resp
 
       // Store Msg From Frontend
@@ -175,7 +159,6 @@ class ReadCM(implicit p: Parameters) extends DJModule {
         msg.inst := 0.U.asTypeOf(new TaskInst)
       // Store AlrReqDB
       }.elsewhen(reqDBHit) {
-        cm.cantNest         := true.B
         msg.task.alrDB.reqs := true.B
       // Store Message
       }.elsewhen(recDataHit) {
@@ -197,9 +180,8 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       ))
 
       // Trans State and flag
-      cm.valid    := Mux(allocHit, true.B, !(cm.state === Free & !cm.cantNest & !cm.respCmt))
+      cm.valid    := Mux(allocHit, true.B, !(cm.state === Free & !cm.respCmt))
       cm.state    := nxtState
-      cm.cantNest := Mux(updNestHit, false.B, cm.state === SendReq & nxtState =/= SendReq) // SendReq -> Other
       cm.respCmt  := Mux(respCmtHit, false.B, (cm.state === WaitData0 | cm.state === WaitData1) & (nxtState === SendCompAck | nxtState === Free)) // WaitData -> SendCompAck/Free
 
       // HardwareAssertion
@@ -208,8 +190,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       when(sendReqHit) { hwaVec2(i)(2) := cm.isSendReq }
       when(recDataHit) { hwaVec2(i)(3) := cm.isWaitData }
       when(sendAckHit) { hwaVec2(i)(4) := cm.isSendCompAck }
-      when(updNestHit) { hwaVec2(i)(5) := cm.cantNest }
-      when(respCmtHit) { hwaVec2(i)(6) := cm.respCmt }
+      when(respCmtHit) { hwaVec2(i)(5) := cm.respCmt }
   }
 
 

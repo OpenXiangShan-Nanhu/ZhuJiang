@@ -28,8 +28,6 @@ class DatalessCM(implicit p: Parameters) extends DJModule {
     val txReq         = Decoupled(new ReqFlit(true))
     val txRsp         = Decoupled(new RespFlit())
     val rxRsp         = Flipped(Valid(new RespFlit()))
-    // Update PoS Message
-    val updPosNestVec = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasNest))
     // Resp To Commit
     val respCmt       = Decoupled(new RespToCmt)
   })

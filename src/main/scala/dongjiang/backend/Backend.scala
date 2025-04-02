@@ -93,11 +93,11 @@ class Backend(implicit p: Parameters) extends DJModule {
   // chi
   io.txReq        <> fastRRArb(Seq(readCM.io.txReq, datalessCM.io.txReq, wriOrAtmCM.io.txReq))
   io.txSnp        <> snoopCM.io.txSnp
-  io.txRsp        <> fastRRArb(cmtCMs.map(_.io.txRsp) ++ Seq(readCM.io.txRsp, datalessCM.io.txRsp, wriOrAtmCM.io.txRsp, FastQueue(io.fastResp, fastRespQSzie)))
+  io.txRsp        <> fastRRArb(cmtCMs.map(_.io.txRsp) ++ Seq(readCM.io.txRsp, datalessCM.io.txRsp, FastQueue(io.fastResp, fastRespQSzie)))
   io.rxRsp.ready  := true.B
   // frontend
-  io.getPosAddrVec.zip(cmtCMs.map(_.io.getPosAddr).zip(replCM.io.getPosAddrVec)).foreach { case(get, (cmt, repl)) => get := fastRRArb.onlyBits(Seq(cmt, repl)) }
-  io.updPosNestVec.zipWithIndex.foreach { case(upd, i) => upd <> fastRRArb(Seq(cmtCMs(i).io.updPosNest, readCM.io.updPosNestVec(i), datalessCM.io.updPosNestVec(i), wriOrAtmCM.io.updPosNestVec(i))) }
+  io.getPosAddrVec.zip(cmtCMs.map(_.io.getPosAddr)).foreach { case(get, cmt) => get := cmt }
+  io.updPosNestVec.zipWithIndex.foreach { case(upd, i) => upd <> fastRRArb(Seq(cmtCMs(i).io.updPosNest, wriOrAtmCM.io.updPosNestVec(i))) }
   io.updPosTagVec.zipWithIndex.foreach { case(upd, i) =>
     upd.valid := replCM.io.updPosTag.valid & replCM.io.updPosTag.bits.dirBank === i.U
     upd.bits  := replCM.io.updPosTag.bits
@@ -111,8 +111,8 @@ class Backend(implicit p: Parameters) extends DJModule {
   io.writeDir <> replCM.io.writeDir
   io.unlockVec.zip(cmtCMs.map(_.io.unlock)).foreach { case (a, b) => a <> b }
   // data
-  io.reqDB    <> fastRRArb(Seq(snoopCM.io.reqDB, readCM.io.reqDB, wriOrAtmCM.io.reqDB))
-  io.dataTask <> fastRRArb(cmtCMs.map(_.io.dataTask) ++ Seq(replCM.io.dataTask))
+  io.reqDB    <> fastRRArb(Seq(snoopCM.io.reqDB, readCM.io.reqDB))
+  io.dataTask <> fastRRArb(cmtCMs.map(_.io.dataTask) ++ Seq(wriOrAtmCM.io.dataTask, snoopCM.io.dataTask))
   // other
   io.multicore:= DontCare
 
@@ -129,21 +129,20 @@ class Backend(implicit p: Parameters) extends DJModule {
       cmt.io.replResp.valid     := replCM.io.resp.valid & replCM.io.resp.bits.dirBank === i.U
       cmt.io.replResp.bits.pos  := replCM.io.resp.bits.pos
       // dataResp
-      val drHit_io   = io.dataResp.valid & io.dataResp.bits.llcTxnID.dirBank === i.U
-      val drHit_repl = replCM.io.dataResp.valid & replCM.io.dataResp.bits.llcTxnID.dirBank === i.U
-      cmt.io.dataResp.valid     := drHit_io | drHit_repl
-      cmt.io.dataResp.bits.pos  := Mux(drHit_io, io.dataResp.bits.llcTxnID.pos, replCM.io.dataResp.bits.llcTxnID.pos)
+      cmt.io.dataResp.valid     := io.dataResp.valid & io.dataResp.bits.llcTxnID.dirBank === i.U
+      cmt.io.dataResp.bits.pos  := io.dataResp.bits.llcTxnID.pos
   }
 
   // repl
   replCM.io.alloc <> fastRRArb(cmtCMs.map(_.io.replAlloc))
-  replCM.io.posRespAddrVec.zip(io.posRespAddrVec).foreach { case(a, b) => a <> b }
   replCM.io.respDir := io.respDir
+  replCM.io.respRepl <> fastArb.validOut(Seq(snoopCM.io.respRepl, wriOrAtmCM.io.respRepl))
 
   // snoop
   snoopCM.io.alloc <> fastArb(Seq(fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.SNP)) ++ Seq(replCM.io.cmAllocVec(CMID.SNP)))) ++ io.cmAllocVec2.map(_(CMID.SNP)))
   snoopCM.io.rxRsp := io.rxRsp
   snoopCM.io.rxDat := io.rxDat
+  snoopCM.io.dataResp := io.dataResp
 
   // read
   readCM.io.alloc <> fastArb(Seq(fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.READ)) ++ Seq(replCM.io.cmAllocVec(CMID.READ)))) ++ io.cmAllocVec2.map(_(CMID.READ)))
@@ -155,7 +154,8 @@ class Backend(implicit p: Parameters) extends DJModule {
 
   // write or atomic
   wriOrAtmCM.io.alloc <> fastArb(Seq(fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.WOA)) ++ Seq(replCM.io.cmAllocVec(CMID.WOA)))) ++ io.cmAllocVec2.map(_(CMID.WOA)))
-  wriOrAtmCM.io.rxDat := io.rxDat
+  wriOrAtmCM.io.rxRsp := io.rxRsp
+  wriOrAtmCM.io.dataResp := io.dataResp
 
   /*
    * HardwareAssertion placePipe

@@ -33,10 +33,7 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * Module and Reg declaration
    */
   // s3
-  val allVec_s3         = Wire(Vec(nrSfMetas, Bool()))
-  val othVec_s3         = Wire(Vec(nrSfMetas, Bool()))
-  val oneVec_s3         = Wire(Vec(nrSfMetas, Bool()))
-  val cmTask_s3         = Wire(chiselTypeOf(io.cmAllocVec_s4.head.bits))
+  val cmTask_s3         = Wire(new CMTask())
   // s4
   val taskOpsVecReg_s4  = RegInit(VecInit(Seq.fill(nrIssueBuf) { 0.U.asTypeOf(Valid(new Operations())) }))
   val taskNidVecReg_s4  = RegInit(VecInit(Seq.fill(nrIssueBuf) { 0.U(issueBufBits.W) }))
@@ -51,7 +48,11 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.cmtAlloc_s3.bits.pos       := io.task_s3.bits.pos
   io.cmtAlloc_s3.bits.dir       := io.task_s3.bits.dir
   io.cmtAlloc_s3.bits.alrDB     := io.task_s3.bits.alrDB
+  io.cmtAlloc_s3.bits.ops       := io.task_s3.bits.code
   io.cmtAlloc_s3.bits.commit    := io.task_s3.bits.commit
+  io.cmtAlloc_s3.bits.ds.bank   := getDS(io.task_s3.bits.addr, io.task_s3.bits.dir.llc.way)._1
+  io.cmtAlloc_s3.bits.ds.idx    := getDS(io.task_s3.bits.addr, io.task_s3.bits.dir.llc.way)._2
+  io.cmtAlloc_s3.bits.snpTgt    := io.task_s3.bits.code.snpTgt
 
 
   /*
@@ -63,6 +64,10 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   cmTask_s3.llcTxnID.dirBank:= dirBank.U
   cmTask_s3.chi             := task_s3.chi
   cmTask_s3.alrDB           := task_s3.alrDB
+  cmTask_s3.ds.bank         := getDS(task_s3.addr, task_s3.dir.llc.way)._1
+  cmTask_s3.ds.idx          := getDS(task_s3.addr, task_s3.dir.llc.way)._2
+  cmTask_s3.fromRepl        := false.B
+  cmTask_s3.cbResp          := task_s3.dir.llc.metaVec.head.state
   // set by decode
   cmTask_s3.chi.channel     := Mux(task_s3.code.snoop, ChiChannel.SNP, ChiChannel.REQ)
   cmTask_s3.chi.opcode      := task_s3.code.opcode
@@ -70,16 +75,8 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   cmTask_s3.chi.retToSrc    := task_s3.code.retToSrc
   cmTask_s3.needDB          := task_s3.code.needDB
   // snp tgt vec
-  val metaId_s3 = task_s3.chi.metaId
-  allVec_s3 := task_s3.dir.sf.allVec
-  othVec_s3 := task_s3.dir.sf.othVec(metaId_s3)
-  oneVec_s3 := PriorityEncoderOH(othVec_s3)
-  cmTask_s3.snpVec := PriorityMux(Seq(
-    task_s3.code.snpAll -> allVec_s3,
-    task_s3.code.snpOth -> othVec_s3,
-    task_s3.code.snpOne -> oneVec_s3,
-    true.B              -> 0.U.asTypeOf(cmTask_s3.snpVec)
-  ))
+  val metaId_s3     = task_s3.chi.metaId
+  cmTask_s3.snpVec := task_s3.dir.getSnpVec(task_s3.code.snpTgt, metaId_s3)
 
 
   /*

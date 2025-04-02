@@ -31,6 +31,8 @@ trait HasDirBaseMsg extends DJBundle { this: DJBundle with HasDirParam =>
   val hit     = Bool()
   val metaVec = Vec(nrMetas, new ChiState(paramType))
 
+  def way     = OHToUInt(wayOH)
+
   def allVec: Seq[Bool] = metaVec.map(_.state.asBool)
   def othVec(metaId: UInt): Seq[Bool] = metaVec.map(_.state.asBool).zipWithIndex.map { case (m, i) => m & metaId =/= i.U }
 
@@ -57,6 +59,22 @@ trait HasDirMsg extends DJBundle { this: DJBundle =>
     inst.othHit   := sf.othHit(metaId)
     inst.llcState := Mux(llc.hit, llc.metaVec.head.state, ChiState.I)
     inst
+  }
+
+  def getSnpVec(snpTgt: UInt, metaId: UInt): Vec[Bool] = {
+    val allVec = Wire(Vec(nrSfMetas, Bool()))
+    val othVec = Wire(Vec(nrSfMetas, Bool()))
+    val oneVec = Wire(Vec(nrSfMetas, Bool()))
+    allVec     := sf.allVec
+    othVec     := sf.othVec(metaId)
+    oneVec     := PriorityEncoderOH(othVec)
+    val snpVec = PriorityMux(Seq(
+      snpTgt(0).asBool -> allVec,
+      snpTgt(1).asBool -> othVec,
+      snpTgt(2).asBool -> oneVec,
+      true.B           -> 0.U.asTypeOf(allVec)
+    ))
+    snpVec
   }
 }
 
