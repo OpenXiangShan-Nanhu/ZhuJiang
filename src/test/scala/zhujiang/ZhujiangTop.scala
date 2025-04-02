@@ -36,8 +36,8 @@ class ZhujiangTopConfig extends Config((site, here, up) => {
       NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
       NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 1),
 
-      NodeParam(nodeType = NodeType.S, bankId = 0),
-      NodeParam(nodeType = NodeType.S, bankId = 1),
+      NodeParam(nodeType = NodeType.S, addrSegment = (0x0L << 6, 0x1L << 6)),
+      NodeParam(nodeType = NodeType.S, addrSegment = (0x1L << 6, 0x1L << 6)),
       NodeParam(nodeType = NodeType.P)
     )
   )

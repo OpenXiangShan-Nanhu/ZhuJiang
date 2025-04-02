@@ -29,7 +29,7 @@ case class NodeParam(
   bankId: Int = 0, // Only applied in HNF
   hfpId: Int = 0, // HNF port id // Only applied in HNF)
   cpuNum: Int = 1, // Only applied in CC
-  addressRange: (Long, Long) = (0L, 0L), // Only applied in HNI
+  addrSegment: (Long, Long) = (0L, 0L), // Only applied in HNI
   defaultHni: Boolean = false, // Only applied in HNI
   outstanding: Int = 4, // Only applied in HNI
   socket: String = "sync"
@@ -48,7 +48,7 @@ case class Node(
   bankBits: Int = 1, // Only applied in HNF
   cpuNum: Int = 1, // Only applied in CCN
   clusterId: Int = 0, //Only applied in CCN
-  addressRange: (Long, Long) = (0L, 0L), // Only applied in HNI
+  addrSegment: (Long, Long) = (0L, 0L), // Only applied in HNI
   defaultHni: Boolean = false, // Only applied in HNI
   outstanding: Int = 16, // Only applied in HNI, CCN and SN
   socket: String = "sync"
@@ -198,13 +198,16 @@ case class Node(
     !memAttr.device && addr.checkBank(bankBits, bankId.U, bankOff)
   }
 
+  def addrCheck(addr: ReqAddrBundle, ci: UInt):Bool = {
+    val devAddrBits = addr.devAddr.getWidth
+    addr.ci === ci && (addr.devAddr & addrSegment._2.U(devAddrBits.W)) === addrSegment._1.U(devAddrBits.W)
+  }
+
   private def hniAddrCheck(addr: ReqAddrBundle, ci: UInt, memAttr:MemAttr): Bool = {
-    val addrMin = addressRange._1.U(addr.getWidth.W)(addr.devAddr.getWidth - 1, 0)
-    val addrMax = addressRange._2.U(addr.getWidth.W)(addr.devAddr.getWidth - 1, 0)
     if(defaultHni) {
       memAttr.device
     } else {
-      memAttr.device && addr.ci === ci && addrMin <= addr.devAddr && addr.devAddr < addrMax
+      memAttr.device && addrCheck(addr, ci)
     }
   }
 
@@ -263,7 +266,8 @@ case class Node(
     }
 
     val addrStr = if(nodeType == NodeType.HI && !defaultHni || nodeType == NodeType.CC) {
-      s"""    address: (0x${addressRange._1.toHexString}, 0x${(addressRange._2 - 1).toHexString})
+      s"""    address: 0x${addrSegment._1.toHexString}
+         |    mask:    0x${addrSegment._2.toHexString}
          |""".stripMargin
     } else {
       ""

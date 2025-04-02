@@ -19,8 +19,8 @@ case object ZJParametersKey extends Field[ZJParameters]
 object ZhujiangGlobal {
   private val islandPool = mutable.Map[String, Seq[Node]]()
 
-  def getIsland(nidBits: Int, aidBits: Int, lns: Seq[NodeParam], csb: Int, tag: String): Seq[Node] = {
-    if(!islandPool.contains(tag)) islandPool.addOne(tag -> getRing(lns, csb, nidBits, aidBits))
+  def getIsland(nidBits: Int, aidBits: Int, lns: Seq[NodeParam], csb: Int, lanAddrBits:Int, tag: String): Seq[Node] = {
+    if(!islandPool.contains(tag)) islandPool.addOne(tag -> getRing(lns, csb, nidBits, aidBits, lanAddrBits))
     islandPool(tag)
   }
 
@@ -29,13 +29,12 @@ object ZhujiangGlobal {
     log2Ceil(1 + maxBank)
   }
 
-  private def getRing(nodeParams: Seq[NodeParam], cpuSpaceBits: Int, nidBits: Int, aidBits: Int): Seq[Node] = {
+  private def getRing(nodeParams: Seq[NodeParam], cpuSpaceBits: Int, nidBits: Int, aidBits: Int, lanAddrBits:Int): Seq[Node] = {
     require(nodeParams.size >= 3)
     var ccId: Long = 0
-    val mems = nodeParams.filter(n => n.nodeType == NodeType.S)
+
     val hnfs = nodeParams.filter(_.nodeType == NodeType.HF)
 
-    val memBankBits = if(mems.length > 1) getBankBits(mems) else 0
     val hnfBankBits = if(hnfs.length > 1) getBankBits(hnfs) else 0
 
     require(nodeParams.count(n => n.nodeType == NodeType.HI && n.defaultHni) == 1)
@@ -60,9 +59,16 @@ object ZhujiangGlobal {
       }
     }
 
+    val lanAddrMask = (0x1L << lanAddrBits) - 1
+    val cpuAddrMask = (0x1L << cpuSpaceBits) - 1
+
     val nodes = for((np, idx) <- nodeParams.zipWithIndex) yield {
-      val ccAddr = ((ccId << cpuSpaceBits), ((ccId + np.cpuNum) << cpuSpaceBits))
-      val hiAddr = (np.addressRange._1, np.addressRange._2)
+      val addrSeg = np.nodeType match {
+        case NodeType.HI => (np.addrSegment._1, np.addrSegment._2)
+        case NodeType.S  => (np.addrSegment._1, np.addrSegment._2)
+        case NodeType.CC => (ccId << cpuSpaceBits, lanAddrMask ^ cpuAddrMask)
+        case _           => (0x0L, 0x0L)
+      }
       val n = Node(
         attr = np.attr,
         nodeType = np.nodeType,
@@ -71,24 +77,12 @@ object ZhujiangGlobal {
         ringSize = nodeParams.length,
         globalId = idx,
         domainId = getDomainId(np.nodeType),
-        bankId = if(np.nodeType == NodeType.HF || np.nodeType == NodeType.S) np.bankId else 0,
+        bankId = if(np.nodeType == NodeType.HF) np.bankId else 0,
         hfpId = if(np.nodeType == NodeType.HF) np.hfpId else 0,
-        bankBits = if(np.nodeType == NodeType.HF) {
-          hnfBankBits
-        } else if(np.nodeType == NodeType.S) {
-          memBankBits
-        } else {
-          0
-        },
+        bankBits = if(np.nodeType == NodeType.HF) hnfBankBits else 0,
         cpuNum = if(np.nodeType == NodeType.CC) np.cpuNum else 0,
         clusterId = if(np.nodeType == NodeType.CC) ccId.toInt else 0,
-        addressRange = if(np.nodeType == NodeType.CC) {
-          ccAddr
-        } else if(np.nodeType == NodeType.HI) {
-          hiAddr
-        } else {
-          (0L, 0L)
-        },
+        addrSegment = addrSeg,
         defaultHni = if(np.nodeType == NodeType.HI) np.defaultHni else false,
         outstanding = if(np.nodeType == NodeType.HI || np.nodeType == NodeType.CC || np.nodeType == NodeType.S) np.outstanding else 0,
         socket = np.socket
@@ -171,7 +165,6 @@ case class ZJParameters(
   P: Boolean = false,
   clusterIdBits: Int = 8,
   hnxBankOff: Int = 12,
-  memBankOff: Int = 6,
   hnxCgThreshold: Int = 32,
   cpuSpaceBits: Int = 20,
   reqEjectBufDepth: Int = 5,
@@ -207,10 +200,9 @@ case class ZJParameters(
   lazy val ciName: String = s"ZCI${nrX}X${nrC}C${nrP}P${nrD}D${nrM}M${nrG}G$cacheSizeInMiB$ciSuffix"
   lazy val ringName: String = s"ZRING${nrX}X${nrC}C${nrP}P${nrD}D${nrM}M${nrG}G$cacheSizeInMiB$ciSuffix"
 
-  lazy val island: Seq[Node] = ZhujiangGlobal.getIsland(nodeNidBits, nodeAidBits, nodeParams, cpuSpaceBits, ciName)
+  lazy val island: Seq[Node] = ZhujiangGlobal.getIsland(nodeNidBits, nodeAidBits, nodeParams, cpuSpaceBits, requestAddrBits - ciIdBits, ciName)
 
   private lazy val bank = nodeParams.filter(_.hfpId == 0).count(_.nodeType == NodeType.HF)
-  private lazy val clusterTotalCacheSizeInB = clusterCacheSizeInB * nrC
   lazy val djParams = DJParam(
     llcSizeInB = cacheSizeInB / bank,
     sfSizeInB = clusterCacheSizeInB * 2 / bank,

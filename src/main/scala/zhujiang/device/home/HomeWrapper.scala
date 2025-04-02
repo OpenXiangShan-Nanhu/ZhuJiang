@@ -90,7 +90,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
 
     val tgt = if(chn == "ERQ" && mems.nonEmpty) {
       val addr = txBd.bits.asTypeOf(new HReqFlit).Addr.asTypeOf(new ReqAddrBundle)
-      val memSelOH = mems.map(m => addr.checkBank(m.bankBits, m.bankId.U, zjParams.memBankOff))
+      val memSelOH = mems.map(m => m.addrCheck(addr, io.ci))
       val memIds = mems.map(_.nodeId.U(niw.W))
       Mux1H(memSelOH, memIds)
     } else {
