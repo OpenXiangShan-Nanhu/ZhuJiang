@@ -58,6 +58,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
     setup       = djparam.dataSetup,
     latency     = djparam.dataLatency,
     extraHold   = djparam.dataExtraHold,
+    suffix      = "_llc_dat"
   ))
   val dcidPipe    = Module(new Pipe(UInt(dcIdBits.W), readDsLatency))
   val shiftReg    = RegInit(0.U.asTypeOf(new Shift))

@@ -38,7 +38,8 @@ class HardwareAssertionDevice(implicit p:Parameters) extends Module {
     set = hwaP.hwaDevDepth,
     way = 1,
     shouldReset = true,
-    latency = 2
+    latency = 2,
+    suffix  = "_hwa"
   ))
   private val arb = Module(new Arbiter(new SpSramReq(UInt(entryBits.W), hwaP.hwaDevDepth, 1), 2))
   private val rq = FastQueue(io.axi.ar)

@@ -97,7 +97,8 @@ class AxiDataBufferRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Parame
   private val dataRam = Module(new SRAMTemplate(
     gen = UInt(dw.W),
     set = bufferSize,
-    singlePort = false
+    singlePort = false,
+    suffix = "_sn_db"
   ))
   when(io.writeData.valid) {
     maskRam.write(io.writeData.bits.TxnID(log2Ceil(bufferSize) - 1, 0), io.writeData.bits.BE)

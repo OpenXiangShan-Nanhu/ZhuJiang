@@ -50,7 +50,8 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
       val m   = Bool()    // mask
     },
     set       = djparam.nrDataBuf,
-    way       = djparam.BeatByte
+    way       = djparam.BeatByte,
+    suffix    = "_llc_db"
   ))
   val dbidPool= Module(new DBIDPool())
   val wDsQ    = Module(new FastQueue(new DsWrite() with HasBeatNum with HasDCID, 2, false))
