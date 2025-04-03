@@ -204,6 +204,7 @@ case class ZJParameters(
 
   private lazy val bank = nodeParams.filter(_.hfpId == 0).count(_.nodeType == NodeType.HF)
   lazy val djParams = DJParam(
+    addressBits = requestAddrBits,
     llcSizeInB = cacheSizeInB / bank,
     sfSizeInB = clusterCacheSizeInB * 2 / bank,
     llcWays = cacheWays,

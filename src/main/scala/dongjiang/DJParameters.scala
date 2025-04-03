@@ -12,28 +12,28 @@ import xs.utils.debug._
 case class DJParam(
                   // -------------------------- Size and DCT ---------------------------- //
                   addressBits:        Int = 48,
-                  llcSizeInB:         Int = 16 * 1024 * 1024, // 16M
-                  sfSizeInB:          Int = 8 * 1024 * 1024, // 8M
+                  llcSizeInB:         Int = 2 * 1024 * 1024,
+                  sfSizeInB:          Int = 2 * 1024 * 1024,
                   openDCT:            Boolean = true,
                   // ------------------------ Frontend -------------------------- //
-                  nrReqTaskBuf:       Int = 64,
-                  nrSnpTaskBuf:       Int = 32,
-                  nrPoS:              Int = 128, // The number of outstanding
+                  nrReqTaskBuf:       Int = 16,
+                  nrSnpTaskBuf:       Int = 8,
+                  nrPoS:              Int = 64, // The number of outstanding
                   // ------------------------ Memblock ----------------------- //
                   dataBufSizeInByte:  Int = 64 * 32,
                   nrDataCM:           Int = 32,
                   // Data SRAM
                   nrDSBank:           Int = 4,
-                  dataSetup:          Int = 3,
+                  dataSetup:          Int = 2,
                   dataExtraHold:      Boolean = false,
-                  dataLatency:        Int = 3,
+                  dataLatency:        Int = 2,
                   // ------------------------ Directory  ----------------------- //
                   // Replace Policy is PLRU
                   llcWays:            Int = 16, // self llc ways
                   sfWays:             Int = 16, // snoop filter ways
                   // Dir SRAM
                   nrDirBank:          Int = 2,
-                  dirSetup:           Int = 2,
+                  dirSetup:           Int = 1,
                   dirExtraHold:       Boolean = false,
                   dirLatency:         Int = 2,
                 ) {
@@ -103,10 +103,10 @@ trait HasParseZJParam extends HasZJParams {
   lazy val BBN              = 1
 
   // temp node id bits
-  lazy val lanNBits = 5
-  lazy val lanABits = 3
-  lazy val bbnIBits = 4
-  lazy val bbnBBits = 4
+  lazy val lanNBits = nodeNidBits
+  lazy val lanABits = nodeAidBits
+  lazy val bbnIBits = ciIdBits
+  lazy val bbnBBits = niw - ciIdBits
 
   /*
    * Check from X node
