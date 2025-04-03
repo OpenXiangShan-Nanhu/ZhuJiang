@@ -62,7 +62,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     setup       = djparam.dirSetup,
     latency     = djparam.dirLatency,
     extraHold   = djparam.dirExtraHold,
-    suffix      = "_llc_meta"
+    suffix      = s"_${dirType}_meta"
   ))
 
   val tagArray  = Module(new SinglePortSramTemplate(
@@ -73,7 +73,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     setup       = djparam.dirSetup,
     latency     = djparam.dirLatency,
     extraHold   = djparam.dirExtraHold,
-    suffix      = "_llc_tag"
+    suffix      = s"_${dirType}_tag"
   ))
 
   val replArray = Module(new DualPortSramTemplate(
@@ -82,7 +82,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     way         = 1,
     shouldReset = true,
     bypassWrite = true,
-    suffix      = "_llc_repl"
+    suffix      = s"_${dirType}_repl"
   ))
 
   dontTouch(metaArray.io)
