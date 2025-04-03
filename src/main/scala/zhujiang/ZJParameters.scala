@@ -203,10 +203,11 @@ case class ZJParameters(
   lazy val island: Seq[Node] = ZhujiangGlobal.getIsland(nodeNidBits, nodeAidBits, nodeParams, cpuSpaceBits, requestAddrBits - ciIdBits, ciName)
 
   private lazy val bank = nodeParams.filter(_.hfpId == 0).count(_.nodeType == NodeType.HF)
+  private lazy val cores = nodeParams.count(_.nodeType == NodeType.CC)
   lazy val djParams = DJParam(
     addressBits = requestAddrBits,
     llcSizeInB = cacheSizeInB / bank,
-    sfSizeInB = clusterCacheSizeInB * 2 / bank,
+    sfSizeInB = clusterCacheSizeInB * 2 * cores,
     llcWays = cacheWays,
     sfWays = snoopFilterWays,
     nrDirBank = 2,
