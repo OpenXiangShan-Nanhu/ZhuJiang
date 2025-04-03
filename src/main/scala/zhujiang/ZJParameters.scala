@@ -207,7 +207,7 @@ case class ZJParameters(
   lazy val djParams = DJParam(
     addressBits = requestAddrBits,
     llcSizeInB = cacheSizeInB / bank,
-    sfSizeInB = clusterCacheSizeInB * 2 * cores,
+    sfSizeInB = clusterCacheSizeInB * 2 * cores / bank,
     llcWays = cacheWays,
     sfWays = snoopFilterWays,
     nrDirBank = 2,
