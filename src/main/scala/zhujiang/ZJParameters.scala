@@ -181,7 +181,8 @@ case class ZJParameters(
   dmaParams: DmaParams = DmaParams(),
   c2cParams: C2cParams = C2cParams(),
   tfbParams: Option[TrafficBoardParams] = Some(TrafficBoardParams()),
-  tfsParams: Option[TrafficSimParams] = None) {
+  tfsParams: Option[TrafficSimParams] = None,
+  djParamsOpt: Option[DJParam] = None) {
   lazy val cachelineBytes = 64
   lazy val requestAddrBits = 48
   lazy val snoopAddrBits = requestAddrBits - 3
@@ -204,7 +205,7 @@ case class ZJParameters(
 
   private lazy val bank = nodeParams.filter(_.hfpId == 0).count(_.nodeType == NodeType.HF)
   private lazy val cores = nodeParams.count(_.nodeType == NodeType.CC)
-  lazy val djParams = DJParam(
+  lazy val djParams = djParamsOpt.getOrElse(DJParam(
     addressBits = requestAddrBits,
     llcSizeInB = cacheSizeInB / bank,
     sfSizeInB = clusterCacheSizeInB * 2 * cores / bank,
@@ -212,7 +213,7 @@ case class ZJParameters(
     sfWays = snoopFilterWays,
     nrDirBank = 2,
     nrPoS = hnxOutstanding / bank
-  )
+  ))
 }
 
 trait HasZJParams {
