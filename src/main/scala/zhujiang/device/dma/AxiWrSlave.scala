@@ -140,7 +140,7 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   txAwBdl.id         := dHeadPtr.value
 
   private val incrOffset        = uTailE.exAddr(rni.offset - 1) & Burst.isIncr(uTailE.burst)
-  private val wrapOffset        = Burst.isWrap(uTailE.burst) & (uTailE.exAddr(rni.offset - 1) & uTailE.byteMask(rni.offset) | uTailE.byteMask(rni.offset - 1))
+  private val wrapOffset        = Burst.isWrap(uTailE.burst) & (uTailE.exAddr(rni.offset - 1) & uTailE.byteMask(rni.offset) | !uTailE.byteMask(rni.offset - 1))
   private val otherHalf         = (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits - 1, rni.offset)) & (uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U) & uTailE.exAddr(rni.offset - 1, 0) =/= uTailE.endAddr(rni.offset - 1, 0)
   txAwBdl.len                  := Mux(!uTailE.cache(1) | Burst.isFix(uTailE.burst) | incrOffset | wrapOffset | otherHalf, 0.U, 1.U)
 

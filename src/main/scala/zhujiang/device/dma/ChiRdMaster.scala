@@ -48,6 +48,8 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   private val tailPtr     = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val reqDBPtr    = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val txReqPtr    = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
+  private val rxRspPtr    = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
+  private val txRspPtr    = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val txDatPtr    = RegInit(0.U(1.W))
   //Wire Define
   private val rcvIsRct   = io.chiRxRsp.fire & io.chiRxRsp.bits.Opcode === RspOpcode.ReadReceipt
@@ -63,15 +65,19 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   private val validVec   = WireInit(VecInit.fill(rni.chiEntrySize){false.B})
   private val blockVec   = WireInit(VecInit.fill(rni.chiEntrySize){false.B})
   private val sendDBVec  = WireInit(VecInit.fill(rni.chiEntrySize){false.B})
-  private val sendAckVec = WireInit(VecInit.fill(rni.chiEntrySize){false.B})
 
 /* 
  * Pointer logic
  */
-  private val txReqPtrAdd = io.chiReq.fire & (io.chiReq.bits.Order === 0.U | (io.chiReq.bits.Order =/= 0.U) & rcvIsRct)
+  private val txReqPtrAdd = io.chiReq.fire
+  private val rxRspPtrAdd = io.chiReq.fire & (io.chiReq.bits.Order === 0.U) | rcvIsRct
+  private val txRspPtrAdd = io.chiTxRsp.get.fire || chiEntrys(txRspPtr.value).haveSendAck.get
+
   headPtr  := Mux(io.axiAr.fire, headPtr  + 1.U, headPtr )
   reqDBPtr := Mux(io.reqDB.fire, reqDBPtr + 1.U, reqDBPtr)
   txReqPtr := Mux(txReqPtrAdd  , txReqPtr + 1.U, txReqPtr)
+  rxRspPtr := Mux(rxRspPtrAdd  , rxRspPtr + 1.U, rxRspPtr)
+  txRspPtr := Mux(txRspPtrAdd  , txRspPtr + 1.U, txRspPtr)
 
   if(!rni.readDMT){
     tailPtr  := Mux(tailPtr =/= txReqPtr & chiEntrys(tailPtr.value).sendComp, tailPtr + 1.U, tailPtr)
@@ -93,12 +99,10 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   }
   private val sameVec    = chiEntrys.zipWithIndex.map{ case(c, i) => (c.arId === io.axiAr.bits.user) & !c.sendComp}
   private val zeroNid    = chiEntrys.map(c => c.nid === 0.U & !c.sendComp & c.rcvDatComp)
-  private val rcvCompVec = chiEntrys.map(c => c.rcvDatComp && !c.haveSendAck.get)
 
 
   blockVec       := validVec.zip(sameVec).map{case(i, j) => i & j}
   sendDBVec      := validVec.zip(zeroNid).map{case(i, j) => i & j}
-  sendAckVec     := validVec.zip(rcvCompVec).map{case(i, j) => i & j}
   selIdx         := StepRREncoder(sendDBVec, rdDBQueue.io.enq.ready)
 
 /* 
@@ -121,9 +125,9 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
       when(rdDBQueue.io.enq.fire & (rdDBQueue.io.enq.bits.arID === e.arId) & (e.nid =/= 0.U) & !(headPtr.value === i.U && io.axiAr.fire)){
         e.nid := e.nid - 1.U
       }
-      when(dataTxnid === i.U & io.wrDB.fire & e.double){
-        e.haveWrDB1 := io.chiDat.bits.DataID === 0.U
-        e.haveWrDB2 := io.chiDat.bits.DataID === 2.U
+      when(dataTxnid === i.U & io.wrDB.fire & (e.double | !fromDCT(io.chiDat.bits.SrcID))){
+        e.haveWrDB1 := Mux(io.chiDat.bits.DataID === 0.U, true.B, e.haveWrDB1)
+        e.haveWrDB2 := Mux(io.chiDat.bits.DataID === 2.U, true.B, e.haveWrDB2)
       }
       when(dataTxnid === i.U & io.chiDat.fire & !e.double & fromDCT(io.chiDat.bits.SrcID)){
         e.fromDCT   := true.B
@@ -134,7 +138,7 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
           e.homeNid.get   := io.chiDat.bits.HomeNID
           e.dbid.get      := io.chiDat.bits.DBID
         }
-        when(io.chiTxRsp.get.fire & (io.chiTxRsp.get.bits.TxnID === e.dbid.get) & (headPtr.value =/= i.U)){
+        when(io.chiTxRsp.get.fire & txRspPtr.value === i.U){
           e.haveSendAck.get := true.B
         }
       }
@@ -155,7 +159,7 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   rdDBQBdl.rdDBInit(chiEntrys(selIdx))
   txReqBdl.RReqInit(chiEntrys(txReqPtr.value), txReqPtr.value)
   txDatBdl.SetBdl(rdDBQueue.io.deq.bits, txDatPtr)
-  txRspBdl.compAckInit(chiEntrys(PriorityEncoder(sendAckVec)))
+  txRspBdl.compAckInit(chiEntrys(txRspPtr.value))
 
 /* 
  * IO Connection
@@ -163,14 +167,14 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   io.axiAr.ready              := !isFull(headPtr, tailPtr)
   io.reqDB.valid              := reqDBPtr =/= headPtr
   io.reqDB.bits               := chiEntrys(reqDBPtr.value).double
-  io.chiReq.valid             := txReqPtr =/= reqDBPtr
+  io.chiReq.valid             := (txReqPtr =/= reqDBPtr) & ((rxRspPtr === txReqPtr) | rcvIsRct & (rxRspPtr =/= txReqPtr))
   io.chiReq.bits              := txReqBdl
   io.wrDB.bits.data           := io.chiDat.bits.Data
   io.wrDB.bits.set            := Mux(chiEntrys(dataTxnid).double & io.chiDat.bits.DataID === 2.U, chiEntrys(dataTxnid).dbSite2, chiEntrys(dataTxnid).dbSite1)
   io.wrDB.valid               := Mux(chiEntrys(dataTxnid).double, io.chiDat.valid, 
                                   Mux(fromDCT(io.chiDat.bits.SrcID), Mux(chiEntrys(dataTxnid).addr(rni.offset - 1), io.chiDat.bits.DataID === 2.U & io.chiDat.valid, io.chiDat.valid & io.chiDat.bits.DataID === 0.U), io.chiDat.valid))
   if(rni.readDMT){
-    io.chiTxRsp.get.valid         := sendAckVec.reduce(_|_)
+    io.chiTxRsp.get.valid         := !chiEntrys(txRspPtr.value).haveSendAck.get & (txRspPtr =/= rxRspPtr) & chiEntrys(txRspPtr.value).rcvDatComp
     io.chiTxRsp.get.bits          := txRspBdl
   } 
   io.chiDat.ready             := io.wrDB.ready
