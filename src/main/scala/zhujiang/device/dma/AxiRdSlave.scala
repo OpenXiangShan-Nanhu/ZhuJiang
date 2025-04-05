@@ -98,9 +98,9 @@ class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
       when(io.dAxiAr.fire & dHeadPtr.value === i.U) {
         val nextAddr  = (uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size)) & uTailE.byteMask(rni.offset - 1, 0) | uTailE.exAddr(rni.offset - 1, 0) & ~uTailE.byteMask(rni.offset - 1, 0)
         e.id         := uTailE.id
-        e.size       := Mux(uTailE.cache(1) & Burst.isFix(uTailE.burst), 1.U, 1.U(log2Ceil(dw/8).W) << uTailE.size)
+        e.size       := 1.U(log2Ceil(dw/8).W) << uTailE.size
         e.last       := (uTailE.cnt.get + 1.U) === uTailE.num.get
-        e.shift      := Mux(Burst.isFix(uTailE.burst) & uTailE.cache(1), 0.U, uTailE.exAddr(rni.offset - 1, 0))
+        e.shift      := uTailE.exAddr(rni.offset - 1, 0)
         e.byteMask   := uTailE.byteMask(rni.offset - 1, 0)
         e.nextShift  := nextAddr
         val notModify  = !uTailE.cache(1)
@@ -111,7 +111,7 @@ class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
         e.endShift    := PriorityMux(Seq(
           notModify   -> nextAddr,
           specWrap    -> uTailE.exAddr(rni.offset - 1, 0),
-          fixMerge    -> (0.U + uTailE.len),
+          fixMerge    -> (Cat(uTailE.exAddr) + uTailE.len),
           true.B      -> Mux((uTailE.cnt.get + 1.U) === uTailE.num.get, uTailE.endAddr(rni.offset - 1, 0), 0.U)
         ))
       }.elsewhen(io.uAxiR.fire & dataCtrlQ.io.dataOut.bits.idx === i.U){
@@ -136,7 +136,7 @@ class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   txArBdl.burst     := Burst.INCR
   txArBdl.user      := uTailE.id
   txArBdl.id        := dHeadPtr.value
-  txArBdl.size      := Mux(!uTailE.cache(1) | Burst.isFix(uTailE.burst), uTailE.size , log2Ceil(dw/8).U)
+  txArBdl.size      := Mux(!uTailE.cache(1), uTailE.size , log2Ceil(dw/8).U)
 
   private val incrHalf     = Burst.isIncr(uTailE.burst) &  uTailE.exAddr(rni.offset - 1)
   private val wrapHalf     = Burst.isWrap(uTailE.burst) & (uTailE.exAddr(rni.offset - 1) & uTailE.byteMask(rni.offset) | !uTailE.byteMask(rni.offset - 1))
