@@ -64,7 +64,8 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     val cmAllocVec      = Vec(nrTaskCM, Decoupled(new CMTask))
     // Update PoS Message
     val updPosTag       = Valid(new LLCTxnID with HasAddr)
-    val lockPosSet      = Valid(new LLCTxnID with HasLockSet)
+    val lockPosSet      = Valid(new LLCTxnID)
+    val unlockPosSet    = Valid(new LLCTxnID)
     // Write Directory
     val writeDir        = new DJBundle {
       val llc           = Decoupled(new DirEntry("llc") with HasPackPosIndex)
@@ -120,7 +121,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.writeDir.sf.bits.metaVec   := msg_wri.dir.sf.metaVec
   io.writeDir.sf.bits.pos       := msg_wri.llcTxnID.pos
   // waitPipe
-  waitPipe.io.enq.valid := io.writeDir.llc.fire | io.writeDir.sf.fire
+  waitPipe.io.enq.valid := (io.writeDir.llc.fire & !msg_wri.dir.llc.hit) | (io.writeDir.sf.fire & !io.writeDir.sf.bits.hit)
   waitPipe.io.enq.bits  := cmId_wri
   HardwareAssertion.withEn(io.respDir.sf.valid | io.respDir.llc.valid, waitPipe.io.deq.valid)
 
@@ -132,7 +133,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   val cmId_repl   = RREncoder(cmVec_repl)
   val msg_repl    = msgRegVec(cmId_repl)
   // SNP
-  io.cmAllocVec(CMID.SNP).valid             := cmRegVec(cmId_repl).replSF & !(io.writeDir.llc.fire | io.writeDir.sf.fire)
+  io.cmAllocVec(CMID.SNP).valid             := cmRegVec(cmId_repl).replSF
   io.cmAllocVec(CMID.SNP).bits              := DontCare
   io.cmAllocVec(CMID.SNP).bits.chi.nodeId   := DontCare
   io.cmAllocVec(CMID.SNP).bits.chi.channel  := ChiChannel.SNP
@@ -178,11 +179,13 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   /*
    * Update PoS Lock
    */
-  // TODO
-  io.lockPosSet.valid           := io.writeDir.llc.fire | io.writeDir.sf.fire | cmRegVec(cmId_repl).replSF | cmRegVec(cmId_repl).replLLC
-  io.lockPosSet.bits.dirBank    := msg_wri.llcTxnID.dirBank
-  io.lockPosSet.bits.pos        := msg_wri.llcTxnID.pos
-  io.lockPosSet.bits.lock       := io.writeDir.llc.fire | io.writeDir.sf.fire
+  // lock
+  io.lockPosSet.valid           := io.writeDir.llc.fire | io.writeDir.sf.fire
+  io.lockPosSet.bits            := msg_wri.llcTxnID
+  // unlock
+  io.unlockPosSet.valid         := waitPipe.io.deq.valid
+  io.unlockPosSet.bits          := msgRegVec(waitPipe.io.deq.bits).llcTxnID
+
 
 
   /*
@@ -235,8 +238,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
       }
 
       // Ctrl Machine Wait
-      val waitAll     = WireInit(false.B)
-
+      val waitAll = WireInit(false.B)
       when(allocHit) {
         cm.waitSF   := io.alloc.bits.wriSF  & !io.alloc.bits.dir.llc.hit
         cm.waitLLC  := io.alloc.bits.wriLLC & !io.alloc.bits.dir.llc.hit
@@ -252,10 +254,14 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
       }
 
       // Ctrl Machine Repl
-      val replAll = WireInit(false.B)
+      val replAll   = WireInit(false.B)
+      val needRepl  = WireInit(false.B)
       when(waitHit) {
-        when(io.respDir.sf.valid)  { cm.replSF  := io.respDir.sf.bits.hit  }
-        when(io.respDir.llc.valid) { cm.replLLC := io.respDir.llc.bits.hit }
+        val replSF  = io.respDir.sf.valid  & io.respDir.sf.bits.metaVec.map(_.isValid).reduce(_ | _)
+        val replLLC = io.respDir.llc.valid & io.respDir.llc.bits.metaVec.head.isValid
+        cm.replSF   := cm.replSF | replSF
+        cm.replLLC  := cm.replLLC | replLLC
+        needRepl    := cm.needRepl | replSF | replLLC
       }.elsewhen(replSFHit | replLLCHit) {
         val replSF_nxt  = cm.replSF  & !replSFHit
         val replLLC_nxt = cm.replLLC & !replLLCHit
@@ -270,8 +276,8 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
       cm.state := PriorityMux(Seq(
         allocHit  -> WRITE,
         wriAll    -> Mux(cm.needWait, WAITDIR, RESP),
-        waitAll   -> REPL,
-        replAll   -> Mux(cm.needRepl, WAITCM, RESP),
+        waitAll   -> Mux(needRepl, REPL, RESP),
+        replAll   -> WAITCM,
         cmRespHit -> Mux(needSecRepl, REPL, RESP),
         respHit   -> FREE,
         true.B    -> cm.state

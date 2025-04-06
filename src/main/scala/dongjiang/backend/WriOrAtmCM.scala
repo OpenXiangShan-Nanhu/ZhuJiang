@@ -95,9 +95,7 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   io.txReq.bits.Size            := task_sReq.chi.getSize
   io.txReq.bits.Opcode          := task_sReq.chi.opcode
   io.txReq.bits.TxnID           := task_sReq.llcTxnID.get
-  io.txReq.bits.SrcID           := DontCare // remap in SAM
-  // set tgt noc type
-  NocType.setTx(io.txReq.bits, task_sReq.chi.getNoC(io.config.ci))
+  io.txReq.bits.SrcID           := task_sReq.chi.getNoC(io.config.ci)
 
 
   /*
@@ -138,9 +136,8 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.txDat.Resp     := task_sDat.cbResp
   io.dataTask.bits.txDat.Opcode   := task_sDat.chi.opcode
   io.dataTask.bits.txDat.TxnID    := task_sDat.chi.txnID
-  io.dataTask.bits.txDat.SrcID    := DontCare
-  io.dataTask.bits.txDat.TgtID    := DontCare
-  NocType.setTx(io.dataTask.bits.txDat, task_sDat.chi.getNoC(io.config.ci))
+  io.dataTask.bits.txDat.SrcID    := task_sDat.chi.getNoC(io.config.ci)
+  io.dataTask.bits.txDat.TgtID    := task_sDat.chi.nodeId
 
 
   /*
@@ -152,10 +149,11 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   // valid
   io.respCmt.valid  := cmVec_resp.reduce(_ | _) & !task_resp.fromRepl
   io.respRepl.valid := cmVec_resp.reduce(_ | _) & task_resp.fromRepl
-  // bits
+  // bits respCmt
   io.respCmt.bits               := DontCare
   io.respCmt.bits.llcTxnID      := task_resp.llcTxnID
   io.respCmt.bits.alrDB         := task_resp.alrDB
+  // bits respRepl
   io.respRepl.bits.llcTxnID     := task_resp.llcTxnID
   io.respRepl.bits.channel      := ChiChannel.REQ
   io.respRepl.bits.resp         := ChiState.I
@@ -180,7 +178,8 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
       when(allocHit) {
         msg := io.alloc.bits
       }.elsewhen(waitHit) {
-        msg.chi.txnID := io.rxRsp.bits.DBID
+        msg.chi.txnID  := io.rxRsp.bits.DBID
+        msg.chi.nodeId := io.rxRsp.bits.SrcID
       }.elsewhen(taskHit) {
         msg := 0.U.asTypeOf(msg)
       }

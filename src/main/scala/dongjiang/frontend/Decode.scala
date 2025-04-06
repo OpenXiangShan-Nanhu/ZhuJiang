@@ -47,6 +47,9 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   stateInstVecReg_s3  := Decode.decode(chiInst_s2)._1._1
   taskCodeVecReg_s3   := Decode.decode(chiInst_s2)._1._2
   commitVecReg_s3     := Decode.decode(chiInst_s2)._1._3
+  dontTouch(chiInst_s2)
+  HardwareAssertion.withEn(taskCodeVecReg_s3.map(_.flag).reduce(_ & _), io.task_s2.valid, cf"Task s2 inst invalid in Decode\n${chiInst_s2}")
+  HardwareAssertion.withEn(commitVecReg_s3.map(_.flag).reduce(_ & _),   io.task_s2.valid, cf"Task s2 inst invalid in Decode\n${chiInst_s2}")
 
   /*
    * [S3]: Decode
@@ -54,6 +57,7 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val metaId_s3   = taskReg_s3.chi.metaId
   val dirValid_s3 = io.respDir_s3.valid
   stateInst_s3    := Mux(dirValid_s3, io.respDir_s3.bits.dir.getStateInst(metaId_s3), 0.U.asTypeOf(stateInst_s3))
+  dontTouch(stateInst_s3)
   HardwareAssertion.withEn(io.respDir_s3.valid, validReg_s3 & taskReg_s3.chi.memAttr.cacheable)
 
   /*
@@ -61,6 +65,10 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
    */
   val code_s3 = Decode.decode(stateInst_s3, stateInstVecReg_s3, taskCodeVecReg_s3)
   val cmt_s3  = Decode.decode(stateInst_s3, stateInstVecReg_s3, commitVecReg_s3)
+  dontTouch(code_s3)
+  dontTouch(cmt_s3)
+  HardwareAssertion.withEn(code_s3.flag, validReg_s3, cf"State s3 inst invalid in Decode\n${taskReg_s3.chi.getChiInst}\n${code_s3}")
+  HardwareAssertion.withEn(cmt_s3.flag,  validReg_s3, cf"State s3 inst invalid in Decode\n${taskReg_s3.chi.getChiInst}\n${code_s3}")
 
   /*
    * [S3]: Output S3
@@ -98,9 +106,8 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.fastData_s3.bits.txDat.Opcode  := CompData
   io.fastData_s3.bits.txDat.HomeNID := DontCare // remap in SAM
   io.fastData_s3.bits.txDat.TxnID   := taskReg_s3.chi.txnID
-  io.fastData_s3.bits.txDat.SrcID   := DontCare // remap in SAM
+  io.fastData_s3.bits.txDat.SrcID   := taskReg_s3.chi.getNoC(io.config.ci)
   io.fastData_s3.bits.txDat.TgtID   := taskReg_s3.chi.nodeId
-  NocType.setTx(io.fastData_s3.bits.txDat, taskReg_s3.chi.getNoC(io.config.ci))
   // other bits
   io.fastData_s3.bits.dataOp.reqs   := true.B
   io.fastData_s3.bits.dataOp.read   := true.B

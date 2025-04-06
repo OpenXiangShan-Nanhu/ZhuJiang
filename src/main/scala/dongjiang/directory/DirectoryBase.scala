@@ -13,7 +13,6 @@ import xs.utils.sram.{SinglePortSramTemplate, DualPortSramTemplate}
 import freechips.rocketchip.util.ReplacementPolicy
 
 class Shift(implicit p: Parameters) extends DJBundle {
-  // setup + hold + latency + 1
   val read  = UInt(readDirLatency.W)
   val write = UInt(readDirLatency.W)
   val repl  = UInt(readDirLatency.W)
@@ -280,8 +279,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
           }
           HardwareAssertion(PopCount(Seq(readHitLock, replLock, writeLock, cleanLock)) <= 1.U, cf"Lock Table Index[$i][$j]")
           HardwareAssertion.withEn(!lock.valid, readHitLock | replLock | writeLock, cf"Lock Table Index[$i][$j]")
-          HardwareAssertion.withEn(lock.valid,  cleanLock, cf"Lock Table Index[$i][$j]")
-          HardwareAssertion.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i}]")
+          HardwareAssertion.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i}][${j}]")
       }
   }
 

@@ -12,13 +12,8 @@ import zhujiang.chi.ReqOpcode.WriteEvictOrEvict
  * NoC Type
  */
 object NocType {
-  def setRx(filt: Flit, t: Int) : Unit = filt.tgt := t.U
-  def setRx(filt: Flit, t: UInt): Unit = filt.tgt := t
-  def rxIs (filt: Flit, t: Int) : Bool = filt.tgt === t.U
-
-  def setTx(filt: Flit, t: Int) : Unit = filt.src := t.U
-  def setTx(filt: Flit, t: UInt): Unit = filt.src := t
-  def txIs (filt: Flit, t: Int) : Bool = filt.src === t.U
+  def rxIs (flit: Flit, t: Int) : Bool = flit.tgt === t.U
+  def txIs (flit: Flit, t: Int) : Bool = flit.src === t.U
 }
 
 

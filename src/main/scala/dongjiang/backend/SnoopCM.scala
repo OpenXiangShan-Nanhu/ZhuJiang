@@ -129,10 +129,8 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   io.txSnp.bits.FwdTxnID    := task_sSnp.chi.txnID
   io.txSnp.bits.FwdNID      := task_sSnp.chi.nodeId
   io.txSnp.bits.TxnID       := task_sSnp.llcTxnID.get
-  io.txSnp.bits.SrcID       := DontCare
+  io.txSnp.bits.SrcID       := Mux(nodeId_sSnp.fromLAN, LAN.U, BBN.U)
   io.txSnp.bits.TgtID       := nodeId_sSnp.nodeId
-  // set tgt noc type
-  NocType.setTx(io.txSnp.bits, Mux(nodeId_sSnp.fromLAN, LAN.U, BBN.U))
 
 
   /*
@@ -158,11 +156,12 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   // valid
   io.respCmt.valid  := cmVec_resp.reduce(_ | _) & !msg_resp.task.fromRepl
   io.respRepl.valid := cmVec_resp.reduce(_ | _) & msg_resp.task.fromRepl
-  // bits
+  // bits respCmt
   io.respCmt.bits.llcTxnID    := msg_resp.task.llcTxnID
   io.respCmt.bits.inst        := msg_resp.inst
   io.respCmt.bits.inst.valid  := true.B
   io.respCmt.bits.alrDB       := msg_resp.task.alrDB
+  // bits respCmt
   io.respRepl.bits.channel    := SNP
   io.respRepl.bits.llcTxnID   := msg_resp.task.llcTxnID
   io.respRepl.bits.resp       := msg_resp.inst.resp

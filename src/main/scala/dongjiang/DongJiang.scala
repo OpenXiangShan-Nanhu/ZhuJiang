@@ -61,18 +61,19 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   }
   require(lanNode.nodeType == NodeType.HF)
   // Get icnVec
+  def setRx(flit: Flit, t: Int): Flit = { val temp = WireInit(flit); temp.tgt := t.U; temp }
   val icnVec = Wire(MixedVec(hnNodeSeq.map(n => new DeviceIcnBundle(n))))
   icnVec.head <> io.lan
   icnVec.foreach(_.tx.debug.foreach(_ := DontCare))
-  NocType.setRx(icnVec.head.rx.req.get.bits.asTypeOf(new ReqFlit(false)), LAN)
-  NocType.setRx(icnVec.head.rx.resp.get.bits.asTypeOf(new RespFlit()), LAN)
-  NocType.setRx(icnVec.head.rx.data.get.bits.asTypeOf(new DataFlit()), LAN)
+  icnVec.head.rx.req.get.bits  := setRx(io.lan.rx.req.get.bits.asTypeOf(new ReqFlit(false)), LAN)
+  icnVec.head.rx.resp.get.bits := setRx(io.lan.rx.resp.get.bits.asTypeOf(new RespFlit()), LAN)
+  icnVec.head.rx.data.get.bits := setRx(io.lan.rx.data.get.bits.asTypeOf(new DataFlit()), LAN)
   if(hasBBN) {
     icnVec.last <> io.bbnOpt.get
-    NocType.setRx(icnVec.last.rx.req.get.bits.asTypeOf(new ReqFlit(false)), BBN)
-    NocType.setRx(icnVec.last.rx.snoop.get.bits.asTypeOf(new SnoopFlit()), BBN)
-    NocType.setRx(icnVec.last.rx.resp.get.bits.asTypeOf(new RespFlit()), BBN)
-    NocType.setRx(icnVec.last.rx.data.get.bits.asTypeOf(new DataFlit()), BBN)
+    icnVec.last.rx.req.get.bits   := setRx(io.bbnOpt.get.rx.req.get.bits.asTypeOf(new ReqFlit(false)), BBN)
+    icnVec.last.rx.snoop.get.bits := setRx(io.bbnOpt.get.rx.snoop.get.bits.asTypeOf(new SnoopFlit()), BBN)
+    icnVec.last.rx.resp.get.bits  := setRx(io.bbnOpt.get.rx.resp.get.bits.asTypeOf(new RespFlit()), BBN)
+    icnVec.last.rx.data.get.bits  := setRx(io.bbnOpt.get.rx.data.get.bits.asTypeOf(new DataFlit()), BBN)
   }
 
   /*
@@ -180,12 +181,13 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    */
   frontends.zipWithIndex.foreach {
     case(f, i) =>
-      f.io.respDir_s3 := directory.io.rRespVec(i)
-      f.io.updPosNest <> backend.io.updPosNestVec(i)
-      f.io.updPosTag  := backend.io.updPosTagVec(i)
-      f.io.cleanPos   := backend.io.cleanPosVec(i)
-      f.io.lockPosSet := backend.io.lockPosSetVec(i)
-      f.io.getPosAddr := backend.io.getPosAddrVec(i)
+      f.io.respDir_s3   := directory.io.rRespVec(i)
+      f.io.updPosNest   <> backend.io.updPosNestVec(i)
+      f.io.updPosTag    := backend.io.updPosTagVec(i)
+      f.io.cleanPos     := backend.io.cleanPosVec(i)
+      f.io.lockPosSet   := backend.io.lockPosSetVec(i)
+      f.io.unlockPosSet := backend.io.unlockPosSetVec(i)
+      f.io.getPosAddr   := backend.io.getPosAddrVec(i)
   }
 
   /*

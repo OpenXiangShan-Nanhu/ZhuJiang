@@ -26,45 +26,46 @@ class Backend(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // Configuration
-    val config        = new DJConfigIO()
+    val config          = new DJConfigIO()
     // CHI TX
-    val txReq         = Decoupled(new ReqFlit(true))
-    val txSnp         = Decoupled(new SnoopFlit())
-    val txRsp         = Decoupled(new RespFlit())
+    val txReq           = Decoupled(new ReqFlit(true))
+    val txSnp           = Decoupled(new SnoopFlit())
+    val txRsp           = Decoupled(new RespFlit())
     // CHI RX
-    val rxRsp         = Flipped(Decoupled(new RespFlit()))
-    val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
+    val rxRsp           = Flipped(Decoupled(new RespFlit()))
+    val rxDat           = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
     // CHI RESP From Frontend
-    val fastResp      = Flipped(Decoupled(new RespFlit()))
+    val fastResp        = Flipped(Decoupled(new RespFlit()))
     // Get Full Addr In PoS
-    val getPosAddrVec = Vec(djparam.nrDirBank, Output(new PosIndex()))
-    val posRespAddrVec= Vec(djparam.nrDirBank, Input(new Addr()))
+    val getPosAddrVec   = Vec(djparam.nrDirBank, Output(new PosIndex()))
+    val posRespAddrVec  = Vec(djparam.nrDirBank, Input(new Addr()))
     // Update PoS Message
-    val updPosNestVec = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasNest))
-    val updPosTagVec  = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasAddr)) // Only from replace
-    val cleanPosVec   = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasChiChannel))
-    val lockPosSetVec = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasLockSet)) // Only from replace
+    val updPosNestVec   = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasNest))
+    val updPosTagVec    = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasAddr)) // Only from replace
+    val cleanPosVec     = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasChiChannel))
+    val lockPosSetVec   = Vec(djparam.nrDirBank, Valid(new PackPosIndex)) // Only from replace
+    val unlockPosSetVec = Vec(djparam.nrDirBank, Valid(new PackPosIndex)) // Only from replace
     // Write Directory
-    val writeDir      = new DJBundle {
-      val llc         = Decoupled(new DirEntry("llc") with HasPackPosIndex)
-      val sf          = Decoupled(new DirEntry("sf")  with HasPackPosIndex)
+    val writeDir        = new DJBundle {
+      val llc           = Decoupled(new DirEntry("llc") with HasPackPosIndex)
+      val sf            = Decoupled(new DirEntry("sf")  with HasPackPosIndex)
     }
     // Write Directory Resp
-    val respDir       = new DJBundle {
-      val llc         = Flipped(Valid(new DirEntry("llc")))
-      val sf          = Flipped(Valid(new DirEntry("sf")))
+    val respDir         = new DJBundle {
+      val llc           = Flipped(Valid(new DirEntry("llc")))
+      val sf            = Flipped(Valid(new DirEntry("sf")))
     }
     // Clean Signal to Directory
-    val unlockVec     = Vec(djparam.nrDirBank, Valid(new PosIndex()))
+    val unlockVec       = Vec(djparam.nrDirBank, Valid(new PosIndex()))
     // Task From Frontend
-    val cmtAllocVec   = Vec(djparam.nrDirBank, Flipped(Valid(new CommitTask())))
-    val cmAllocVec2   = Vec(djparam.nrDirBank, Vec(nrTaskCM, Flipped(Decoupled(new CMTask()))))
+    val cmtAllocVec     = Vec(djparam.nrDirBank, Flipped(Valid(new CommitTask())))
+    val cmAllocVec2     = Vec(djparam.nrDirBank, Vec(nrTaskCM, Flipped(Decoupled(new CMTask()))))
     // Send Task To DB
-    val reqDB         = Decoupled(new PackLLCTxnID with HasDataVec)
-    val dataTask      = Decoupled(new DataTask())
-    val dataResp      = Flipped(Valid(new PackLLCTxnID()))
+    val reqDB           = Decoupled(new PackLLCTxnID with HasDataVec)
+    val dataTask        = Decoupled(new DataTask())
+    val dataResp        = Flipped(Valid(new PackLLCTxnID()))
     // Multicore Req running in LAN
-    val multicore     = Bool() // TODO
+    val multicore       = Bool() // TODO
   })
 
   /*
@@ -103,9 +104,11 @@ class Backend(implicit p: Parameters) extends DJModule {
     upd.bits  := replCM.io.updPosTag.bits
   }
   io.cleanPosVec.zip(cmtCMs.map(_.io.cleanPos)).foreach { case(a, b) => a := b }
-  io.lockPosSetVec.zipWithIndex.foreach { case (upd, i) =>
-    upd.valid := replCM.io.lockPosSet.valid & replCM.io.lockPosSet.bits.dirBank === i.U
-    upd.bits  := replCM.io.lockPosSet.bits
+  io.lockPosSetVec.zip(io.unlockPosSetVec).zipWithIndex.foreach { case ((lock, unlock), i) =>
+    lock.valid    := replCM.io.lockPosSet.valid & replCM.io.lockPosSet.bits.dirBank === i.U
+    lock.bits     := replCM.io.lockPosSet.bits
+    unlock.valid  := replCM.io.unlockPosSet.valid & replCM.io.unlockPosSet.bits.dirBank === i.U
+    unlock.bits   := replCM.io.unlockPosSet.bits
   }
   // dir
   io.writeDir <> replCM.io.writeDir
@@ -118,13 +121,20 @@ class Backend(implicit p: Parameters) extends DJModule {
 
 
   // commits
+  val respCmtVec      = Wire(Vec(nrTaskCM, Decoupled(new RespToCmt())))
+  val respCmtSelIdVec = Wire(Vec(djparam.nrDirBank, UInt(log2Ceil(nrTaskCM).W)))
+  respCmtVec          <> Seq(snoopCM.io.respCmt, readCM.io.respCmt, datalessCM.io.respCmt, wriOrAtmCM.io.respCmt)
+  respCmtVec.zipWithIndex.foreach { case(r, i) => r.ready := respCmtSelIdVec.map(_ === i.U).reduce(_ | _) }
   cmtCMs.zipWithIndex.foreach {
     case(cmt, i) =>
-      cmt.io.alloc        := io.cmtAllocVec(i)
-      cmt.io.rxRsp        := io.rxRsp
-      cmt.io.rxDat        := io.rxDat
-      cmt.io.posRespAddr  := io.posRespAddrVec(i)
-      cmt.io.respCmt      := fastRRArb.validOut(Seq(snoopCM.io.respCmt, readCM.io.respCmt, datalessCM.io.respCmt, wriOrAtmCM.io.respCmt))
+      cmt.io.alloc          := io.cmtAllocVec(i)
+      cmt.io.rxRsp          := io.rxRsp
+      cmt.io.rxDat          := io.rxDat
+      cmt.io.posRespAddr    := io.posRespAddrVec(i)
+      val respCmtValVec     = respCmtVec.map(r => r.valid & r.bits.llcTxnID.dirBank === i.U)
+      respCmtSelIdVec(i)    := RREncoder(respCmtValVec)
+      cmt.io.respCmt.valid  := respCmtValVec.reduce(_ | _)
+      cmt.io.respCmt.bits   := respCmtVec(respCmtSelIdVec(i)).bits
       // replResp
       cmt.io.replResp.valid     := replCM.io.resp.valid & replCM.io.resp.bits.dirBank === i.U
       cmt.io.replResp.bits.pos  := replCM.io.resp.bits.pos

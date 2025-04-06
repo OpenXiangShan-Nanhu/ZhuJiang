@@ -15,31 +15,30 @@ import zhujiang.chi.RspOpcode._
 import dongjiang.backend._
 import dongjiang.backend.read.State._
 
-// TODO: Unified coding style
 object State {
-  val width       = 5
-  val Free        = "b00000".U
-  val ReqDB       = "b00001".U
-  val SendReq     = "b00010".U
-  val WaitData0   = "b00100".U
-  val WaitData1   = "b01000".U
-  val SendCompAck = "b10000".U
+  val width       = 6
+  val FREE        = "b000000".U
+  val REQDB       = "b000001".U
+  val SENDREQ     = "b000010".U
+  val WAITDATA0   = "b000100".U
+  val WAITDATA1   = "b001000".U
+  val RESPCMT     = "b010000".U
+  val SENDACK     = "b100000".U
 }
 
 class CMState(implicit p: Parameters) extends DJBundle {
-  // CHI: Free --> ReqDB --> SendReq --> WaitData0 --> WaitData1 --> SendCompAck --> Free
-  //                                                              ^
-  // Internal:                                                 RespCmt // TODO
-  val valid     = Bool()
-  val state     = UInt(State.width.W)
-  val respCmt   = Bool()
+  // CHI: Free --> ReqDB --> SendReq --> WaitData0 --> WaitData1 -->  RespCmt--> SendCompAck --> Free
+  val state         = UInt(State.width.W)
 
+  def isValid       = state.orR
+  def isInvalid     = !isValid
   def isReqDB       = state(0)
   def isSendReq     = state(1)
   def isWaitData0   = state(2)
   def isWaitData1   = state(3)
   def isWaitData    = state(2) | state(3)
-  def isSendCompAck = state(4)
+  def isRespCmt     = state(4)
+  def isSendCompAck = state(5)
 }
 
 class ReadCM(implicit p: Parameters) extends DJModule {
@@ -69,7 +68,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   /*
    * Receive Task IO
    */
-  val cmVec_rec     = cmRegVec.map(!_.valid) // Free Vec
+  val cmVec_rec     = cmRegVec.map(_.isInvalid) // Free Vec
   val cmId_rec      = PriorityEncoder(cmVec_rec)
   io.alloc.ready    := cmVec_rec.reduce(_ | _)
 
@@ -101,9 +100,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   io.txReq.bits.ReturnTxnID.get := Mux(task_sReq.doDMT, task_sReq.chi.txnID,  task_sReq.llcTxnID.get)
   io.txReq.bits.ReturnNID.get   := Mux(task_sReq.doDMT, task_sReq.chi.nodeId, Fill(io.txReq.bits.ReturnNID.get.getWidth, 1.U)) // If set RetrunNID max value, it will be remap in SAM
   io.txReq.bits.TxnID           := task_sReq.llcTxnID.get
-  io.txReq.bits.SrcID           := DontCare // remap in SAM
-  // set tgt noc type
-  NocType.setTx(io.txReq.bits, task_sReq.chi.getNoC(io.config.ci))
+  io.txReq.bits.SrcID           := task_sReq.chi.getNoC(io.config.ci)
 
   /*
    * Send CompAck
@@ -117,28 +114,31 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   io.txRsp.bits         := DontCare
   io.txRsp.bits.Opcode  := CompAck
   io.txRsp.bits.TxnID   := task_sAck.chi.txnID
-  io.txRsp.bits.SrcID   := DontCare
+  io.txRsp.bits.SrcID   := task_sAck.chi.getNoC(io.config.ci)
   io.txRsp.bits.TgtID   := task_sAck.chi.nodeId
-  NocType.setTx(io.txRsp.bits, task_sAck.chi.getNoC(io.config.ci))
 
 
   /*
    * Send Resp To Commit
    */
-  val cmVec_resp  = cmRegVec.map(_.respCmt)
+  val cmVec_resp  = cmRegVec.map(_.isRespCmt)
   val cmId_resp   = StepRREncoder(cmVec_resp, io.respCmt.fire)
   val msg_resp    = msgRegVec(cmId_resp)
   // valid
   io.respCmt.valid := cmVec_resp.reduce(_ | _)
   // bits
-  io.respCmt.bits.llcTxnID      := msg_resp.task.llcTxnID
-  io.respCmt.bits.inst.valid    := true.B
-  io.respCmt.bits.inst.fwdValid := false.B
-  io.respCmt.bits.inst.channel  := ChiChannel.DAT
-  io.respCmt.bits.inst.opcode   := msg_resp.inst.opcode
-  io.respCmt.bits.inst.resp     := msg_resp.inst.resp
-  io.respCmt.bits.inst.fwdResp  := ChiResp.I
-  io.respCmt.bits.alrDB         := msg_resp.task.alrDB
+  io.respCmt.bits.llcTxnID  := msg_resp.task.llcTxnID
+  io.respCmt.bits.alrDB     := msg_resp.task.alrDB
+  when(msg_resp.task.doDMT) {
+    io.respCmt.bits.inst          := 0.U.asTypeOf(new TaskInst)
+  }.otherwise {
+    io.respCmt.bits.inst.valid    := true.B
+    io.respCmt.bits.inst.fwdValid := false.B
+    io.respCmt.bits.inst.channel  := ChiChannel.DAT
+    io.respCmt.bits.inst.opcode   := msg_resp.inst.opcode
+    io.respCmt.bits.inst.resp     := msg_resp.inst.resp
+    io.respCmt.bits.inst.fwdResp  := ChiResp.I
+  }
 
   /*
    * Modify Ctrl Machine Table
@@ -170,28 +170,24 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       }
 
       // Get Next State
-      val nxtState = PriorityMux(Seq(
-        allocHit    -> Mux(io.alloc.bits.needDB & !io.alloc.bits.alrDB.reqs, ReqDB, SendReq),
-        reqDBHit    -> SendReq,
-        sendReqHit  -> Mux(!msg.task.doDMT, WaitData0, Free),
-        recDataHit  -> Mux(msg.task.chi.isHalfSize, Mux(msg.task.chi.expCompAck, SendCompAck, Free), WaitData1),
-        sendAckHit  -> Free,
+      cm.state := PriorityMux(Seq(
+        allocHit    -> Mux(io.alloc.bits.needDB & !io.alloc.bits.alrDB.reqs, REQDB, SENDREQ),
+        reqDBHit    -> SENDREQ,
+        sendReqHit  -> Mux(!msg.task.doDMT, WAITDATA0, RESPCMT),
+        recDataHit  -> Mux(msg.task.chi.isHalfSize, RESPCMT, WAITDATA1),
+        respCmtHit  -> Mux(msg.task.chi.expCompAck, SENDACK, FREE),
+        sendAckHit  -> FREE,
         true.B      -> cm.state,
       ))
 
-      // Trans State and flag
-      cm.valid    := Mux(allocHit, true.B, !(cm.state === Free & !cm.respCmt))
-      cm.state    := nxtState
-      cm.respCmt  := Mux(respCmtHit, false.B, (cm.state === WaitData0 | cm.state === WaitData1) & (nxtState === SendCompAck | nxtState === Free)) // WaitData -> SendCompAck/Free
-
       // HardwareAssertion
-      when(allocHit)   { hwaVec2(i)(0) := cm.state === Free }
+      when(allocHit)   { hwaVec2(i)(0) := cm.isInvalid }
       when(reqDBHit)   { hwaVec2(i)(1) := cm.isReqDB }
       when(sendReqHit) { hwaVec2(i)(2) := cm.isSendReq }
       when(recDataHit) { hwaVec2(i)(3) := cm.isWaitData }
       when(sendAckHit) { hwaVec2(i)(4) := cm.isSendCompAck }
-      when(respCmtHit) { hwaVec2(i)(5) := cm.respCmt }
-      HardwareAssertion.checkTimeout(!cm.valid, TIMEOUT_READ, cf"TIMEOUT: Read Index[${i}]")
+      when(respCmtHit) { hwaVec2(i)(5) := cm.isRespCmt }
+      HardwareAssertion.checkTimeout(cm.isInvalid, TIMEOUT_READ, cf"TIMEOUT: Read Index[${i}]")
   }
 
 

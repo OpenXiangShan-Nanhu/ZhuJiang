@@ -67,18 +67,17 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
    */
   def rxRedir[T <: Bundle](inVec: Seq[DecoupledIO[T]], outVec: Seq[DecoupledIO[T]], inDirIdVec: Seq[UInt]): Unit = {
     val redirects = Seq.fill(inVec.size) { Seq.fill(outVec.size) { WireInit(0.U.asTypeOf(inVec(0))) } }
-    inVec.foreach(_.ready := false.B)
     // redirect
-    redirects.zipWithIndex.foreach {
-      case(redirs, i) =>
-        redirs.zip(inVec).zipWithIndex.foreach {
-          case((redir, in), j) =>
-            when(inDirIdVec(i) === j.U) {
-              redir.valid := in.valid
-              in.ready    := redir.ready
-            }
+    redirects.zip(inVec).zipWithIndex.foreach {
+      case((redirs, in), i) =>
+        val readyVec = Wire(Vec(outVec.size, Bool()))
+        redirs.zipWithIndex.foreach {
+          case(redir, j) =>
+            redir.valid := in.valid & inDirIdVec(i) === j.U
             redir.bits  := in.bits
+            readyVec(j) := redir.ready
         }
+        in.ready := readyVec(inDirIdVec(i))
     }
     // arbiter
     outVec.zip(redirects.transpose).foreach {

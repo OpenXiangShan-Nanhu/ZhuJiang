@@ -44,8 +44,12 @@ class Directory(implicit p: Parameters) extends DJModule {
   /*
    * Connect llcs and sfs
    */
-  io.write.llc.ready := DontCare
-  io.write.sf.ready  := DontCare
+  val llcWReadyVec    = Wire(Vec(djparam.nrDirBank, Bool()))
+  val sfWReadyVec     = Wire(Vec(djparam.nrDirBank, Bool()))
+  llcWReadyVec        := llcs.map(_.io.write.ready)
+  sfWReadyVec         := sfs.map(_.io.write.ready)
+  io.write.llc.ready  := llcWReadyVec(io.write.llc.bits.Addr.dirBank)
+  io.write.sf.ready   := sfWReadyVec(io.write.sf.bits.Addr.dirBank)
   llcs.zip(sfs).zipWithIndex.foreach {
     case((llc, sf), i) =>
       // config
@@ -67,17 +71,10 @@ class Directory(implicit p: Parameters) extends DJModule {
       // write bits
       llc.io.write.bits     := io.write.llc.bits
       sf.io.write.bits      := io.write.sf.bits
-      // write read
-      when(io.write.llc.bits.Addr.bankId === i.U) {
-        io.write.llc.ready  := llc.io.write.ready
-      }
-      when(io.write.sf.bits.Addr.bankId === i.U) {
-        io.write.sf.ready   := sf.io.write.ready
-      }
 
       // Clean Lock Table
-      llc.io.unlock := io.unlockVec(i)
-      sf.io.unlock  := io.unlockVec(i)
+      llc.io.unlock         := io.unlockVec(i)
+      sf.io.unlock          := io.unlockVec(i)
   }
 
   /*
@@ -90,28 +87,26 @@ class Directory(implicit p: Parameters) extends DJModule {
 
   // Store Write LLC Resp DirBank
   wriLLCBankPipe.io.enq.valid := io.write.llc.fire
-  wriLLCBankPipe.io.enq.bits  := io.write.llc.bits.Addr.bankId
+  wriLLCBankPipe.io.enq.bits  := io.write.llc.bits.Addr.dirBank
 
   // Store Write SF Resp DirBank
   wriSFBankPipe.io.enq.valid  := io.write.sf.fire
-  wriSFBankPipe.io.enq.bits   := io.write.sf.bits.Addr.bankId
+  wriSFBankPipe.io.enq.bits   := io.write.sf.bits.Addr.dirBank
 
   // Output wResp and rHitMesVec
-  io.wResp <> DontCare
-  llcs.zip(sfs).zipWithIndex.foreach {
-    case ((llc, sf), i) =>
-      // LLC wResp
-      io.wResp.llc.valid  := llc.io.resp.valid & wriLLCBankPipe.io.deq.valid
-      when(wriLLCBankPipe.io.deq.bits === i.U) {
-        io.wResp.llc.bits := llc.io.resp.bits
-      }
-      // SF wResp
-      io.wResp.sf.valid   := llc.io.resp.valid & wriSFBankPipe.io.deq.valid
-      when(wriSFBankPipe.io.deq.bits === i.U) {
-        io.wResp.sf.bits  := sf.io.resp.bits
-      }
-      // TODO: HA
-  }
+  val llcWRespVec = Wire(Vec(djparam.nrDirBank, Valid(new DirEntry("llc"))))
+  val sfWRespVec  = Wire(Vec(djparam.nrDirBank, Valid(new DirEntry("sf"))))
+  llcWRespVec     := llcs.map(_.io.resp)
+  sfWRespVec      := sfs.map(_.io.resp)
+  // llc
+  io.wResp.llc.valid  := wriLLCBankPipe.io.deq.valid
+  io.wResp.llc.bits   := llcWRespVec(wriLLCBankPipe.io.deq.bits).bits
+  // sf
+  io.wResp.sf.valid   := wriSFBankPipe.io.deq.valid
+  io.wResp.sf.bits    := sfWRespVec(wriSFBankPipe.io.deq.bits).bits
+  // HardwareAssertion
+  HardwareAssertion.withEn(llcWRespVec(wriLLCBankPipe.io.deq.bits).valid, wriLLCBankPipe.io.deq.valid)
+  HardwareAssertion.withEn(sfWRespVec(wriSFBankPipe.io.deq.bits).valid,   wriSFBankPipe.io.deq.valid)
 
   /*
    * HardwareAssertion placePipe

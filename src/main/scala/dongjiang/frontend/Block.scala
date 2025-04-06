@@ -24,7 +24,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // Read Directory
     val readDir_s1    = Decoupled(new Addr with HasPackPosIndex)
     // Message from PoS
-    val posRetry_s1   = Input(Bool())
+    val posBlock_s1   = Input(Bool())
     val posIdx_s1     = Input(new PosIndex())
     // Return to TaskBuf
     val retry_s1      = Output(Bool())
@@ -71,7 +71,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   needRsvdReg_s1    := Mux(io.chiTask_s0.bits.isSnp, freeBufNum_s0 === 0.U, freeBufNum_s0 <= 1.U)
   // block
   block_s1.rsvd     := needRsvdReg_s1
-  block_s1.pos      := io.posRetry_s1
+  block_s1.pos      := io.posBlock_s1
   block_s1.dir      := !io.readDir_s1.ready & taskReg_s1.memAttr.cacheable
   block_s1.resp     := (needRespReadReg_s1 | (needRespDBIDReg_s1 & !io.reqDB_s1.ready)) & !io.fastResp_s1.ready
   io.retry_s1       := validReg_s1 & block_s1.all

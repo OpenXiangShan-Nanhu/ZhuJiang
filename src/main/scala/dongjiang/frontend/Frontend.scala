@@ -40,7 +40,8 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val updPosNest    = Flipped(Decoupled(new PackPosIndex with HasNest))
     val updPosTag     = Flipped(Valid(new PackPosIndex with HasAddr))
     val cleanPos      = Flipped(Valid(new PackPosIndex with HasChiChannel))
-    val lockPosSet    = Flipped(Valid(new PackPosIndex with HasLockSet))
+    val lockPosSet    = Flipped(Valid(new PackPosIndex))
+    val unlockPosSet  = Flipped(Valid(new PackPosIndex))
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
     val fastResp      = Decoupled(new RespFlit())
     // PoS Busy Signal
@@ -120,11 +121,12 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   posTable.io.updTag        := io.updPosTag
   posTable.io.clean         := io.cleanPos
   posTable.io.lockSet       := io.lockPosSet
+  posTable.io.unlockSet     := io.unlockPosSet
   posTable.io.getAddr       := io.getPosAddr
 
   // block [S1]
   block.io.chiTask_s0       := fastRRArb(Seq(snpTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0))
-  block.io.posRetry_s1      := posTable.io.full_s1 | posTable.io.sleep_s1
+  block.io.posBlock_s1      := posTable.io.block_s1
   block.io.posIdx_s1        := posTable.io.posIdx_s1
   block.io.alrUseBuf        := shiftReg_s2.s.orR +& decode.io.task_s3.valid + issue.io.alrUseBuf
   HardwareAssertion((shiftReg_s2.s.orR +& decode.io.task_s3.valid + issue.io.alrUseBuf) <= nrIssueBuf.U)

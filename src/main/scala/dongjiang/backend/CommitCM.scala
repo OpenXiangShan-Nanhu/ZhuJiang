@@ -147,7 +147,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val alloc_task    = Wire(new CMTask())
   // can nest
   val cmVec2_clean  = Wire(Vec(posSets, Vec(posWays, Bool())))
-  val cmPoS_clean   = Wire(new PosIndex())
+  val cmPoS_clean   = Wire(new PosIndex()); dontTouch(cmPoS_clean)
   // send resp to chi
   val cmVec2_sRsp   = Wire(Vec(posSets, Vec(posWays, Bool())))
   val cmPoS_sRsp    = Wire(new PosIndex())
@@ -202,11 +202,19 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val pos_resp      = respCmt.llcTxnID.pos
   val cm_resp       = cmTable(pos_resp.set)(pos_resp.way)
   val msg_resp      = msgTable(pos_resp.set)(pos_resp.way)
-  val taskInst_resp = Mux(cm_resp.intl.w.cmResp, io.respCmt.bits.inst, msg_resp.inst)
-  val secInst_resp  = Mux(cm_resp.intl.w.cmResp, io.respCmt.bits.inst, 0.U.asTypeOf(new TaskInst))
+  val taskInst_resp = Mux(cm_resp.intl.w.cmResp,  io.respCmt.bits.inst, msg_resp.inst)
+  val secInst_resp  = Mux(cm_resp.intl.w.secResp, io.respCmt.bits.inst, 0.U.asTypeOf(new TaskInst))
   val deoccde_resp  = Decode.decode(msg_resp.chi.getChiInst, msg_resp.dir.getStateInst(msg_resp.chi.metaId), taskInst_resp, secInst_resp)._4
-  code_rCmt := deoccde_resp._2
-  cmt_rCmt  := deoccde_resp._3
+  // get decode result
+  code_rCmt         := deoccde_resp._2
+  cmt_rCmt          := Mux(deoccde_resp._3.waitSecDone & cm_resp.intl.w.cmResp, 0.U.asTypeOf(new CommitCode), deoccde_resp._3)
+  dontTouch(code_rCmt)
+  dontTouch(cmt_rCmt)
+  // HardwareAssertion
+  HardwareAssertion.withEn(deoccde_resp._2.flag, io.respCmt.valid, cf"Task inst invalid in Commit[${pos_resp.set}][${pos_resp.way}]" +
+    cf"\n${msg_resp.chi.getChiInst}\n${msg_resp.dir.getStateInst(msg_resp.chi.metaId)}\n${taskInst_resp}\nSec${secInst_resp}")
+  HardwareAssertion.withEn(deoccde_resp._3.flag,  io.respCmt.valid, cf"Task inst invalid in Commit[${pos_resp.set}][${pos_resp.way}]" +
+    cf"\n${msg_resp.chi.getChiInst}\n${msg_resp.dir.getStateInst(msg_resp.chi.metaId)}\n${taskInst_resp}\nSec${secInst_resp}")
   // cm internal send
   cm_rCmt.intl.s.reqDB      := code_rCmt.needDB & !msg_resp.alrDB.reqs
   cm_rCmt.intl.s.cleanDB    := cm_rCmt.intl.s.dataTask
@@ -216,7 +224,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   cm_rCmt.intl.s.secTask    := code_rCmt.valid
   // cm internal wait
   cm_rCmt.intl.w.cmResp     := false.B
-  cm_rCmt.intl.w.secResp    := code_rCmt.invalid
+  cm_rCmt.intl.w.secResp    := !code_rCmt.invalid
   cm_rCmt.intl.w.waitRepl   := cm_rCmt.intl.s.wriDir
   cm_rCmt.intl.w.waitData   := cm_rCmt.intl.s.dataTask
   // cm chi send
@@ -231,7 +239,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // valid
   cm_rCmt.clean := false.B
   cm_rCmt.valid := true.B
-  HardwareAssertion.withEn(!msg_resp.alrDB.reqs, io.respCmt.valid & respCmt.alrDB.reqs)
+  HardwareAssertion.withEn(!msg_resp.alrDB.reqs, io.respCmt.valid & respCmt.alrDB.reqs, cf"Commit Index[${pos_resp.set}][${pos_resp.way}]")
 
 
 
@@ -242,7 +250,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   cmVec2_rDB.zip(cmTable).foreach { case(a, b) => a.zip(b).foreach { case(a, b) => a := b.intl.s.reqDB } }
   cmPoS_rDB.set     := RREncoder(cmVec2_rDB.map(_.reduce(_ | _)))
   cmPoS_rDB.way     := RREncoder(cmVec2_rDB(cmPoS_rDB.set))
-  val valid_rDB     = cmPoS_rDB.asUInt.orR
+  val valid_rDB     = cmVec2_rDB.asUInt.orR
   // [cleanDB]
   cmVec2_cDB.zip(cmTable).foreach { case(a, b) => a.zip(b).foreach { case(a, b) => a := b.intl.s.cleanDB } }
   cmPoS_cDB.set     := RREncoder(cmVec2_cDB.map(_.reduce(_ | _)))
@@ -282,9 +290,8 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.txDat.Opcode     := msg_dt.commit.commitOp
   io.dataTask.bits.txDat.HomeNID    := DontCare // remap in SAM
   io.dataTask.bits.txDat.TxnID      := msg_dt.chi.txnID
-  io.dataTask.bits.txDat.SrcID      := DontCare // remap in SAM
+  io.dataTask.bits.txDat.SrcID      := msg_dt.chi.getNoC(io.config.ci)
   io.dataTask.bits.txDat.TgtID      := msg_dt.chi.nodeId
-  NocType.setTx(io.dataTask.bits.txDat, msg_dt.chi.getNoC(io.config.ci))
 
   /*
    * [wriDir]
@@ -294,7 +301,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   cmPoS_wDir.way  := RREncoder(cmVec2_wDir(cmPoS_wDir.set))
   val msg_wDir    = msgTable(cmPoS_wDir.set)(cmPoS_wDir.way)
   // valid
-  io.replAlloc.valid  := cmPoS_wDir.asUInt.orR
+  io.replAlloc.valid  := cmVec2_wDir.asUInt.orR
   // bits
   io.replAlloc.bits.alrDB     := msg_wDir.alrDB
   io.replAlloc.bits.addr      := io.posRespAddr.addr
@@ -367,7 +374,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * [cleanPoS]
    */
-  cmVec2_clean.zip(cmTable).foreach { case(a, b) => a.zip(b).foreach { case(a, b) => a := b.intl.s.cleanDB & b.valid } }
+  cmVec2_clean.zip(cmTable).foreach { case(a, b) => a.zip(b).foreach { case(a, b) => a := b.valid & b.clean } }
   cmPoS_clean.set   := RREncoder(cmVec2_clean.map(_.reduce(_ | _)))
   cmPoS_clean.way   := RREncoder(cmVec2_clean(cmPoS_clean.set))
   // valid
@@ -395,10 +402,8 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.txRsp.bits.Resp      := msg_sRsp.commit.resp
   io.txRsp.bits.Opcode    := Mux(sType.dbidChi2Rn, Mux(sType.compChi2Rn, CompDBIDResp, DBIDResp), Mux(sType.compChi2Rn, Comp, msg_sRsp.commit.commitOp))
   io.txRsp.bits.TxnID     := msg_sRsp.chi.txnID
-  io.txRsp.bits.SrcID     := DontCare
+  io.txRsp.bits.SrcID     := msg_sRsp.chi.getNoC(io.config.ci)
   io.txRsp.bits.TgtID     := msg_sRsp.chi.nodeId
-  // set tgt noc type
-  NocType.setTx(io.txRsp.bits, msg_sRsp.chi.getNoC(io.config.ci))
 
 
   /*
@@ -414,63 +419,93 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
     case((cmVec, msgVec), i) =>
       cmVec.zip(msgVec).zipWithIndex.foreach {
         case((cm, msg), j) =>
-          val allocHit    = io.alloc.valid    & io.alloc.bits.pos.idxMatch(i, j)
-          val taskRespHit = io.respCmt.valid  & io.respCmt.bits.llcTxnID.pos.idxMatch(i, j)
-          val releaseHit  = cm.asUInt === 0.U
+          val allocHit    = io.alloc.fire   & io.alloc.bits.pos.idxMatch(i, j)
+          val taskRespHit = io.respCmt.fire & io.respCmt.bits.llcTxnID.pos.idxMatch(i, j)
 
           // Message
           // Alloc
           when(allocHit) {
             msg := msg_rec
           // Get Resp From TaskCM
-          }.elsewhen(taskRespHit) {
-            msg.alrDB.reqs  := respCmt.alrDB.reqs
+          }.elsewhen(taskRespHit & !msg.commit.valid) {
+            msg.alrDB.reqs  := msg.alrDB.reqs | respCmt.alrDB.reqs
             msg.inst        := respCmt.inst
             msg.code        := code_rCmt
             msg.commit      := cmt_rCmt
-          }.elsewhen(releaseHit) {
+          }.elsewhen(cm.clean) {
             msg := 0.U.asTypeOf(msg)
           }
 
-          // transfer state
+          // llcTxnID
           val llcTxnID = Wire(new LLCTxnID())
           llcTxnID.dirBank := dirBank.U
           llcTxnID.pos.set := i.U
           llcTxnID.pos.way := j.U
+
+          // hit
+          val dataTaskHit     = io.dataTask.fire & cmPos_dt.idxMatch(i, j)
+          val wDirHit         = io.replAlloc.fire & cmPoS_wDir.idxMatch(i, j)
+          val canNestHit      = io.updPosNest.fire & cmPoS_nest.idxMatch(i, j)
+          val secTaskHit      = fire_task & cmPoS_task.idxMatch(i, j)
+          val waitReplHit     = io.replResp.valid & io.replResp.bits.pos.idxMatch(i, j)
+          val waitDataAckHit  = io.dataResp.valid & io.dataResp.bits.pos.idxMatch(i, j)
+          val respChiHit      = io.txRsp.fire & cmPoS_sRsp.idxMatch(i, j)
+          val waitCompAckHit  = io.rxRsp.fire & io.rxRsp.bits.Opcode === CompAck  & io.rxRsp.bits.TxnID === llcTxnID.get
+          // TODO
+          val waitDat0Hit     = io.rxDat.fire & (io.rxDat.bits.Opcode === CopyBackWriteData | io.rxDat.bits.Opcode === NonCopyBackWriteData) &
+                                io.rxDat.bits.TxnID === llcTxnID.get & io.rxDat.bits.DataID === "b00".U
+          val waitDat1Hit     = io.rxDat.fire & (io.rxDat.bits.Opcode === CopyBackWriteData | io.rxDat.bits.Opcode === NonCopyBackWriteData) &
+                                io.rxDat.bits.TxnID === llcTxnID.get & io.rxDat.bits.DataID === "b10".U
+
+          // transfer state
           when(allocHit) {
             cm  := cm_rec
-          }.elsewhen(taskRespHit) {
-            cm  := cm_resp
+          }.elsewhen(taskRespHit & !msg.commit.valid) {
+            cm  := cm_rCmt
           }.otherwise {
             // internal send
-            when(io.dataTask.fire & cmPos_dt.idxMatch(i, j)) {
+            when(dataTaskHit) {
               cm.intl.s.reqDB     := false.B
               cm.intl.s.cleanDB   := false.B
               cm.intl.s.dataTask  := false.B
             }
-            cm.intl.s.wriDir    := cm.intl.s.wriDir   & !(io.replAlloc.fire & cmPoS_wDir.idxMatch(i, j))
-            cm.intl.s.canNest   := cm.intl.s.canNest  & !(io.updPosNest.fire & cmPoS_nest.idxMatch(i, j))
-            cm.intl.s.secTask   := cm.intl.s.secTask  & !(fire_task & cmPoS_task.idxMatch(i, j))
+            cm.intl.s.wriDir    := cm.intl.s.wriDir   & !wDirHit
+            cm.intl.s.canNest   := cm.intl.s.canNest  & !canNestHit
+            cm.intl.s.secTask   := cm.intl.s.secTask  & !secTaskHit
             // internal wait
             cm.intl.w.cmResp    := cm.intl.w.cmResp // will be change in taskRespHit
-            cm.intl.w.secResp   := cm.intl.w.secResp // will be change in taskRespHit
-            cm.intl.w.waitRepl  := cm.intl.w.waitRepl & !(io.replResp.valid & io.replResp.bits.pos.idxMatch(i, j))
-            cm.intl.w.waitData  := cm.intl.w.waitData & !(io.dataResp.valid & io.dataResp.bits.pos.idxMatch(i, j))
+            cm.intl.w.secResp   := cm.intl.w.secResp  & !taskRespHit
+            cm.intl.w.waitRepl  := cm.intl.w.waitRepl & !waitReplHit
+            cm.intl.w.waitData  := cm.intl.w.waitData & !waitDataAckHit
             // chi send
-            when(io.txRsp.fire & cmPoS_sRsp.idxMatch(i, j)) {
+            when(respChiHit) {
               cm.chi.s.respChi2Rn := false.B
               cm.chi.s.respChi2Hn := false.B
               cm.chi.s.dbidChi2Rn := false.B
               cm.chi.s.compChi2Rn := false.B
             }
             // chi wait
-            cm.chi.w.waitChiAck   := cm.chi.w.waitChiAck  & !(io.rxRsp.fire & io.rxRsp.bits.Opcode === CompAck  & io.rxRsp.bits.TxnID === llcTxnID.get)
-            cm.chi.w.waitChiDat0  := cm.chi.w.waitChiDat0 & !(io.rxDat.fire & io.rxDat.bits.Opcode === CompData & io.rxDat.bits.TxnID === llcTxnID.get & io.rxDat.bits.DataID === "b00".U)
-            cm.chi.w.waitChiDat1  := cm.chi.w.waitChiDat1 & !(io.rxDat.fire & io.rxDat.bits.Opcode === CompData & io.rxDat.bits.TxnID === llcTxnID.get & io.rxDat.bits.DataID === "b10".U)
+            cm.chi.w.waitChiAck   := cm.chi.w.waitChiAck  & !waitCompAckHit
+            cm.chi.w.waitChiDat0  := cm.chi.w.waitChiDat0 & !waitDat0Hit
+            cm.chi.w.waitChiDat1  := cm.chi.w.waitChiDat1 & !waitDat1Hit
             // clean and valid
             cm.clean  := !(cm.intl.s.asUInt | cm.intl.w.asUInt | cm.chi.s.asUInt | cm.chi.w.asUInt).orR
-            cm.valid  := cm.valid & !cmPoS_clean.idxMatch(i, j)
-            HardwareAssertion.checkTimeout(!cm.valid, TIMEOUT_COMMIT, cf"TIMEOUT: Commit Index[${i}]")
+            cm.valid  := cm.valid & !(cm.clean & cmPoS_clean.idxMatch(i, j))
+
+            // HWA
+            HardwareAssertion.withEn(!cm.valid, allocHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.intl.w.cmResp | cm.intl.w.secResp, taskRespHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.intl.s.reqDB | cm.intl.s.cleanDB | cm.intl.s.dataTask, dataTaskHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.intl.s.wriDir,      wDirHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.intl.s.canNest,     canNestHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.intl.s.secTask,     secTaskHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.intl.w.waitRepl,    waitReplHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.valid,              waitDataAckHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.chi.w.waitChiAck,   waitCompAckHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.chi.w.waitChiDat0,  waitDat0Hit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.chi.w.waitChiDat1,  waitDat1Hit, cf"Commit Index[${i}][${j}]")
+
+            HardwareAssertion.checkTimeout(!cm.valid, TIMEOUT_COMMIT, cf"TIMEOUT: Commit Index[${i}][${j}]")
           }
       }
   }
