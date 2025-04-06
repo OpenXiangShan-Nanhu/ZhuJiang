@@ -261,6 +261,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
       when(sendHit)     { hwaVec2(i)(5) := dc._1.valid & (dc._1.isSend0 | dc._1.isSend1) & dc._2.msg.dataOp.send }
       when(saveHit)     { hwaVec2(i)(6) := dc._1.valid & (dc._1.isSave0 | dc._1.isSave1) & dc._2.msg.dataOp.save }
       when(respHit)     { hwaVec2(i)(7) := dc._1.valid & dc._1.isResp }
+      HardwareAssertion.checkTimeout(!dc._1.valid, TIMEOUT_DATACM, cf"TIMEOUT: Data Ctrl Index[${i}]")
   }
 
 

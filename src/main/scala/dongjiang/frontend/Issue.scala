@@ -130,6 +130,7 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
         true.B      -> ops.valid
       ))
       HardwareAssertion.withEn(!ops.valid, toBeValid)
+      HardwareAssertion.checkTimeout(!ops.valid, TIMEOUT_ISSUE, cf"TIMEOUT: Issue Index[${i}]")
   }
 
   /*
@@ -141,5 +142,5 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * HardwareAssertion placePipe
    */
-   HardwareAssertion.placePipe(Int.MaxValue-2)
+  HardwareAssertion.placePipe(Int.MaxValue-2)
 }

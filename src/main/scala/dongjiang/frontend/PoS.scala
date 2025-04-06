@@ -157,7 +157,7 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
           HardwareAssertion.withEn(PopCount(ctrl.validVec ^ validVecNxt) === 1.U, cleanHit | reqHit,
                                                                     desc = cf"PoS Index[${i}][${j}]")
           HardwareAssertion(PopCount(Seq(cleanHit, reqHit)) <= 1.U, desc = cf"PoS Index[${i}][${j}]")
-          if(j % 4 == 0) HardwareAssertion.placePipe(Int.MaxValue-3)
+          HardwareAssertion.checkTimeout(!ctrl.valid, TIMEOUT_POS, cf"TIMEOUT: PoS Index[${i}]")
       }
   }
 

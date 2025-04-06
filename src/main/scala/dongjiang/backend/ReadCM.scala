@@ -191,6 +191,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       when(recDataHit) { hwaVec2(i)(3) := cm.isWaitData }
       when(sendAckHit) { hwaVec2(i)(4) := cm.isSendCompAck }
       when(respCmtHit) { hwaVec2(i)(5) := cm.respCmt }
+      HardwareAssertion.checkTimeout(!cm.valid, TIMEOUT_READ, cf"TIMEOUT: Read Index[${i}]")
   }
 
 

@@ -155,8 +155,9 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
                                                               desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       HardwareAssertion.withEn(ctrl.nid.getOrElse(0.U) > 0.U, reduceHit,
                                                               desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
-      HardwareAssertion.placePipe(Int.MaxValue-3)
+      HardwareAssertion.checkTimeout(ctrl.isFree, TIMEOUT_TASKBUF, cf"TIMEOUT: Task Buffer Index[${i}]")
   }
+  HardwareAssertion.placePipe(Int.MaxValue-3)
 
   /*
    * HardwareAssertion placePipe

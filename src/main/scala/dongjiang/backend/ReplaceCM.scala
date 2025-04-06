@@ -280,6 +280,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
       when(allocHit) { hwaVec2(i)(0) := cm.asUInt === 0.U & msg.asUInt === 0.U }
       when(waitHit)  { hwaVec2(i)(1) := !(cm.replSF & cm.replLLC)  }
       hwaVec2(i)(2) := !(replSFHit & replLLCHit)
+      HardwareAssertion.checkTimeout(cm.isFree, TIMEOUT_REPLACE, cf"TIMEOUT: Replace Index[${i}]")
   }
 
   /*

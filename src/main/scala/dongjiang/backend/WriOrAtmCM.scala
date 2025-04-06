@@ -209,6 +209,7 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
       HardwareAssertion.withEn(cm.isResp,     respHit)
       HardwareAssertion.withEn(io.rxRsp.bits.Opcode === CompDBIDResp, waitHit & msg.chi.memAttr.ewa)
       HardwareAssertion.withEn(io.rxRsp.bits.Opcode === DBIDResp, waitHit & !msg.chi.memAttr.ewa)
+      HardwareAssertion.checkTimeout(cm.isFree, TIMEOUT_WOA, cf"TIMEOUT: Write or Atomic Index[${i}]")
   }
 
 

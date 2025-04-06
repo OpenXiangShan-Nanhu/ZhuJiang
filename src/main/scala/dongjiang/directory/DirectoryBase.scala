@@ -281,7 +281,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
           HardwareAssertion(PopCount(Seq(readHitLock, replLock, writeLock, cleanLock)) <= 1.U, cf"Lock Table Index[$i][$j]")
           HardwareAssertion.withEn(!lock.valid, readHitLock | replLock | writeLock, cf"Lock Table Index[$i][$j]")
           HardwareAssertion.withEn(lock.valid,  cleanLock, cf"Lock Table Index[$i][$j]")
-          if(j % 4 == 0) HardwareAssertion.placePipe(Int.MaxValue-3)
+          HardwareAssertion.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i}]")
       }
   }
 

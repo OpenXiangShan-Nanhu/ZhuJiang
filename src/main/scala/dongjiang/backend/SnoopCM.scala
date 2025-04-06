@@ -181,8 +181,8 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
       val allocHit    = io.alloc.fire    & i.U === cmId_rec
       val reqDBHit    = io.reqDB.fire    & i.U === cmId_reqDB
       val sendSnpHit  = io.txSnp.fire    & i.U === cmId_sSnp
-      val recRespHit  = io.rxRsp.fire    & msg.task.llcTxnID.get === io.rxRsp.bits.TxnID
-      val recDataHit  = io.rxDat.fire    & msg.task.llcTxnID.get === io.rxDat.bits.TxnID
+      val recRespHit  = io.rxRsp.fire    & msg.task.llcTxnID.get === io.rxRsp.bits.TxnID & (io.rxRsp.bits.Opcode === SnpResp | io.rxRsp.bits.Opcode === SnpRespFwded)
+      val recDataHit  = io.rxDat.fire    & msg.task.llcTxnID.get === io.rxDat.bits.TxnID & (io.rxRsp.bits.Opcode === SnpRespData | io.rxRsp.bits.Opcode === SnpRespDataFwded)
       val cleanHit    = io.dataTask.fire & i.U === cmId_clean
       val respHit     = io.dataResp.fire & msg.task.llcTxnID.get === io.dataResp.bits.llcTxnID.get
       val respCmtHit  = io.respCmt.fire  & i.U === cmId_resp
@@ -272,6 +272,7 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
       HardwareAssertion.withEn(cm.isCleanData,  cleanHit)
       HardwareAssertion.withEn(cm.isWaitData,   respHit)
       HardwareAssertion.withEn(cm.isResp,       respCmtHit)
+      HardwareAssertion.checkTimeout(cm.isFree, TIMEOUT_SNP, cf"TIMEOUT: Snoop Index[${i}]")
   }
 
   /*

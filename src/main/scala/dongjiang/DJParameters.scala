@@ -244,7 +244,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val posWays          = djparam.posWays
   lazy val posWayBits       = log2Ceil(posWays)
   lazy val dirMuticycle     = djparam.dirLatency.max(if(djparam.dirExtraHold) djparam.dirSetup + 1 else djparam.dirSetup)
-  lazy val readDirLatency   = (if(djparam.dirExtraHold) djparam.dirSetup + 1 else djparam.dirSetup) + djparam.dirLatency + 1
+  lazy val readDirLatency   = djparam.dirSetup + djparam.dirLatency
   lazy val llcWayBits       = log2Ceil(djparam.llcWays)
   // [S1(PoS/Block)] + [S2(ReadDir)] + [S3(Decode)] + Reserve for snp
   lazy val nrIssueBuf       = 4
@@ -260,7 +260,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val nrDsSet          = djparam.dsSets / dsBank
   lazy val dsIdxBits        = log2Ceil(nrDsSet)
   lazy val dsMuticycle      = djparam.dataLatency.max(if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup)
-  lazy val readDsLatency    = (if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup) + djparam.dataLatency + 1
+  lazy val readDsLatency    = djparam.dataSetup + djparam.dataLatency
 
   // Replacement(PLRU) Parameters
   lazy val sReplWayBits     = djparam.llcWays - 1
@@ -277,16 +277,16 @@ trait HasDJParam extends HasParseZJParam {
 
 
   // TIMEOUT CHECK CNT VALUE
-  // TODO
-  lazy val TIMEOUT_TASKBUF  = 20000 + 10000 // MSHR
-  lazy val TIMEOUT_POS      = 10000 + 10000
-  lazy val TIMEOUT_RETRYBUF =  5000 + 10000
-  lazy val TIMEOUT_SNP      =         10000
-  lazy val TIMEOUT_READ     =         10000
-  lazy val TIMEOUT_COMMIT   =  5000 + 10000
-  lazy val TIMEOUT_REPLACE  =         10000
-  lazy val TIMEOUT_LOCK     = 10000 + 10000
-  lazy val TIMEOUT_DATACM   = 10000 + 10000
+  lazy val TIMEOUT_TASKBUF  = 30000
+  lazy val TIMEOUT_POS      = 20000
+  lazy val TIMEOUT_COMMIT   = 20000
+  lazy val TIMEOUT_LOCK     = 20000
+  lazy val TIMEOUT_REPLACE  = 20000
+  lazy val TIMEOUT_DATACM   = 10000
+  lazy val TIMEOUT_ISSUE    = 10000
+  lazy val TIMEOUT_SNP      = 10000
+  lazy val TIMEOUT_READ     = 10000
+  lazy val TIMEOUT_WOA      = 10000
 }
 
 

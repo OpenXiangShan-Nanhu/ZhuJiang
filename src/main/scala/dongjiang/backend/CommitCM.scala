@@ -470,6 +470,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             // clean and valid
             cm.clean  := !(cm.intl.s.asUInt | cm.intl.w.asUInt | cm.chi.s.asUInt | cm.chi.w.asUInt).orR
             cm.valid  := cm.valid & !cmPoS_clean.idxMatch(i, j)
+            HardwareAssertion.checkTimeout(!cm.valid, TIMEOUT_COMMIT, cf"TIMEOUT: Commit Index[${i}]")
           }
       }
   }
