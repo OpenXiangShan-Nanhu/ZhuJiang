@@ -68,7 +68,7 @@ class AxiRdEntry(isPipe: Boolean)(implicit P: Parameters) extends ZJBundle {
     this.exAddr     := ar.addr(rni.pageBits - 1, 0) >> ar.size << ar.size
     this.endAddr    := ((ar.addr(rni.pageBits - 1, 0) >> ar.size) + (ar.len + 1.U)) << ar.size
     this.id         := ar.id
-    this.byteMask   := Mux(Burst.isWrap(ar.burst), wrapMask(ar.len, ar.size), 0.U)
+    this.byteMask   := wrapMask(ar.len, ar.size)
     this.len        := ar.len + 1.U
     this.range.get  := (ar.len + 1.U) << ar.size
     this.size       := ar.size
@@ -77,12 +77,12 @@ class AxiRdEntry(isPipe: Boolean)(implicit P: Parameters) extends ZJBundle {
     this
   }
   def getNum(modify: Bool, range: UInt, endAddr: UInt, exAddr: UInt, len: UInt, burst: UInt): UInt = {
-    val canNotMerge   = !modify
+     val canNotMerge   = !modify
      val fixMerge      = Burst.isFix(burst)  & modify
      val wrapMerge     = Burst.isWrap(burst) & modify
      val incrMerge     = Burst.isIncr(burst) & modify
      //number compute
-     val wrapMergeNum  = Mux(range(rni.pageBits - 1, rni.offset).orR, range(rni.pageBits - 1, rni.offset), 1.U)
+     val wrapMergeNum  = Mux(range(rni.pageBits - 1, rni.offset + 1).orR, Mux(exAddr(rni.offset - 1, 0).orR, range(rni.pageBits - 1, rni.offset) + 1.U, range(rni.pageBits - 1, rni.offset)), 1.U)
      val incrMergeNum  = endAddr(rni.pageBits - 1, rni.offset) + endAddr(rni.offset - 1, 0).orR - exAddr(rni.pageBits - 1, rni.offset)
      val fixMergeNum   = 1.U
      PriorityMux(Seq(
@@ -94,36 +94,34 @@ class AxiRdEntry(isPipe: Boolean)(implicit P: Parameters) extends ZJBundle {
   }  
   def entryInit[T <: AxiRdEntry](info: T): AxiRdEntry = {
     this.preAddr      := info.preAddr
-    this.exAddr       := info.exAddr
-    this.endAddr      := info.endAddr
+    this.exAddr       := Mux(info.cache(1), Cat(info.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U(5.W)), info.exAddr)
+    this.endAddr      := Mux(Burst.isWrap(info.burst), info.exAddr, Mux(Burst.isFix(info.burst), info.exAddr + (1.U << info.size), info.endAddr))
     this.id           := info.id
-    this.byteMask     := info.byteMask
+    this.byteMask     := Mux(Burst.isWrap(info.burst), info.byteMask, Mux(Burst.isIncr(info.burst) || Burst.isFix(info.burst) && info.cache(1), 0xFFF.U, 0.U))
     this.cnt.get      := 0.U
     this.num.get      := getNum(info.cache(1).asBool, info.range.get, info.endAddr, info.exAddr, info.len, info.burst)
-    this.size         := info.size
+    this.size         := Mux(Burst.isFix(info.burst) && info.cache(1), 0.U, info.size)
     this.len          := info.len
     this.cache        := info.cache
     this.burst        := info.burst
-    this.firstTxn.get := ("b100000".U - info.exAddr(rni.offset - 1, 0)) >> info.size
-    this.lastTxn.get  := info.endAddr(rni.offset - 1, 0) >> info.size
     this
   }
 }
 
 class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
   private val rni = zjParams.dmaParams
-  val preAddr    = UInt((raw - rni.pageBits).W)
-  val exAddr     = UInt(rni.pageBits.W)
-  val endAddr    = UInt(rni.pageBits.W)
-  val byteMask   = UInt(rni.pageBits.W)
-  val burst      = UInt(2.W)
-  val cnt        = if(!isPipe) Some(UInt(8.W))             else None
-  val num        = if(!isPipe) Some(UInt(8.W))             else None
-  val len        = if(isPipe)  Some(UInt(8.W))             else None
-  val range      = if(isPipe)  Some(UInt(rni.pageBits.W))  else None
-  val size       = UInt(3.W)
-  val cache      = UInt(4.W)
-  val id         = UInt(rni.idBits.W)
+  val preAddr     = UInt((raw - rni.pageBits).W)
+  val exAddr      = UInt(rni.pageBits.W)
+  val endAddr     = UInt(rni.pageBits.W)
+  val byteMask    = UInt(rni.pageBits.W)
+  val burst       = UInt(2.W)
+  val cnt         = if(!isPipe) Some(UInt(8.W))             else None
+  val num         = if(!isPipe) Some(UInt(8.W))             else None
+  val len         = if(isPipe)  Some(UInt(8.W))             else None
+  val range       = if(isPipe)  Some(UInt(rni.pageBits.W))  else None
+  val size        = UInt(3.W)
+  val cache       = UInt(4.W)
+  val id          = UInt(rni.idBits.W)
 
   def byteComp(len:UInt, size:UInt) = {
     val maxShift = 1 << 3
@@ -137,10 +135,10 @@ class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
     this.endAddr        := ((aw.addr(rni.pageBits - 1, 0) >> aw.size) + (aw.len + 1.U)) << aw.size
     this.range.get      := (aw.len + 1.U) << aw.size
     this.burst          := aw.burst
-    this.byteMask       := Mux(Burst.isWrap(aw.burst), byteComp(aw.len, aw.size), 0.U)
+    this.byteMask       := byteComp(aw.len, aw.size)
     this.id             := aw.id
     this.size           := aw.size
-    this.len.get        := aw.len
+    this.len.get        := aw.len + 1.U
     this.cache          := aw.cache
     this
   }
@@ -150,7 +148,7 @@ class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
      val wrapMerge     = Burst.isWrap(burst) & modify
      val incrMerge     = Burst.isIncr(burst) & modify
      //number compute
-     val wrapMergeNum  = Mux(range(rni.pageBits - 1, rni.offset).orR, range(rni.pageBits - 1, rni.offset), 1.U)
+     val wrapMergeNum  = Mux(range(rni.pageBits - 1, rni.offset + 1).orR, Mux(exAddr(rni.offset - 1, 0).orR, range(rni.pageBits - 1, rni.offset) + 1.U, range(rni.pageBits - 1, rni.offset)), 1.U)
      val incrMergeNum  = endAddr(rni.pageBits - 1, rni.offset) + endAddr(rni.offset - 1, 0).orR - exAddr(rni.pageBits - 1, rni.offset)
      val fixMergeNum   = 1.U
      PriorityMux(Seq(
@@ -163,11 +161,11 @@ class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
   def entryInit[T <: AxiWrEntry](info : T): AxiWrEntry = {
     this.preAddr        := info.preAddr
     this.exAddr         := info.exAddr
-    this.endAddr        := info.endAddr
+    this.endAddr        := Mux(Burst.isWrap(info.burst), info.exAddr, info.endAddr)
     this.num.get        := getNum(info.cache(1), info.exAddr, info.len.get, info.burst, info.range.get, info.endAddr)
     this.burst          := info.burst
     this.cnt.get        := 0.U
-    this.byteMask       := info.byteMask
+    this.byteMask       := Mux(Burst.isIncr(info.burst), 0xFFF.U, Mux(Burst.isWrap(info.burst), info.byteMask, 0.U))
     this.size           := info.size
     this.cache          := info.cache
     this.id             := info.id
@@ -181,8 +179,11 @@ class AxiRMstEntry(implicit p: Parameters) extends ZJBundle {
   val id          = UInt(rni.idBits.W)
   val last        = Bool()
   val shift       = UInt(rni.offset.W)
+  val nextShift   = UInt(rni.offset.W)
+  val endShift    = UInt(rni.offset.W)
+  val byteMask    = UInt(rni.offset.W)
   val size        = UInt(6.W)
-  val txns        = UInt(log2Ceil(dw/8).W)
+  val finish      = Bool()
 }
 
 class DataCtrl(implicit p: Parameters) extends ZJBundle {
@@ -204,7 +205,6 @@ class CHIREntry(dmt : Boolean)(implicit p : Parameters) extends ZJBundle {
   val dbSite1        = UInt(log2Ceil(rni.dbEntrySize).W)
   val dbSite2        = UInt(log2Ceil(rni.dbEntrySize).W)
   val memAttr        = UInt(4.W)
-  val haveRcvRct     = Bool()
   val haveWrDB1      = Bool()
   val haveWrDB2      = Bool()
   val sendComp       = Bool()
@@ -215,14 +215,14 @@ class CHIREntry(dmt : Boolean)(implicit p : Parameters) extends ZJBundle {
   val dbid           = if(dmt) Some(UInt(12.W))  else None
 
   def ARMesInit[T <: ARFlit](b: T): CHIREntry = {
-    this               := 0.U.asTypeOf(this)
-    this.double        := b.len(0).asBool
-    this.arId          := b.user
-    this.idx           := b.id
-    this.addr          := b.addr
-    this.size          := b.size
-    this.haveRcvRct    := Mux(b.cache(1), 1.U, 0.U)
-    this.memAttr       := Cat(b.cache(2), b.cache(3) | b.cache(2), !b.cache(1) & !b.cache(2) & !b.cache(3), b.cache(0) | b.cache(2) | b.cache(3))
+    this                  := 0.U.asTypeOf(this)
+    this.double           := b.len(0).asBool
+    this.arId             := b.user
+    this.idx              := b.id
+    this.addr             := b.addr
+    this.size             := b.size
+    this.memAttr          := Cat(b.cache(2), b.cache(3) | b.cache(2), !b.cache(1) & !b.cache(2) & !b.cache(3), b.cache(0) | b.cache(2) | b.cache(3))
+    this.haveSendAck.get  := Mux(!b.cache(1) & !b.cache(2) & !b.cache(3), true.B, false.B)
     this
   }
 }
@@ -292,7 +292,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
     this.MemAttr  := c.memAttr
     this.SnpAttr  := Mux(c.memAttr(1), 0.U, 1.U)
     if(zjParams.dmaParams.readDMT){
-      this.ExpCompAck := true.B
+      this.ExpCompAck := Mux(c.memAttr(1), false.B, true.B)
     } else {this.ExpCompAck := false.B}
     this
   }
@@ -323,11 +323,14 @@ class DmaRspFlit(implicit p: Parameters) extends RespFlit {
 class AxiWMstEntry(implicit p: Parameters) extends ZJBundle {
   val shift     = UInt(6.W)
   val nextShift = UInt(6.W)
+  val mask      = UInt(6.W)
   val size      = UInt(6.W)
   val burst     = UInt(2.W)
   val id        = UInt(zjParams.dmaParams.idBits.W)
   val last      = Bool()
   val dontMerge = Bool()
+  val specWrap  = Bool()
+  val fullWrap  = Bool()
 }
 
 class CHIWEntry(implicit p: Parameters) extends ZJBundle {

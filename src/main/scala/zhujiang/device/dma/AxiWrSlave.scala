@@ -59,11 +59,9 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
 
   private val rxAwPipe       = Module(new Queue(gen = new AxiWrEntry(isPipe = true), entries = 2, pipe = false, flow = false))
   private val bIdQueue       = Module(new Queue(gen = UInt(axiParams.idBits.W), entries = 2, pipe = false, flow = false))
+  private val mergeReg       = Module(new MergeReg)
   private val merComReg      = RegInit(false.B)
   private val mergeLastReg   = RegInit(false.B)
-  private val merDatReg      = RegInit(0.U(dw.W))
-  private val merMaskReg     = RegInit(0.U(bew.W))
-  private val maskData       = WireInit(VecInit.fill(dw/8){0.U(8.W)})
 
   private val rxAwBdl        = WireInit(0.U.asTypeOf(new AxiWrEntry(isPipe = true)))
   private val txAwBdl        = WireInit(0.U.asTypeOf(new AWFlit(axiParams)))
@@ -73,72 +71,78 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
 /* 
  * Pointer Logic
  */
+  private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
+  private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
+  private val wDataPtrAdd            = (nextShiftHintLastValid || !dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits.last & Burst.isFix(dAwEntrys(wDataPtr.value).burst) || dAwEntrys(wDataPtr.value).dontMerge || io.uAxiW.bits.last) & io.uAxiW.fire & !dAwEntrys(wDataPtr.value).fullWrap
+  private val tailPtrAdd             = io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get)
+
   uHeadPtr   := Mux(rxAwPipe.io.deq.fire, uHeadPtr + 1.U, uHeadPtr)
-  uTailPtr   := Mux(io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get), uTailPtr + 1.U, uTailPtr)
-  dHeadPtr   := Mux(io.dAxiAw.fire, dHeadPtr + 1.U, dHeadPtr)
-  dTailPtr   := Mux(io.dAxiB.fire, dTailPtr + 1.U, dTailPtr)
-  wDataPtr   := Mux(io.uAxiW.fire & (io.uAxiW.bits.last | dAwEntrys(wDataPtr.value).nextShift === 0.U | Burst.isIncr(dAwEntrys(wDataPtr.value).burst)), wDataPtr + 1.U, wDataPtr)
+  uTailPtr   := Mux(tailPtrAdd          , uTailPtr + 1.U, uTailPtr)
+  dHeadPtr   := Mux(io.dAxiAw.fire      , dHeadPtr + 1.U, dHeadPtr)
+  dTailPtr   := Mux(io.dAxiB.fire       , dTailPtr + 1.U, dTailPtr)
+  wDataPtr   := Mux(wDataPtrAdd         , wDataPtr + 1.U, wDataPtr)
 
-  maskData.zip(io.uAxiW.bits.strb.asBools).foreach{
-    case(m, b) =>
-      when(b === 1.U){
-        m := 255.U
-      }.otherwise{
-        m := 0.U
-      }
-  }
   //Merge Data Reg Logic
-  merDatReg    := Mux(io.dAxiW.fire, Mux(io.uAxiW.fire, maskData.asUInt & io.uAxiW.bits.data, 0.U), Mux(io.uAxiW.fire, merDatReg | maskData.asUInt & io.uAxiW.bits.data, merDatReg))
-  merMaskReg   := Mux(io.dAxiW.fire, Mux(io.uAxiW.fire, io.uAxiW.bits.strb, 0.U), Mux(io.uAxiW.fire, io.uAxiW.bits.strb | merMaskReg, merMaskReg))
-
-  private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst)
-  private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst)
-
   merComReg    := Mux(io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, merComReg))
-  mergeLastReg := Mux(io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, mergeLastReg))
+  mergeLastReg := Mux(io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire & io.dAxiW.bits.last, false.B, mergeLastReg))
 
   uAwEntrys.zipWithIndex.foreach {
     case(e, i) =>
       when(rxAwPipe.io.deq.fire & (uHeadPtr.value === i.U)){
         e.entryInit(rxAwPipe.io.deq.bits)
       }.elsewhen((uTailPtr.value === i.U) & io.dAxiAw.fire){
-        val incrNotModify  = !e.cache(1) &  Burst.isIncr(e.burst)
-        val otherNotModify = !e.cache(1) & !Burst.isIncr(e.burst)
-        val incrModify     =  e.cache(1) &  Burst.isIncr(e.burst)
-        val otherModify    =  e.cache(1) & !Burst.isIncr(e.burst)
+        val notModify      = !e.cache(1) 
+        val modify         =  e.cache(1)
         e.cnt.get         := e.cnt.get + 1.U
         e.exAddr          := PriorityMux(Seq(
-          incrNotModify   -> (e.exAddr + (1.U << e.size)),
-          otherNotModify  -> (~e.byteMask & e.exAddr | (e.exAddr + (1.U((rni.offset + 1).W) << e.size)) & e.byteMask),
-          incrModify      -> (Cat(e.exAddr(rni.pageBits - 1, rni.offset) + 1.U, 0.U(rni.offset.W))),
-          otherModify     -> (Cat(e.exAddr(rni.pageBits - 1, rni.offset) + 1.U, 0.U(rni.offset.W)) & e.byteMask | ~e.byteMask & e.exAddr)
+          notModify       -> (~e.byteMask & e.exAddr | (e.exAddr + (1.U((rni.offset).W) << e.size)) & e.byteMask),
+          modify          -> (Cat(e.exAddr(rni.pageBits - 1, rni.offset) + 1.U, 0.U(rni.offset.W)) & e.byteMask | ~e.byteMask & e.exAddr)
         ))
       }
   }
   dAwEntrys.zipWithIndex.foreach {
     case(e, i) =>
       when(io.dAxiAw.fire & (dHeadPtr.value === i.U)) {
-        e.burst     :=  uTailE.burst
-        e.dontMerge := !uTailE.cache(1)
-        e.id        :=  uTailE.id
-        e.last      := (uTailE.cnt.get + 1.U) === uTailE.num.get
-        e.shift     :=  uTailE.exAddr(rni.offset - 1, 0)
-        e.nextShift :=  Mux(Burst.isFix(uTailE.burst), uTailE.exAddr(rni.offset - 1, 0), uTailE.exAddr + (1.U((rni.offset + 1).W) << uTailE.size))
-        e.size      :=  1.U(7.W) << uTailE.size
+        e.burst        :=  uTailE.burst
+        e.dontMerge    := !uTailE.cache(1)
+        e.id           :=  uTailE.id
+        e.last         := (uTailE.cnt.get + 1.U) === uTailE.num.get
+        e.shift        :=  uTailE.exAddr(rni.offset - 1, 0)
+        e.mask         :=  uTailE.byteMask(rni.offset - 1, 0)
+        e.nextShift    :=  (uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size)) & uTailE.byteMask(rni.offset - 1, 0) | uTailE.exAddr(rni.offset - 1, 0) & ~uTailE.byteMask(rni.offset - 1, 0)
+        e.size         :=  1.U(6.W) << uTailE.size
+        e.specWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & !uTailE.byteMask(rni.offset)
+        e.fullWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & (uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1))
       }.elsewhen(io.uAxiW.fire & (wDataPtr.value === i.U)) {
         e.shift     := e.nextShift
-        e.nextShift := Mux(Burst.isFix(uTailE.burst), e.nextShift, e.nextShift + e.size)
+        e.nextShift := (e.nextShift + e.size) & e.mask | e.nextShift & ~e.mask
+      }
+      when(io.dAxiW.fire & e.specWrap & (wDataPtr.value === i.U)){
+        e.specWrap  := false.B
+        e.fullWrap  := false.B
       }
   }
-  txAwBdl            := 0.U.asTypeOf(txAwBdl)
-  txAwBdl.addr       := Cat(uTailE.preAddr, uTailE.exAddr)
+  txAwBdl                       := 0.U.asTypeOf(txAwBdl)
+  private val specWrapModify     = uTailE.cache(1) & Burst.isWrap(uTailE.burst) & (uTailE.byteMask(rni.offset) ^  uTailE.byteMask(rni.offset - 1))
+  private val lessWrapModify     = uTailE.cache(1) & Burst.isWrap(uTailE.burst) & !uTailE.byteMask(rni.offset - 1)
+  private val specWrapModifyAddr = Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset), 0.U(rni.offset.W))
+  private val lessWrapModifyAddr = Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U((rni.offset - 1).W))
+  private val defaultAddr        = Cat(uTailE.preAddr, uTailE.exAddr)
+
+  txAwBdl.addr       := PriorityMux(Seq(
+    specWrapModify   -> specWrapModifyAddr,
+    lessWrapModify   -> lessWrapModifyAddr,
+    true.B           -> defaultAddr
+  ))
   txAwBdl.size       := Mux(!uTailE.cache(1) || Burst.isFix(uTailE.burst), uTailE.size, log2Ceil(dw/8).U)
   txAwBdl.cache      := uTailE.cache
   txAwBdl.burst      := Burst.INCR
   txAwBdl.id         := dHeadPtr.value
-  txAwBdl.len        := Mux(!uTailE.cache(1) | Burst.isFix(uTailE.burst) | uTailE.exAddr(rni.offset - 1) |
-                          uTailE.exAddr(rni.pageBits - 1, rni.offset - 1) === uTailE.endAddr(rni.pageBits - 1, rni.offset - 1), 0.U, 1.U)
 
+  private val incrOffset        = uTailE.exAddr(rni.offset - 1) & Burst.isIncr(uTailE.burst)
+  private val wrapOffset        = Burst.isWrap(uTailE.burst) & (uTailE.exAddr(rni.offset - 1) & uTailE.byteMask(rni.offset) | !uTailE.byteMask(rni.offset - 1))
+  private val otherHalf         = (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits - 1, rni.offset)) & (uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U) & uTailE.exAddr(rni.offset - 1, 0) =/= uTailE.endAddr(rni.offset - 1, 0)
+  txAwBdl.len                  := Mux(!uTailE.cache(1) | Burst.isFix(uTailE.burst) | incrOffset | wrapOffset | otherHalf, 0.U, 1.U)
 
 /* 
  * IO Connection Logic
@@ -151,11 +155,18 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   io.dAxiAw.valid    := uHeadPtr =/= uTailPtr & !isFull(dHeadPtr, dTailPtr)
   io.dAxiAw.bits     := txAwBdl
   io.dAxiW.bits      := 0.U.asTypeOf(io.dAxiW.bits)
-  io.dAxiW.bits.data := merDatReg
-  io.dAxiW.bits.strb := merMaskReg
-  io.dAxiW.bits.last := mergeLastReg
-  io.dAxiW.valid     := merComReg
+  io.dAxiW.bits.data := mergeReg.io.dataOut.bits.data
+  io.dAxiW.bits.strb := mergeReg.io.dataOut.bits.strb
+  io.dAxiW.bits.last := mergeLastReg & !dAwEntrys(wDataPtr.value).fullWrap
+  io.dAxiW.valid     := merComReg || mergeLastReg
   io.dAxiB.ready     := bIdQueue.io.enq.ready
+
+  mergeReg.io.dataIn.valid         := io.uAxiW.fire
+  mergeReg.io.dataIn.bits.fixMerge := !dAwEntrys(wDataPtr.value).dontMerge & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
+  mergeReg.io.dataIn.bits.strb     := io.uAxiW.bits.strb
+  mergeReg.io.dataIn.bits.beat     := dAwEntrys(wDataPtr.value).shift(rni.offset - 1)
+  mergeReg.io.dataIn.bits.data     := io.uAxiW.bits.data
+  mergeReg.io.dataOut.ready        := mergeLastReg || merComReg
 
   bIdQueue.io.deq.ready   := io.uAxiB.ready
   bIdQueue.io.enq.valid   := dAwEntrys(dTailPtr.value).last & io.dAxiB.fire
