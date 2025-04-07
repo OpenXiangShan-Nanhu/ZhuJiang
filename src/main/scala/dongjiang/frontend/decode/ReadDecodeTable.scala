@@ -18,10 +18,17 @@ import chisel3.util._
 
 
 object Read_LAN_DCT_DMT {
-//  def readNoSnp: Seq[(UInt, UInt)] = Seq(
-//    (isReq | toLAN | opIs(ReadNoSnp) | reqExpCompAck) -> (read | opcode(ReadNoSnp)),
-//    (isReq | toLAN | opIs(ReadNoSnp))                 -> (read | opcode(ReadNoSnp) | needDB),
-//  )
+  // ReadNoSnp With ExpCompAck To LAN
+  def readNoSnp0: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck, Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I)) -> first(read(ReadNoSnp), noCmt)
+  ))
+
+  // ReadNoSnp Without ExpCompAck To LAN
+  def readNoSnp1: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadNoSnp), Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I)) -> (read(ReadNoSnp) | needDB, Seq((datIs(CompData) | respIs(UC)) -> second(cmtDat(CompData) | resp(UC))))
+  ))
 
   // ReadNotSharedDirty To LAN
   def readNotSharedDirty: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadNotSharedDirty) | expCompAck, Seq(
@@ -82,5 +89,5 @@ object Read_LAN_DCT_DMT {
   ))
 
   // readNoSnp ++ readOnce ++ readNotSharedDirty ++ readUnique ++ makeReadUnique
-  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(readNotSharedDirty, readUnique)
+  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(readNoSnp0, readNoSnp1, readNotSharedDirty, readUnique)
 }

@@ -292,7 +292,7 @@ object Code {
 
 object Decode {
   def decode(chi: ChiInst = 0.U.asTypeOf(new ChiInst), state: StateInst = 0.U.asTypeOf(new StateInst), task: TaskInst = 0.U.asTypeOf(new TaskInst), secTask: TaskInst = 0.U.asTypeOf(new TaskInst)) = {
-    val table = Read_LAN_DCT_DMT.table
+    val table = Read_LAN_DCT_DMT.table ++ Dataless_LAN.table
 
     // ChiInst length
     val l_ci  = table.length

@@ -122,13 +122,14 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // invalid
   taskOpsVecReg_s4.zipWithIndex.foreach {
     case(ops, i) =>
-      val toBeValid   = io.task_s3.valid & freeId_s3 === i.U
+      val toBeValid   = io.task_s3.valid & io.task_s3.bits.code.valid & freeId_s3 === i.U
       val toBeInvalid = io.cmAllocVec_s4(ops.bits.cmid).ready & taskNidVecReg_s4(i) === 0.U
       ops.valid := PriorityMux(Seq(
         toBeValid   -> true.B,
         toBeInvalid -> false.B,
         true.B      -> ops.valid
       ))
+      HardwareAssertion.withEn(ops.bits.valid, ops.valid)
       HardwareAssertion.withEn(!ops.valid, toBeValid)
       HardwareAssertion.checkTimeout(!ops.valid, TIMEOUT_ISSUE, cf"TIMEOUT: Issue Index[${i}]")
   }

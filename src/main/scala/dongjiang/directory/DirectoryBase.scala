@@ -21,8 +21,6 @@ class Shift(implicit p: Parameters) extends DJBundle {
   def recRepl_d0(fire: Bool) = this.repl   := Cat(fire, repl >> 1)
   def recWri_d0 (fire: Bool) = this.write  := Cat(fire, write >> 1)
 
-  def req           = read | write
-  def getReplMes_d1 = (read | write & ~repl)(readDirLatency-1)
   def getTagMeta_d1 = read(1).asBool
   def outDirResp_d2 = read(0).asBool
   def updTagMeta_d2 = read(0).asBool  & repl(0).asBool
@@ -30,6 +28,7 @@ class Shift(implicit p: Parameters) extends DJBundle {
 
   private val hi    = readDirLatency - 1
   private val lo    = readDirLatency - dirMuticycle
+  def req           = read | write
   def tagMetaReady  = !req(hi, lo).orR
   def replWillWrite = (repl & read)(lo-1, 0).orR // when it is repl read, cant receive new req
 }
@@ -128,44 +127,42 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   // ---------------------------------------------------------------------------------------------------------------------- //
   // ---------------------------------------- [D0]: Receive Req and Read/Write SRAM --------------------------------------- //
   // ---------------------------------------------------------------------------------------------------------------------- //
+  // sram read/write type                                                                                 // (read, write, repl)
+  val writeHit_d0 = io.write.valid & io.write.bits.hit  & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (0,    1,     0   ) -> read  repl / write repl (wriUpdRepl_d2)
+  val wriNoHit_d0 = io.write.valid & !io.write.bits.hit & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (1,    0,     1   ) -> read  repl / write repl (updTagMeta_d2)
+  val read_d0     = io.read.valid                       & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (1,    0,     0   ) -> read  repl / write repl when hit
+  val repl_d0     = shiftReg.updTagMeta_d2                                                                // (0,    1,     1   )
+
   // common
-  val reqSet_d0   = Mux(shiftReg.updTagMeta_d2, req_d2.Addr.set, Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set))
+  val reqSet_d0 = Mux(repl_d0, req_d2.Addr.set, Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set))
 
   // write message
-  val wriMask_d0     = Mux(shiftReg.updTagMeta_d2, selWayOH_d2,     io.write.bits.wayOH)
-  val wriMetaVec_d0  = Mux(shiftReg.updTagMeta_d2, req_d2.metaVec,  io.write.bits.metaVec)
-
-  // sram read/write type
-  val writeHit_d0 = io.write.valid & io.write.bits.hit
-  val wriNoHit_d0 = io.write.valid & !io.write.bits.hit
-  val repl_d0     = wriNoHit_d0 | shiftReg.updTagMeta_d2
-  val write_d0    = writeHit_d0 | shiftReg.updTagMeta_d2
-  val read_d0     = wriNoHit_d0 | io.read.valid
-  val valid_d0    = shiftReg.updTagMeta_d2 | ((io.write.valid | io.read.valid) & !shiftReg.replWillWrite)
+  val wriMask_d0    = Mux(repl_d0, selWayOH_d2, io.write.bits.wayOH)
+  val wriMetaVec_d0 = Mux(repl_d0, req_d2.metaVec, io.write.bits.metaVec)
 
   // metaArray
-  metaArray.io.req.valid          := valid_d0 & resetDoneReg
+  metaArray.io.req.valid          := (writeHit_d0 | wriNoHit_d0 | read_d0 | repl_d0) & resetDoneReg
   metaArray.io.req.bits.addr      := reqSet_d0
-  metaArray.io.req.bits.write     := write_d0
+  metaArray.io.req.bits.write     := writeHit_d0 | repl_d0
   metaArray.io.req.bits.mask.get  := wriMask_d0
   metaArray.io.req.bits.data.foreach(_ := wriMetaVec_d0)
-  HardwareAssertion.withEn(!(tagArray.io.req.ready ^ metaArray.io.req.ready), metaArray.io.req.valid)
+  HardwareAssertion.withEn(metaArray.io.req.ready, metaArray.io.req.valid)
 
   // tagArray
-  tagArray.io.req.valid           := valid_d0 & resetDoneReg
+  tagArray.io.req.valid           := (wriNoHit_d0 | read_d0 | repl_d0) & resetDoneReg
   tagArray.io.req.bits.addr       := reqSet_d0
-  tagArray.io.req.bits.write      := shiftReg.updTagMeta_d2
+  tagArray.io.req.bits.write      := repl_d0
   tagArray.io.req.bits.mask.get   := selWayOH_d2
   tagArray.io.req.bits.data.foreach(_ := req_d2.Addr.tag)
-  HardwareAssertion.withEn(!(tagArray.io.req.ready ^ metaArray.io.req.ready), tagArray.io.req.valid)
+  HardwareAssertion.withEn(tagArray.io.req.ready, tagArray.io.req.valid)
 
   // shiftReg
+  // The meta is used because all actions trigger reads or writes to the meta
   shiftReg.recRead_d0(metaArray.io.req.fire & !metaArray.io.req.bits.write)
   shiftReg.recWri_d0 (metaArray.io.req.fire & metaArray.io.req.bits.write)
   shiftReg.recRepl_d0(metaArray.io.req.fire & repl_d0)
   HardwareAssertion(!(shiftReg.read & shiftReg.write).orR)
   HardwareAssertion.withEn(!(shiftReg.repl ^ shiftReg.req).orR, shiftReg.repl.orR)
-  if(djparam.dirSetup == djparam.dirLatency) HardwareAssertion(PopCount(shiftReg.req) <= 1.U)
 
   // read/write ready
   io.read.ready   := resetDoneReg & shiftReg.tagMetaReady & !shiftReg.replWillWrite & !io.write.valid
@@ -175,7 +172,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
 
   // replArray
   // read
-  replArray.io.rreq.valid         := (io.write.valid | io.read.valid) & resetDoneReg
+  replArray.io.rreq.valid         := (wriNoHit_d0 | wriNoHit_d0 | read_d0) & resetDoneReg
   replArray.io.rreq.bits          := Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set)
   // write
   replArray.io.wreq.valid         := shiftReg.wriUpdRepl_d2 | shiftReg.updTagMeta_d2 | (shiftReg.outDirResp_d2 & readHit_d2)
@@ -216,7 +213,6 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
         replSftReg_d1(i-1) := Mux(req_d2.Addr.set === reqSftReg_d1(i).Addr.set, newReplMes_d2, sft)
       }
   }
-  HardwareAssertion(!(replArray.io.rresp.valid ^ shiftReg.getReplMes_d1))
 
 
   // ---------------------------------------------------------------------------------------------------------------------- //

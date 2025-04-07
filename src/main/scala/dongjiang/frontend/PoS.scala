@@ -113,8 +113,8 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * Lock Set
    */
   lockRegVec.zipWithIndex.foreach { case(lock, i) =>
-    val lockHit   = io.lockSet.valid & io.lockSet.bits.pos.set
-    val unlockHit = io.unlockSet.valid & io.unlockSet.bits.pos.set
+    val lockHit   = io.lockSet.valid & io.lockSet.bits.pos.set === i.U
+    val unlockHit = io.unlockSet.valid & io.unlockSet.bits.pos.set === i.U
     lock := lock + lockHit - unlockHit
     HardwareAssertion(lock +& lockHit - unlockHit >= 0.U)
     HardwareAssertion(lock +& lockHit - unlockHit < posWays.U)

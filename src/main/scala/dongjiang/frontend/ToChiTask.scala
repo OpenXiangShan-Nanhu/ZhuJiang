@@ -113,7 +113,6 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     // CAH
     // ExpCompAck
     HardwareAssertion.withEn(task.expCompAck,  task.fromCcRnf & task.isRead, "Reuqests from CC-RNF should assert ExpCompAck in read transactions")
-    HardwareAssertion.withEn(!task.expCompAck, task.fromCcRnf & !task.isRead, "Reuqests from CC-RNF should not assert ExpCompAck while transaction is not read")
     HardwareAssertion.withEn(!task.expCompAck, task.fromCcRni, "Reuqests from CC-RNI should not assert ExpCompAck")
     HardwareAssertion.withEn(!task.expCompAck, task.fromRni, "Reuqests from RNI should not assert ExpCompAck")
     // TagOp
