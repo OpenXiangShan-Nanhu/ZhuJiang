@@ -291,104 +291,103 @@ object Code {
 
 
 object Decode {
-  def decode(chi: ChiInst = 0.U.asTypeOf(new ChiInst), state: StateInst = 0.U.asTypeOf(new StateInst), task: TaskInst = 0.U.asTypeOf(new TaskInst), secTask: TaskInst = 0.U.asTypeOf(new TaskInst)) = {
+  private val table = Read_LAN_DCT_DMT.table ++ Dataless_LAN.table
+
+  // ChiInst length
+  val l_ci = table.length
+  // StateInst length
+  val l_si = table.map(_._2.length).max
+  // TaskInst length
+  val l_ti = table.map(_._2.map(_._2._2.length).max).max
+  // SecTaskInst length
+  val l_sti = table.map(_._2.map(_._2._2.map(_._2._2.length).max).max).max
+
+  private val chiInst    = new ChiInst().getWidth
+  private val stateInst  = new StateInst().getWidth
+  private val taskCode   = new TaskCode().getWidth
+  private val taskInst   = new TaskInst().getWidth
+  private val commitCode = new CommitCode().getWidth
+
+  def decode(chi: UInt = 0.U(chiInst.W), state: UInt = 0.U(stateInst.W), task: UInt = 0.U(taskInst.W), secTask: UInt = 0.U(taskInst.W)) = {
+    require(chi.getWidth     == chiInst)
+    require(state.getWidth   == stateInst)
+    require(task.getWidth    == taskInst)
+    require(secTask.getWidth == taskInst)
+
+    val chiInstVec      = WireInit(VecInit(Seq.fill(l_ci) { 0.U(chiInst.W) }))
+    val stateInstVec2   = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { 0.U(stateInst.W) }) }))
+    val taskCodeVec2    = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { 0.U(taskCode.W)  }) }))
+    val taskInstVec3    = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { VecInit(Seq.fill(l_ti) { 0.U(taskInst.W) }) }) }))
+    val secCodeVec3     = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { VecInit(Seq.fill(l_ti) { 0.U(taskCode.W) }) }) }))
+    val secInstVec4     = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { VecInit(Seq.fill(l_ti) { VecInit(Seq.fill(l_sti) { 0.U(taskInst.W)   }) }) }) }))
+    val commitCodeVec4  = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { VecInit(Seq.fill(l_ti) { VecInit(Seq.fill(l_sti) { 0.U(commitCode.W) }) }) }) }))
+
     val table = Read_LAN_DCT_DMT.table ++ Dataless_LAN.table
-
-    // ChiInst length
-    val l_ci  = table.length
-    // StateInst length
-    val l_si  = table.map(_._2.length).max
-    // TaskInst length
-    val l_ti  = table.map(_._2.map(_._2._2.length).max).max
-    // SecTaskInst length
-    val l_sti = table.map(_._2.map(_._2._2.map(_._2._2.length).max).max).max
-
-    val chiInstVec      = WireInit(VecInit(Seq.fill(l_ci) { 0.U.asTypeOf(new ChiInst) }))
-    val stateInstVec2   = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { 0.U.asTypeOf(new StateInst)  }) }))
-    val taskCodeVec2    = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { 0.U.asTypeOf(new TaskCode)   }) }))
-    val taskInstVec3    = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { VecInit(Seq.fill(l_ti) { 0.U.asTypeOf(new TaskInst)   }) }) }))
-    val secCodeVec3     = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { VecInit(Seq.fill(l_ti) { 0.U.asTypeOf(new TaskCode)   }) }) }))
-    val secInstVec4     = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { VecInit(Seq.fill(l_ti) { VecInit(Seq.fill(l_sti) { 0.U.asTypeOf(new TaskInst)   }) }) }) }))
-    val commitCodeVec4  = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { VecInit(Seq.fill(l_ti) { VecInit(Seq.fill(l_sti) { 0.U.asTypeOf(new CommitCode) }) }) }) }))
 
     table.zipWithIndex.foreach {
       case(t0, i) =>
         // require
-        require(t0._1.getWidth == new ChiInst().getWidth, s"($i) Width [${t0._1.getWidth}] =/= ChiInst Width [${new ChiInst().getWidth}]")
+        require(t0._1.getWidth == chiInst, s"($i) Width [${t0._1.getWidth}] =/= ChiInst Width [$chiInst]")
         // connect
-        chiInstVec(i) := t0._1.asTypeOf(new ChiInst)
+        chiInstVec(i) := t0._1
         t0._2.zipWithIndex.foreach {
           case(t1, j) =>
             // require
-            require(t1._1.getWidth    == new StateInst().getWidth, s"($i, $j) Width [${t1._1.getWidth}] =/= StateInst Width [${new StateInst().getWidth}]")
-            require(t1._2._1.getWidth == new TaskCode().getWidth,  s"($i, $j) Width [${t1._2._1.getWidth}] =/= TaskCode Width [${new TaskCode().getWidth}]")
+            require(t1._1.getWidth    == stateInst, s"($i, $j) Width [${t1._1.getWidth}] =/= StateInst Width [$stateInst]")
+            require(t1._2._1.getWidth == taskCode,  s"($i, $j) Width [${t1._2._1.getWidth}] =/= TaskCode Width [$taskCode]")
             // connect
-            stateInstVec2(i)(j) := t1._1.asTypeOf(new StateInst)
-            taskCodeVec2(i)(j)  := t1._2._1.asTypeOf(new TaskCode)
+            stateInstVec2(i)(j) := t1._1
+            taskCodeVec2(i)(j)  := t1._2._1
             t1._2._2.zipWithIndex.foreach {
               case(t2, k) =>
                 // require
-                require(t2._1.getWidth    == new TaskInst().getWidth, s"($i, $j, $k) Width [${t2._1.getWidth}] =/= TaskInst Width [${new TaskInst().getWidth}]")
-                require(t2._2._1.getWidth == new TaskCode().getWidth, s"($i, $j, $k) Width [${t2._2._1.getWidth}] =/= SecTaskCode Width [${new TaskCode().getWidth}]")
+                require(t2._1.getWidth    == taskInst, s"($i, $j, $k) Width [${t2._1.getWidth}] =/= TaskInst Width [$taskInst]")
+                require(t2._2._1.getWidth == taskCode, s"($i, $j, $k) Width [${t2._2._1.getWidth}] =/= SecTaskCode Width [$taskCode]")
                 // connect
-                taskInstVec3(i)(j)(k) := t2._1.asTypeOf(new TaskInst)
-                secCodeVec3(i)(j)(k)  := t2._2._1.asTypeOf(new TaskCode)
+                taskInstVec3(i)(j)(k) := t2._1
+                secCodeVec3(i)(j)(k)  := t2._2._1
                 t2._2._2.zipWithIndex.foreach {
                   case(t3, l) =>
                     // require
-                    require(t3._1.getWidth == new TaskInst().getWidth,   s"($i, $j, $k, $l) Width [${t3._1.getWidth}] =/= SecTaskInst Width [${new TaskInst().getWidth}]")
-                    require(t3._2.getWidth == new CommitCode().getWidth, s"($i, $j, $k, $l) Width [${t3._2.getWidth}] =/= CommitCode Width [${new CommitCode().getWidth}]")
+                    require(t3._1.getWidth == taskInst,   s"($i, $j, $k, $l) Width [${t3._1.getWidth}] =/= SecTaskInst Width [$taskInst]")
+                    require(t3._2.getWidth == commitCode, s"($i, $j, $k, $l) Width [${t3._2.getWidth}] =/= CommitCode Width [$commitCode]")
                     // connect
-                    secInstVec4(i)(j)(k)(l)     := t3._1.asTypeOf(new TaskInst)
-                    commitCodeVec4(i)(j)(k)(l)  := t3._2.asTypeOf(new CommitCode)
+                    secInstVec4(i)(j)(k)(l)     := t3._1
+                    commitCodeVec4(i)(j)(k)(l)  := t3._2
                 }
             }
         }
     }
 
     // First Input ChiInst
-    val stateInstVec_0    = ParallelLookUp(chi.asUInt,    chiInstVec.map(_.asUInt).zip(stateInstVec2))
-    val taskCodeVec_0     = ParallelLookUp(chi.asUInt,    chiInstVec.map(_.asUInt).zip(taskCodeVec2))
+    val stateInstVec_0    = ParallelLookUp(chi, chiInstVec.zip(stateInstVec2))
+    val taskCodeVec_0     = ParallelLookUp(chi, chiInstVec.zip(taskCodeVec2))
 
-    val taskInstVec2_0    = ParallelLookUp(chi.asUInt,    chiInstVec.map(_.asUInt).zip(taskInstVec3))
-    val secCodeVec2_0     = ParallelLookUp(chi.asUInt,    chiInstVec.map(_.asUInt).zip(secCodeVec3))
+    val taskInstVec2_0    = ParallelLookUp(chi, chiInstVec.zip(taskInstVec3))
+    val secCodeVec2_0     = ParallelLookUp(chi, chiInstVec.zip(secCodeVec3))
 
-    val secInstVec3_0     = ParallelLookUp(chi.asUInt,    chiInstVec.map(_.asUInt).zip(secInstVec4))
-    val cmtCodeVec3_0     = ParallelLookUp(chi.asUInt,    chiInstVec.map(_.asUInt).zip(commitCodeVec4))
+    val secInstVec3_0     = ParallelLookUp(chi, chiInstVec.zip(secInstVec4))
+    val cmtCodeVec3_0     = ParallelLookUp(chi, chiInstVec.zip(commitCodeVec4))
     val cmtCodeVec_0      = cmtCodeVec3_0.map(_.head.head)
 
     // Second Input StateInst
-    val taskCode_1        = ParallelLookUp(state.asUInt,  stateInstVec_0.map(_.asUInt).zip(taskCodeVec_0))
+    val taskCode_1        = ParallelLookUp(state, stateInstVec_0.zip(taskCodeVec_0))
 
-    val taskInstVec_1     = ParallelLookUp(state.asUInt,  stateInstVec_0.map(_.asUInt).zip(taskInstVec2_0))
-    val secCodeVec_1      = ParallelLookUp(state.asUInt,  stateInstVec_0.map(_.asUInt).zip(secCodeVec2_0))
+    val taskInstVec_1     = ParallelLookUp(state, stateInstVec_0.zip(taskInstVec2_0))
+    val secCodeVec_1      = ParallelLookUp(state, stateInstVec_0.zip(secCodeVec2_0))
 
-    val secInstVec2_1     = ParallelLookUp(state.asUInt,  stateInstVec_0.map(_.asUInt).zip(secInstVec3_0))
-    val cmtCodeVec2_1     = ParallelLookUp(state.asUInt,  stateInstVec_0.map(_.asUInt).zip(cmtCodeVec3_0))
+    val secInstVec2_1     = ParallelLookUp(state, stateInstVec_0.zip(secInstVec3_0))
+    val cmtCodeVec2_1     = ParallelLookUp(state, stateInstVec_0.zip(cmtCodeVec3_0))
 
     // Third Input TaskInst
-    val secCode_2         = ParallelLookUp(task.asUInt,   taskInstVec_1.map(_.asUInt).zip(secCodeVec_1))
+    val secCode_2         = ParallelLookUp(task, taskInstVec_1.zip(secCodeVec_1))
 
-    val secInstVec_2      = ParallelLookUp(task.asUInt,   taskInstVec_1.map(_.asUInt).zip(secInstVec2_1))
-    val cmtCodeVec_2      = ParallelLookUp(task.asUInt,   taskInstVec_1.map(_.asUInt).zip(cmtCodeVec2_1))
+    val secInstVec_2      = ParallelLookUp(task, taskInstVec_1.zip(secInstVec2_1))
+    val cmtCodeVec_2      = ParallelLookUp(task, taskInstVec_1.zip(cmtCodeVec2_1))
 
     // Fourth Input SecTaskInst
-    val cmtCode_3         = ParallelLookUp(secTask.asUInt, secInstVec_2.map(_.asUInt).zip(cmtCodeVec_2))
+    val cmtCode_3         = ParallelLookUp(secTask, secInstVec_2.zip(cmtCodeVec_2))
 
-    ((stateInstVec_0, taskCodeVec_0, cmtCodeVec_0), (taskInstVec_1, secCodeVec_1), (secInstVec_2, cmtCodeVec_2), (taskCode_1, secCode_2, cmtCode_3), (l_ci, l_si ,l_ti, l_sti))
+    ((stateInstVec_0, taskCodeVec_0, cmtCodeVec_0), (taskInstVec_1, secCodeVec_1), (secInstVec_2, cmtCodeVec_2), (taskCode_1.asTypeOf(new TaskCode), secCode_2.asTypeOf(new TaskCode), cmtCode_3.asTypeOf(new CommitCode)))
   }
-
-  def decode(inst: StateInst, instVec: Vec[StateInst], codeVec: Vec[TaskCode]): TaskCode = ParallelLookUp(inst.asUInt, instVec.map(_.asUInt).zip(codeVec))
-
-  def decode(inst: StateInst, instVec: Vec[StateInst], cmtVec: Vec[CommitCode]): CommitCode = ParallelLookUp(inst.asUInt, instVec.map(_.asUInt).zip(cmtVec))
-
-  def decode(inst: TaskInst, instVec: Vec[TaskInst], cmtVec: Vec[CommitCode]): CommitCode = ParallelLookUp(inst.asUInt, instVec.map(_.asUInt).zip(cmtVec))
-
-  def l_ci: Int = decode()._5._1
-
-  def l_si: Int = decode()._5._2
-
-  def l_ti: Int = decode()._5._3
-
-  def l_sti: Int = decode()._5._4
 }

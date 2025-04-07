@@ -204,7 +204,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val msg_resp      = msgTable(pos_resp.set)(pos_resp.way)
   val taskInst_resp = Mux(cm_resp.intl.w.cmResp,  io.respCmt.bits.inst, msg_resp.inst)
   val secInst_resp  = Mux(cm_resp.intl.w.secResp, io.respCmt.bits.inst, 0.U.asTypeOf(new TaskInst))
-  val deoccde_resp  = Decode.decode(msg_resp.chi.getChiInst, msg_resp.dir.getStateInst(msg_resp.chi.metaId), taskInst_resp, secInst_resp)._4
+  val deoccde_resp  = Decode.decode(msg_resp.chi.getChiInst.asUInt, msg_resp.dir.getStateInst(msg_resp.chi.metaId).asUInt, taskInst_resp.asUInt, secInst_resp.asUInt)._4
   // get decode result
   code_rCmt         := deoccde_resp._2
   cmt_rCmt          := Mux(deoccde_resp._3.waitSecDone & cm_resp.intl.w.cmResp, 0.U.asTypeOf(new CommitCode), deoccde_resp._3)

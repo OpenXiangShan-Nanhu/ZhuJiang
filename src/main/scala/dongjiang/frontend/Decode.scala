@@ -12,6 +12,7 @@ import dongjiang.directory._
 import xs.utils.debug._
 import dongjiang.frontend.decode._
 import dongjiang.data._
+import xs.utils.ParallelLookUp
 
 class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
@@ -44,9 +45,10 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * [S2]: Pre-Decode
    */
   chiInst_s2          := io.task_s2.bits.chi.getChiInst
-  stateInstVecReg_s3  := Decode.decode(chiInst_s2)._1._1
-  taskCodeVecReg_s3   := Decode.decode(chiInst_s2)._1._2
-  commitVecReg_s3     := Decode.decode(chiInst_s2)._1._3
+  val result_s2       = Decode.decode(chiInst_s2.asUInt)._1
+  stateInstVecReg_s3.zip(result_s2._1).foreach { case(a, b) => a := b.asTypeOf(a) }
+  taskCodeVecReg_s3.zip(result_s2._2).foreach  { case(a, b) => a := b.asTypeOf(a) }
+  commitVecReg_s3.zip(result_s2._3).foreach    { case(a, b) => a := b.asTypeOf(a) }
   dontTouch(chiInst_s2)
   HardwareAssertion.withEn(taskCodeVecReg_s3.map(_.flag).reduce(_ & _), io.task_s2.valid, cf"Task s2 inst invalid in Decode\n${chiInst_s2}")
   HardwareAssertion.withEn(commitVecReg_s3.map(_.flag).reduce(_ & _),   io.task_s2.valid, cf"Task s2 inst invalid in Decode\n${chiInst_s2}")
@@ -63,8 +65,8 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * [S3]: Decode
    */
-  val code_s3 = Decode.decode(stateInst_s3, stateInstVecReg_s3, taskCodeVecReg_s3)
-  val cmt_s3  = Decode.decode(stateInst_s3, stateInstVecReg_s3, commitVecReg_s3)
+  val code_s3 = ParallelLookUp(stateInst_s3.asUInt, stateInstVecReg_s3.map(_.asUInt).zip(taskCodeVecReg_s3))
+  val cmt_s3  = ParallelLookUp(stateInst_s3.asUInt, stateInstVecReg_s3.map(_.asUInt).zip(commitVecReg_s3))
   dontTouch(code_s3)
   dontTouch(cmt_s3)
   HardwareAssertion.withEn(code_s3.flag, validReg_s3, cf"State s3 inst invalid in Decode\n${taskReg_s3.chi.getChiInst}\n${code_s3}")
