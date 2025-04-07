@@ -10,7 +10,7 @@ import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
 import xs.utils.debug.{HardwareAssertion, HardwareAssertionKey}
 import zhujiang.chi.FlitHelper.connIcn
-import zhujiang.chi.{ChiBuffer, HReqFlit, ReqAddrBundle, RingFlit}
+import zhujiang.chi.{ChiBuffer, HReqFlit, NodeIdBundle, ReqAddrBundle, RingFlit}
 import zhujiang.{DftWires, ZJRawModule}
 
 @instantiable
@@ -97,7 +97,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
       txBd.bits.asTypeOf(new RingFlit(txBd.bits.getWidth)).TgtID
     }
 
-    val friendsHitVec = io.friends.map(fs => Cat(fs.map(_ === tgt)).orR)
+    val friendsHitVec = io.friends.map(fs => Cat(fs.map(_ === tgt.asTypeOf(new NodeIdBundle).router)).orR)
     val srcId = Mux1H(friendsHitVec, io.nids)
 
     val txd = if(chn == "ERQ" && mems.nonEmpty) {
