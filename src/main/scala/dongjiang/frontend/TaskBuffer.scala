@@ -110,7 +110,7 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
       val sendTaskHit  = taskValid          & beSendId                === i.U
       val sleepHit     = io.sleep_s1        & toBeFreeIdReg_s1        === i.U
       val retryHit     = io.retry_s1        & toBeFreeIdReg_s1        === i.U
-      val wakeupHit    = io.wakeup.valid    & io.wakeup.bits.Addr.useAddr  === taskEntrys(i).Addr.useAddr & ctrl.nid.getOrElse(0.U) === 0.U
+      val wakeupHit    = io.wakeup.valid    & io.wakeup.bits.Addr.useAddr  === taskEntrys(i).Addr.useAddr & ctrl.nid.getOrElse(0.U) === 0.U & !ctrl.isFree
       val toFreeHit    = toBeFreeReg_s1     & toBeFreeIdReg_s1        === i.U
       // state:
       // FREE   ---(NID=0)---> BESEND
