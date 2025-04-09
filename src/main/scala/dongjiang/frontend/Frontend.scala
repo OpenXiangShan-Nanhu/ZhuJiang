@@ -75,6 +75,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   req2Task.io.config        := io.config
   snp2Task.io.config        := io.config
   posTable.io.config        := io.config
+  block.io.config           := io.config
   decode.io.config          := io.config
   issue.io.config           := io.config
 

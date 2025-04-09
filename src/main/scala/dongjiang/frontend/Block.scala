@@ -18,6 +18,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * IO declaration
    */
   val io = IO(new Bundle {
+    val config        = new DJConfigIO()
     // Task
     val chiTask_s0    = Flipped(Valid(new Chi with HasAddr))
     val task_s1       = Valid(new PackChi with HasAddr with HasPackPosIndex with HasAlrDB)
@@ -107,6 +108,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // Send Fast Resp To CHI
   io.fastResp_s1.valid        := validReg_s1 & (needRespReadReg_s1 | (needRespDBIDReg_s1 & !io.reqDB_s1.ready)) & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
   io.fastResp_s1.bits         := DontCare
+  io.fastResp_s1.bits.SrcID   := taskReg_s1.getNoC(io.config.ci)
   io.fastResp_s1.bits.TgtID   := taskReg_s1.nodeId
   io.fastResp_s1.bits.TxnID   := taskReg_s1.txnID
   io.fastResp_s1.bits.Opcode  := PriorityMux(Seq(
