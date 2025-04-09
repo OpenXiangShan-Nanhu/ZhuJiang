@@ -63,11 +63,11 @@ object ZhujiangGlobal {
     val cpuAddrMask = (0x1L << cpuSpaceBits) - 1
 
     val nodes = for((np, idx) <- nodeParams.zipWithIndex) yield {
-      val addrSeg = np.nodeType match {
-        case NodeType.HI => (np.addrSegment._1, np.addrSegment._2)
-        case NodeType.S  => (np.addrSegment._1, np.addrSegment._2)
-        case NodeType.CC => (ccId << cpuSpaceBits, lanAddrMask ^ cpuAddrMask)
-        case _           => (0x0L, 0x0L)
+      val addrSets = np.nodeType match {
+        case NodeType.HI => np.addrSets
+        case NodeType.S  => np.addrSets
+        case NodeType.CC => Seq((ccId << cpuSpaceBits, lanAddrMask ^ cpuAddrMask))
+        case _           => Seq((0x0L, 0x0L))
       }
       val n = Node(
         attr = np.attr,
@@ -82,7 +82,7 @@ object ZhujiangGlobal {
         bankBits = if(np.nodeType == NodeType.HF) hnfBankBits else 0,
         cpuNum = if(np.nodeType == NodeType.CC) np.cpuNum else 0,
         clusterId = if(np.nodeType == NodeType.CC) ccId.toInt else 0,
-        addrSegment = addrSeg,
+        addrSets = addrSets,
         defaultHni = if(np.nodeType == NodeType.HI) np.defaultHni else false,
         outstanding = if(np.nodeType == NodeType.HI || np.nodeType == NodeType.CC || np.nodeType == NodeType.S) np.outstanding else 0,
         socket = np.socket

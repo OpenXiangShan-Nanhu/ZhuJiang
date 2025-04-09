@@ -29,7 +29,7 @@ case class NodeParam(
   bankId: Int = 0, // Only applied in HNF
   hfpId: Int = 0, // HNF port id // Only applied in HNF)
   cpuNum: Int = 1, // Only applied in CC
-  addrSegment: (Long, Long) = (0L, 0L), // Only applied in HNI
+  addrSets: Seq[(Long, Long)] = Seq((0L, 0L)), // Only applied in HNI
   defaultHni: Boolean = false, // Only applied in HNI
   outstanding: Int = 4, // Only applied in HNI
   socket: String = "sync"
@@ -48,7 +48,7 @@ case class Node(
   bankBits: Int = 1, // Only applied in HNF
   cpuNum: Int = 1, // Only applied in CCN
   clusterId: Int = 0, //Only applied in CCN
-  addrSegment: (Long, Long) = (0L, 0L), // Only applied in HNI
+  addrSets: Seq[(Long, Long)] = Seq((0L, 0L)), // Only applied in HNI
   defaultHni: Boolean = false, // Only applied in HNI
   outstanding: Int = 16, // Only applied in HNI, CCN and SN
   socket: String = "sync"
@@ -200,7 +200,8 @@ case class Node(
 
   def addrCheck(addr: ReqAddrBundle, ci: UInt):Bool = {
     val devAddrBits = addr.devAddr.getWidth
-    addr.ci === ci && (addr.devAddr & addrSegment._2.U(devAddrBits.W)) === addrSegment._1.U(devAddrBits.W)
+    val addrMatch = addrSets.map(elm => (addr.devAddr & elm._2.U(devAddrBits.W)) === elm._1.U(devAddrBits.W))
+    addr.ci === ci && Cat(addrMatch).orR
   }
 
   private def hniAddrCheck(addr: ReqAddrBundle, ci: UInt, memAttr:MemAttr): Bool = {
@@ -266,8 +267,7 @@ case class Node(
     }
 
     val addrStr = if(nodeType == NodeType.HI && !defaultHni || nodeType == NodeType.CC) {
-      s"""    address: 0x${addrSegment._1.toHexString}
-         |    mask:    0x${addrSegment._2.toHexString}
+      s"""    addrSets: 0x${addrSets.map(elm => (s"0x${elm._1.toHexString}", s"0x${elm._2.toHexString}"))}
          |""".stripMargin
     } else {
       ""
