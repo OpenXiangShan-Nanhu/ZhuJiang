@@ -57,72 +57,44 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
    * HardwareAssertion
    */
   when(io.rxReq.valid) {
-    // TODO
-    // QoS
-    // TgtID
-    // SrcID
-    HardwareAssertion.withEn(task.fromCcRnf | task.fromCcRni | task.fromRniDma, task.fromLAN, cf"Invalid NodeID, fromCcRnF: ${task.fromCcRnf}, fromCcRni: ${task.fromCcRni}, fromRniDma: ${task.fromRniDma}, SrcID: [${task.nodeId}]\t\nccNodeIdSeq: ${ccNodeIdSeq}\t\nrniNodeIdSeq: ${rniNodeIdSeq}\t\nsnNodeIdSeq:${snNodeIdSeq}")
-    HardwareAssertion.withEn(task.toLAN(io.config.ci), task.fromBBN, cf"SrcID => [${task.nodeId}]")
-    // TxnID
-    // ReturnNID
-    // StashNID
-    // DataTarget
-    // StashNIDValid
-    // Endian
-    // Deep
-    // PrefetchTgtHint
-    // ReturnTxnID
-    // StashLPIDValid
-    // StashLPID
-    // Opcode
-    HardwareAssertion(task.reqIsLegal)
-    // Size
-    HardwareAssertion.withEn(task.isFullSize, task.isAllocatingRead | task.isDataless | task.isWriteFull)
-    HardwareAssertion.withEn(task.isHalfSize, task.isAtomic)
-    // Addr
-    HardwareAssertion(task.Addr.bankId === io.config.bankId, cf"BankId is not matched, bankdId = addr[${bankId_hi}:${bankId_lo}], task.Addr.bankID = ${task.Addr.bankId}, io.config.bankId = ${io.config.bankId}")
-    HardwareAssertion.withEn(task.Addr.offset === 0.U, task.isAllocatingRead | task.isDataless | task.isWriteFull, "Offset should be 0 in allocatingRead/dataless/write transactions")
-    // NS
-    // NSE
-    // LikelyShared
-    // AllowRetry
-    // Order
-    HardwareAssertion.withEn(task.noOrder, task.fromCcRnf, "Requests from CC-RNF should not have any order(i.e. order = None)")
-    HardwareAssertion.withEn(task.isEO,    task.fromCcRni, "Requests from CC-RNI should use EndpointOrder(EO)")
-    HardwareAssertion.withEn(task.isEO,    task.fromRni & task.isRead, "Requests from RNI should use EndpointOrder(EO) in read transactions")
-    HardwareAssertion.withEn(task.isOWO,   task.fromRni & task.isWrite, "Requests from RNI should use OrderedWriteOrder(OWO) in write transactions")
-    HardwareAssertion.withEn(task.noOrder, task.fromBBN)
-    // PCrdType
-    // MemAttr
-    HardwareAssertion.withEn(task.memAttr.ewa,  task.isCopyBackWrite)
-    HardwareAssertion(!task.memAttr.device)
-    HardwareAssertion.withEn(!task.memAttr.allocate, !task.memAttr.cacheable)
-    // SnpAttr
-    HardwareAssertion.withEn(task.snpAttr,  task.fromCcRnf)
-    HardwareAssertion.withEn(!task.snpAttr, task.fromCcRni)
-    HardwareAssertion.withEn(!task.snpAttr, task.fromRni)
-    // DoDWT
-    // PGroupID
-    // StashGroupID
-    // TagGroupID
-    // LPID
-    // Excl
-    // SnoopMe
-    HardwareAssertion.withEn(!task.snoopMe, task.fromCcRni, "Requests from CC-RNI shoule not expect to be snooped")
-    HardwareAssertion.withEn(!task.snoopMe, task.fromRni, "Requests from RNI shoule not expect to be snooped")
-    // CAH
-    // ExpCompAck
-    HardwareAssertion.withEn(task.expCompAck,  task.fromCcRnf & task.isRead, "Reuqests from CC-RNF should assert ExpCompAck in read transactions")
-    HardwareAssertion.withEn(!task.expCompAck, task.fromCcRni, "Reuqests from CC-RNI should not assert ExpCompAck")
-    HardwareAssertion.withEn(!task.expCompAck, task.fromRni, "Reuqests from RNI should not assert ExpCompAck")
-    // TagOp
-    // TraceTag
-    // MPAM
-    // PBHA
-    // MECID
-    // StreamID
-    // SecSID1
-    // RSVDC
+    val shouldBeFull = task.isAllocatingRead | task.isDataless | task.isWriteFull
+    when(task.fromRni) {
+      HAssert( task.expCompAck, "Requests form RNI should assert ExpCompAck"                                                                                                                          )
+      HAssert(!task.snoopMe   , "Requests from RNI should not assert SnoopMe"                                                                                                                         )
+      HAssert.withEn( task.snpAttr   , (task.opcode === ReqOpcode.ReadOnce  || task.opcode === ReqOpcode.WriteUniquePtl) , "Request from RNI access Cacheable mem should be assert SnpAttr"           )
+      HAssert.withEn(!task.snpAttr   , (task.opcode === ReqOpcode.ReadNoSnp || task.opcode === ReqOpcode.WriteNoSnpPtl ) , "Request from RNI access Non-Cacheable mem should not assert SnpAttr"      )
+      HAssert.withEn( task.noOrder   , task.isRead                                                                       , "Requests from RNI should use EndpointOrder(EO) in read transactions"      )
+      HAssert.withEn( task.isOWO     , task.isWrite                                                                      , "Requests from RNI should use OrderedWriteOrder(OWO) in write transactions")
+    }
+    when(task.fromCcRni) {
+      HAssert(!task.snpAttr                           , "CC-RNI Request should not assert SnpAttr"                                 )
+      HAssert(!task.snoopMe                           , "CC-RNI Request should not assert SnoopMe"                                 )
+      HAssert.withEn( task.isEO  && !task.expCompAck  , task.isRead   , "Requests of read from CC-RNI should use EndpointOrder(EO)")
+      HAssert.withEn( task.isOWO &&  task.expCompAck  , task.isWrite  , "Request of write form CC-RNI should use OWO"              )
+    }
+    when(task.fromCcRnf) {
+      HAssert( task.snpAttr                           , "Requests from CC-RNF must assert SnpAttr"                                                                                                 )
+      HAssert( task.noOrder                           , "Requests from CC-RNF should not assert Order"                                                                                             )
+      HAssert.withEn( task.expCompAck                 , task.isRead & task.opcode =/= ReqOpcode.ReadNoSnp          , "Reuqests from CC-RNF should assert ExpCompAck in read transactions"          )
+      HAssert.withEn( task.expCompAck                 , task.opcode === ReqOpcode.WriteEvictOrEvict                , cf"Requests from CC-RNF which Opcode is ${task.opcode} must assert ExpCompAck")
+      HAssert.withEn(!task.expCompAck                 , task.isWrite & task.opcode =/= ReqOpcode.WriteEvictOrEvict , "Request from CC-RNF which ExpCompAck should not be asserted"                 )
+    }
+    when(task.fromBBN) {
+      HAssert( task.noOrder            , "Requests from BBN should not assert Order")
+      HAssert( task.toLAN(io.config.ci), cf"SrcID => [${task.nodeId}]"              )
+    }
+    when(shouldBeFull) {
+      HAssert( task.isFullSize                                                                             )
+      HAssert( task.Addr.offset === 0.U, "Offset should be 0 in allocatingRead/dataless/write transactions")
+    }
+    // Common
+    HAssert(!task.memAttr.device                                                                                                                                                                         )
+    HAssert( task.reqIsLegal                                                                                                                                                                             )
+    HAssert( task.Addr.bankId === io.config.bankId, cf"BankId is not matched, bankdId = addr[${bankId_hi}:${bankId_lo}], task.Addr.bankID = ${task.Addr.bankId}, io.config.bankId = ${io.config.bankId}" )
+    HAssert.withEn(!task.memAttr.allocate         ,!task.memAttr.cacheable                                                                                                                               )
+    HAssert.withEn( task.memAttr.ewa              , task.isCopyBackWrite                                                                                                                                 )
+    HAssert.withEn(task.fromCcRnf | task.fromCcRni | task.fromRniDma, task.fromLAN, cf"Invalid NodeID, fromCcRnF: ${task.fromCcRnf}, fromCcRni: ${task.fromCcRni}, fromRniDma: ${task.fromRniDma}, SrcID: [${task.nodeId}]\t\nccNodeIdSeq: ${ccNodeIdSeq}\t\nrniNodeIdSeq: ${rniNodeIdSeq}\t\nsnNodeIdSeq:${snNodeIdSeq}")
+
   }
 
   /*
