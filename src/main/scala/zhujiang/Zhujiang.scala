@@ -191,7 +191,7 @@ trait NocIOHelper {
       dontTouch(b)
     })
     dmaIO.zip(dmaDrv).zipWithIndex.foreach({ case((a, b), i) =>
-      a.suggestName(s"s_axi_dma_${b.params.attr}")
+      a.suggestName(s"s_axi_${b.params.attr}")
       a <> b
       dontTouch(a)
       dontTouch(b)
