@@ -29,7 +29,7 @@ trait HasNodeId { this: DJBundle =>
   // AID: 0 -> CHI2TL/DMA; 1 -> L2; 2 -> TL2CHI
   def fromCcRnf:  Bool = fromCc  & lanAId === 1.U
   def fromCcRni:  Bool = fromCc  & lanAId === 2.U
-  def fromRniDma: Bool = fromRni & lanAId === 0.U
+  def fromRniDma: Bool = fromRni & lanAId === 1.U
 
   // metaId
   def metaId: UInt = {
