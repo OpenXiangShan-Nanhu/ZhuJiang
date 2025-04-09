@@ -44,7 +44,7 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
     io.in(i).ready := selArb.io.in(i).fire
 
     selArb.io.in(i).valid := selReg(i)
-    selArb.io.in(i).bits.idxOH := (1L << i).U
+    selArb.io.in(i).bits.idxOH := (1.U(outstanding.W)) << i
     selArb.io.in(i).bits.size := io.in(i).bits.size
   }
   selPipe.io.enq <> selArb.io.out
