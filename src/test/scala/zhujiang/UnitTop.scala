@@ -121,27 +121,9 @@ object DongJiangTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   val hnfNode = Node(nodeType = NodeType.HF)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new DongJiang(hnfNode)(config.alter((site, here, up) => {
-      case HardwareAssertionKey => HwaParams(enable = false)
-      case ZJParametersKey => ZJParameters(
-        nodeParams = Seq(
-          NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 0),
-          NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
-          NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 0),
-          NodeParam(nodeType = NodeType.P),
-          NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 0),
-          NodeParam(nodeType = NodeType.CC, cpuNum = 2, outstanding = 8, attr = "nanhu", socket = "c2c"),
-          NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 0),
-
-          NodeParam(nodeType = NodeType.RI, attr = "main"),
-          NodeParam(nodeType = NodeType.HI, defaultHni = true, attr = "main"),
-          NodeParam(nodeType = NodeType.M),
-
-          NodeParam(nodeType = NodeType.S, bankId = 0),
-          NodeParam(nodeType = NodeType.S, bankId = 1),
-          NodeParam(nodeType = NodeType.P)
-        ),
-
+    ChiselGeneratorAnnotation(() => new DongJiang(hnfNode)(config.alterPartial({
+      case HardwareAssertionKey => config(HardwareAssertionKey).copy(enable = false)
+      case ZJParametersKey => config(ZJParametersKey).copy(
         djParamsOpt = Some(DJParam(
           llcSizeInB = 4 * 1024 / 4,
           sfSizeInB = 8 * 2 * 1024 / 4,
