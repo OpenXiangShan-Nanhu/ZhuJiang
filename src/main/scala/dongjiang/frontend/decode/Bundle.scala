@@ -254,9 +254,9 @@ object Code {
   def receive (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.receive  := true.B; require(x.getWidth == RspOpcode.width); temp.asUInt | taskFlag }
 
   // Task Code DataOp
-  // note0: cant set repl
+  // note0: only cant set reqs expect of WriOrAtm
   // note1: cant set clean when commit will use DataBuffer
-  def tdop(x: String*): UInt= { val temp = WireInit(0.U.asTypeOf(new TaskCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); assert(!temp.dataOp.clean); temp.asUInt }
+  def tdop(x: String*): UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // Task Code Other
   def canNest           : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.canNest    := true.B; temp.asUInt }
