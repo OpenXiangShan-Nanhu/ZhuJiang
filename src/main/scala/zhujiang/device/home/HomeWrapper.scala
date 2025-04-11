@@ -10,7 +10,7 @@ import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
 import xs.utils.debug.{HardwareAssertion, HardwareAssertionKey}
 import zhujiang.chi.FlitHelper.connIcn
-import zhujiang.chi.{ChiBuffer, HReqFlit, NodeIdBundle, ReqAddrBundle, RingFlit}
+import zhujiang.chi.{ChiBuffer, DataFlit, HReqFlit, NodeIdBundle, ReqAddrBundle, RingFlit}
 import zhujiang.{DftWires, ZJRawModule}
 
 @instantiable
@@ -105,6 +105,12 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
       val res = WireInit(ori)
       val noDmt = ori.ReturnNID.get.andR
       res.ReturnNID.get := Mux(noDmt, srcId, ori.ReturnNID.get)
+      res.TgtID := tgt
+      res.asTypeOf(txBd.bits)
+    } else if(chn == "DAT") {
+      val ori = txBd.bits.asTypeOf(new DataFlit)
+      val res = WireInit(ori)
+      res.HomeNID := srcId
       res.TgtID := tgt
       res.asTypeOf(txBd.bits)
     } else {

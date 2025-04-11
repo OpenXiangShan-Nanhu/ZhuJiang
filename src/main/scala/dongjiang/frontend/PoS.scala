@@ -5,6 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
+import dongjiang.backend.GetAddr
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
@@ -27,8 +28,7 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // retry from block
     val retry_s1    = Input(Bool())
     // Get Full Addr In PoS
-    val getAddr     = Input(new PosIndex())
-    val respAddr    = Output(new Addr())
+    val getAddrVec  = Vec(nrTaskCM + 1, Flipped(new GetAddr(true)))
     // update PoS
     val updNest     = Flipped(Valid(new PackPosIndex with HasNest))
     val updTag      = Flipped(Valid(new PackPosIndex with HasAddr))
@@ -60,9 +60,8 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * Get Full Addr In PoS
    */
-  val tag = tagTable(io.getAddr.set)(io.getAddr.way)
-  io.respAddr.Addr.catPoS(io.config.bankId, tag, io.getAddr.set, dirBank.U)
-
+  val tagVec = io.getAddrVec.map(g => tagTable(g.pos.set)(g.pos.way))
+  io.getAddrVec.zip(tagVec).foreach { case(g, t) => g.result.Addr.catPoS(io.config.bankId, t, g.pos.set, dirBank.U) }
 
   /*
    * Receive req from taskBuf

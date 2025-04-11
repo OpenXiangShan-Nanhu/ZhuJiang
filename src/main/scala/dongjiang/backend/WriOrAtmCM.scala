@@ -50,6 +50,8 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config        = new DJConfigIO()
+    // Get Full Addr In PoS
+    val getAddr       = new GetAddr()
     // Commit Task In
     val alloc         = Flipped(Decoupled(new CMTask))
     // CHI
@@ -69,8 +71,9 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val cmRegVec = RegInit(VecInit(Seq.fill(nrReadCM) { 0.U.asTypeOf(new CMState) }))
+  val cmRegVec  = RegInit(VecInit(Seq.fill(nrReadCM) { 0.U.asTypeOf(new CMState) }))
   val msgRegVec = Reg(Vec(nrReadCM, new CMTask()))
+  val dsRegVec  = Reg(Vec(nrReadCM, new DsIdx()))
 
   /*
    * [Free] Receive Task IO
@@ -78,6 +81,7 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   val cmVec_rec   = cmRegVec.map(_.isFree) // Free Vec
   val cmId_rec    = PriorityEncoder(cmVec_rec)
   io.alloc.ready  := cmVec_rec.reduce(_ | _)
+  HardwareAssertion.withEn(io.alloc.bits.dataOp.reqs & !io.alloc.bits.alr.reqs, io.alloc.valid)
 
   /*
    * [SendReq]
@@ -87,15 +91,22 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   val task_sReq   = msgRegVec(cmId_sReq)
   // valid
   io.txReq.valid  := cmVec_sReq.reduce(_ | _)
+  // get addr
+  io.getAddr.llcTxnID   := task_sReq.llcTxnID
   // bits
-  io.txReq.bits                 := DontCare
-  io.txReq.bits.MemAttr         := task_sReq.chi.memAttr.asUInt
-  io.txReq.bits.Order           := Order.None
-  io.txReq.bits.Addr            := task_sReq.addr
-  io.txReq.bits.Size            := task_sReq.chi.getSize
-  io.txReq.bits.Opcode          := task_sReq.chi.opcode
-  io.txReq.bits.TxnID           := task_sReq.llcTxnID.get
-  io.txReq.bits.SrcID           := task_sReq.chi.getNoC(io.config.ci)
+  io.txReq.bits         := DontCare
+  io.txReq.bits.MemAttr := task_sReq.chi.memAttr.asUInt
+  io.txReq.bits.Order   := Order.None
+  io.txReq.bits.Addr    := io.getAddr.result.addr
+  io.txReq.bits.Size    := task_sReq.chi.getSize // TODO
+  io.txReq.bits.Opcode  := task_sReq.chi.opcode
+  io.txReq.bits.TxnID   := task_sReq.llcTxnID.get
+  io.txReq.bits.SrcID   := task_sReq.chi.getNoC(io.config.ci)
+  // save ds
+  when(cmVec_sReq.reduce(_ | _)) {
+    dsRegVec(cmId_sReq).bank   := getDS(io.getAddr.result.addr, task_sReq.wrillcWay)._1
+    dsRegVec(cmId_sReq).idx    := getDS(io.getAddr.result.addr, task_sReq.wrillcWay)._2
+  }
 
 
   /*
@@ -120,18 +131,10 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   // valid
   io.dataTask.valid := cmVec_sDat.reduce(_ | _)
   // bits
-  io.dataTask.bits  := DontCare
-  when(task_sDat.fromRepl) {
-    io.dataTask.bits.dataOp.repl  := true.B
-    io.dataTask.bits.dataOp.clean := true.B
-    io.dataTask.bits.dataOp.read  := true.B
-    io.dataTask.bits.dataOp.save  := true.B
-  }.otherwise {
-    io.dataTask.bits.dataOp.send  := true.B
-    io.dataTask.bits.dataOp.clean := true.B
-  }
+  io.dataTask.bits                := DontCare
+  io.dataTask.bits.dataOp         := task_sDat.dataOp
   io.dataTask.bits.llcTxnID       := task_sDat.llcTxnID
-  io.dataTask.bits.ds             := task_sDat.ds
+  io.dataTask.bits.ds             := dsRegVec(cmId_sDat)
   io.dataTask.bits.dataVec        := task_sDat.chi.dataVec
   io.dataTask.bits.txDat.Resp     := task_sDat.cbResp
   io.dataTask.bits.txDat.Opcode   := task_sDat.chi.opcode
@@ -152,10 +155,10 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   // bits respCmt
   io.respCmt.bits               := DontCare
   io.respCmt.bits.llcTxnID      := task_resp.llcTxnID
-  io.respCmt.bits.alrDB         := task_resp.alrDB
+  io.respCmt.bits.alr           := task_resp.alr
   // bits respRepl
   io.respRepl.bits.llcTxnID     := task_resp.llcTxnID
-  io.respRepl.bits.channel      := ChiChannel.REQ
+  io.respRepl.bits.channel      := DontCare
   io.respRepl.bits.resp         := ChiState.I
 
 

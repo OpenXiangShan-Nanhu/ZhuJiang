@@ -1,6 +1,7 @@
 package dongjiang.bundle
 
 import chisel3._
+import chisel3.util.PriorityMux
 import dongjiang.DJBundle
 import zhujiang.chi._
 
@@ -36,6 +37,7 @@ trait HasChiResp { this: Bundle =>
   val baseWidth = ChiResp.width-2
 
   def isInvalid = resp(baseWidth, 0) === ChiResp.I(baseWidth, 0)
+  def isValid   = !isInvalid
   def isShared  = resp(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | resp(baseWidth, 0) === ChiResp.SD(baseWidth, 0)
   def isUnique  = resp(baseWidth, 0) === ChiResp.UC(baseWidth, 0) | resp(baseWidth, 0) === ChiResp.UD(baseWidth, 0)
   def isClean   = resp(baseWidth, 0) === ChiResp.SC(baseWidth, 0) | resp(baseWidth, 0) === ChiResp.UC(baseWidth, 0)
@@ -69,12 +71,22 @@ trait HasChiState { this: Bundle =>
     * RN(isShared)  -> HN(isInvalid)
     * RN(isUnique)  -> HN(isInvalid)
     */
-  def isInvalid: Bool = if(stateType == "llc") state(0).asBool else state === ChiState.I
-  def isValid  : Bool = if(stateType == "llc") state(0).asBool else state =/= ChiState.I
-  def isShared : Bool = if(stateType == "llc") false.B         else state === ChiState.SC
-  def isUnique : Bool = if(stateType == "llc") false.B         else state(1).asBool
-  def isClean  : Bool = if(stateType == "llc") false.B         else state(0).asBool
-  def isDirty  : Bool = if(stateType == "llc") false.B         else state === ChiState.UD
+  def isInvalid : Bool = if(stateType == "sf") !state(0).asBool else state === ChiState.I
+  def isValid   : Bool = if(stateType == "sf")  state(0).asBool else state =/= ChiState.I
+  def isShared  : Bool = if(stateType == "sf") false.B          else state === ChiState.SC
+  def isUnique  : Bool = if(stateType == "sf") false.B          else state(1).asBool
+  def isClean   : Bool = if(stateType == "sf") false.B          else state(0).asBool
+  def isDirty   : Bool = if(stateType == "sf") false.B          else state === ChiState.UD
+
+  def cbResp  : UInt = {
+    val resp = PriorityMux(Seq(
+      (state === ChiState.I)  -> ChiResp.I,
+      (state === ChiState.SC) -> ChiResp.SC,
+      (state === ChiState.UC) -> ChiResp.UC,
+      (state === ChiState.UD) -> ChiResp.UD_PD,
+    ))
+    resp
+  }
 }
 
 class ChiState(dirType: String = "llc") extends Bundle with HasChiState {

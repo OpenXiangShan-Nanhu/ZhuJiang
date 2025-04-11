@@ -30,14 +30,13 @@ trait HasDirBaseMsg extends DJBundle { this: DJBundle with HasDirParam =>
   val wayOH   = UInt(ways.W)
   val hit     = Bool()
   val metaVec = Vec(nrMetas, new ChiState(paramType))
-
   def way     = OHToUInt(wayOH)
 
   def allVec: Seq[Bool] = metaVec.map(_.state.asBool)
-  def othVec(metaId: UInt): Seq[Bool] = metaVec.map(_.state.asBool).zipWithIndex.map { case (m, i) => m & metaId =/= i.U }
+  def othVec(metaIdOH: UInt): Seq[Bool] = metaVec.map(_.state.asBool).zipWithIndex.map { case (m, i) => m & !metaIdOH(i.U) }
 
-  def srcHit(metaId: UInt): Bool = hit & metaVec(metaId).state.asBool
-  def othHit(metaId: UInt): Bool = hit & othVec(metaId).reduce(_ | _)
+  def srcHit(metaIdOH: UInt): Bool = hit & metaVec(OHToUInt(metaIdOH)).state.asBool & metaIdOH.orR
+  def othHit(metaIdOH: UInt): Bool = hit & othVec(metaIdOH).reduce(_ | _)
 }
 
 class DirEntry(dirType: String)(implicit p: Parameters) extends DJBundle with HasDirParam with HasAddr with HasDirBaseMsg {
@@ -52,21 +51,23 @@ trait HasDirMsg extends DJBundle { this: DJBundle =>
   val sf  = new DJBundle with HasDirParam with HasDirBaseMsg {
     override def paramType: String = "sf"
   }
-  def getStateInst(metaId: UInt): StateInst = {
+  def getStateInst(metaIdOH: UInt): StateInst = {
+    require(metaIdOH.getWidth == nrSfMetas)
     val inst = Wire(new StateInst)
     inst.valid    := true.B
-    inst.srcHit   := sf.srcHit(metaId)
-    inst.othHit   := sf.othHit(metaId)
+    inst.srcHit   := sf.srcHit(metaIdOH)
+    inst.othHit   := sf.othHit(metaIdOH)
     inst.llcState := Mux(llc.hit, llc.metaVec.head.state, ChiState.I)
     inst
   }
 
-  def getSnpVec(snpTgt: UInt, metaId: UInt): Vec[Bool] = {
+  def getSnpVec(snpTgt: UInt, metaIdOH: UInt): Vec[Bool] = {
+    require(metaIdOH.getWidth == nrSfMetas)
     val allVec = Wire(Vec(nrSfMetas, Bool()))
     val othVec = Wire(Vec(nrSfMetas, Bool()))
     val oneVec = Wire(Vec(nrSfMetas, Bool()))
     allVec     := sf.allVec
-    othVec     := sf.othVec(metaId)
+    othVec     := sf.othVec(metaIdOH)
     oneVec     := PriorityEncoderOH(othVec)
     val snpVec = PriorityMux(Seq(
       snpTgt(0).asBool -> allVec,

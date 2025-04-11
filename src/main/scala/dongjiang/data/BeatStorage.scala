@@ -20,9 +20,9 @@ class Shift(implicit p: Parameters) extends DJBundle {
   def recWri (fire: Bool) = this.write  := Cat(fire, write >> 1)
 
   private val hi = readDsLatency - 1
-  private val lo = readDsLatency - dsMuticycle
+  private val lo = readDsLatency - (dsMuticycle - 1)
   def req        = read | write
-  def reqReady   = !req(hi, lo).orR
+  def reqReady   = if(dsMuticycle > 1) !req(hi, lo).orR else true.B
   def getData    = read(1).asBool
   def outResp    = read(0).asBool
 }
@@ -65,6 +65,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
   val rstDoneReg  = RegEnable(true.B, false.B, array.io.req.ready)
   val datRespVec  = Wire(Vec(djparam.BeatByte, UInt(8.W)))
   val dataReg     = Reg(UInt(BeatBits.W))
+  HardwareAssertion.withEn(!(array.io.req.ready ^ io.write.ready), rstDoneReg) // Check Shift Reg logic
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ------------------------------------------- Receive Req and Read/Write SRAM ------------------------------------------ //
@@ -98,7 +99,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
 // -------------------------------------------- Get SRAM Resp and Output Resp ------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
   // pre-processing: reverse
-  datRespVec  := array.io.resp.bits.data.reverse
+  datRespVec  := array.io.resp.bits.data
   dataReg     := Mux(shiftReg.getData, datRespVec.asUInt, dataReg)
 
   // Output

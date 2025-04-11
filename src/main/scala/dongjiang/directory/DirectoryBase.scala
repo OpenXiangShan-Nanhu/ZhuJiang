@@ -23,14 +23,14 @@ class Shift(implicit p: Parameters) extends DJBundle {
 
   def getTagMeta_d1 = read(1).asBool
   def outDirResp_d2 = read(0).asBool
-  def updTagMeta_d2 = read(0).asBool  & repl(0).asBool
+  def updTagMeta_d2 = read(0).asBool  &  repl(0).asBool
   def wriUpdRepl_d2 = write(0).asBool & !repl(0).asBool
 
   private val hi    = readDirLatency - 1
-  private val lo    = readDirLatency - dirMuticycle
+  private val lo    = readDirLatency - (dirMuticycle - 1)
   def req           = read | write
-  def tagMetaReady  = !req(hi, lo).orR
-  def replWillWrite = (repl & read)(lo-1, 0).orR // when it is repl read, cant receive new req
+  def tagMetaReady  = if(dirMuticycle > 1) !req(hi, lo).orR else true.B
+  def replWillWrite = (repl & read).orR // when it is repl read, cant receive new req
 }
 
 class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) extends DJModule {
@@ -96,6 +96,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   val shiftReg      = RegInit(0.U.asTypeOf(new Shift))
 
   val resetDoneReg  = RegEnable(true.B, false.B, metaArray.io.req.ready & replArray.io.rreq.ready & replArray.io.wreq.ready)
+  HardwareAssertion.withEn(!(metaArray.io.req.ready ^ io.write.ready), resetDoneReg & !shiftReg.replWillWrite) // Check Shift Reg logic
 
   // [D0]: Receive Req and Read/Write SRAM
 
@@ -117,6 +118,10 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   val addrVec_d2      = WireInit(VecInit(Seq.fill(param.ways) { 0.U.asTypeOf(new DJBundle with HasAddr {
     override def addrType: String = dirType
   }) }))
+  val reqTag_d2       = Wire(UInt(param.tagBits.W))  ; dontTouch(reqTag_d2)
+  val reqSet_d2       = Wire(UInt(param.setBits.W))  ; dontTouch(reqSet_d2)
+  val tagHitVec_d2    = Wire(Vec(param.ways, Bool())); dontTouch(tagHitVec_d2)
+  val metaValVec_d2   = Wire(Vec(param.ways, Bool())); dontTouch(metaValVec_d2)
   // create in d2
   val readHit_d2      = WireInit(false.B)
   val useWayVec_d2    = WireInit(0.U(param.ways.W))
@@ -134,7 +139,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   val repl_d0     = shiftReg.updTagMeta_d2                                                                // (0,    1,     1   )
 
   // common
-  val reqSet_d0 = Mux(repl_d0, req_d2.Addr.set, Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set))
+  val reqSet_d0 = Mux(repl_d0, reqSet_d2, Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set))
 
   // write message
   val wriMask_d0    = Mux(repl_d0, selWayOH_d2, io.write.bits.wayOH)
@@ -147,6 +152,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   metaArray.io.req.bits.mask.get  := wriMask_d0
   metaArray.io.req.bits.data.foreach(_ := wriMetaVec_d0)
   HardwareAssertion.withEn(metaArray.io.req.ready, metaArray.io.req.valid)
+  HardwareAssertion.withEn(metaArray.io.req.bits.mask.get =/= 0.U, metaArray.io.req.valid & metaArray.io.req.bits.write)
 
   // tagArray
   tagArray.io.req.valid           := (wriNoHit_d0 | read_d0 | repl_d0) & resetDoneReg
@@ -155,14 +161,15 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   tagArray.io.req.bits.mask.get   := selWayOH_d2
   tagArray.io.req.bits.data.foreach(_ := req_d2.Addr.tag)
   HardwareAssertion.withEn(tagArray.io.req.ready, tagArray.io.req.valid)
+  HardwareAssertion.withEn(tagArray.io.req.bits.mask.get =/= 0.U, tagArray.io.req.valid & tagArray.io.req.bits.write)
 
   // shiftReg
   // The meta is used because all actions trigger reads or writes to the meta
   shiftReg.recRead_d0(metaArray.io.req.fire & !metaArray.io.req.bits.write)
   shiftReg.recWri_d0 (metaArray.io.req.fire & metaArray.io.req.bits.write)
-  shiftReg.recRepl_d0(metaArray.io.req.fire & repl_d0)
+  shiftReg.recRepl_d0(metaArray.io.req.fire & (wriNoHit_d0 | repl_d0))
   HardwareAssertion(!(shiftReg.read & shiftReg.write).orR)
-  HardwareAssertion.withEn(!(shiftReg.repl ^ shiftReg.req).orR, shiftReg.repl.orR)
+  HardwareAssertion.withEn((shiftReg.repl & shiftReg.req).orR, shiftReg.repl.orR)
 
   // read/write ready
   io.read.ready   := resetDoneReg & shiftReg.tagMetaReady & !shiftReg.replWillWrite & !io.write.valid
@@ -176,7 +183,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   replArray.io.rreq.bits          := Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set)
   // write
   replArray.io.wreq.valid         := shiftReg.wriUpdRepl_d2 | shiftReg.updTagMeta_d2 | (shiftReg.outDirResp_d2 & readHit_d2)
-  replArray.io.wreq.bits.addr     := req_d2.Addr.set
+  replArray.io.wreq.bits.addr     := reqSet_d2
   replArray.io.wreq.bits.data(0)  := repl.get_next_state(replMes_d2,  OHToUInt(Mux(shiftReg.wriUpdRepl_d2, req_d2.wriWayOH, selWayOH_d2)))
   HardwareAssertion.withEn(replArray.io.rreq.ready, replArray.io.rreq.valid)
   HardwareAssertion.withEn(replArray.io.wreq.ready, replArray.io.wreq.valid)
@@ -206,11 +213,11 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   HardwareAssertion(!(metaArray.io.resp.valid ^ shiftReg.getTagMeta_d1))
 
   // Get Repl Resp and Update Repl Resp
-  replSftReg_d1.last  := Mux(req_d2.Addr.set === reqSftReg_d1.last.Addr.set, newReplMes_d2, replArray.io.rresp.bits(0))
+  replSftReg_d1.last  := Mux(reqSet_d2 === reqSftReg_d1.last.Addr.set, newReplMes_d2, replArray.io.rresp.bits(0))
   replSftReg_d1.zipWithIndex.foreach {
     case (sft, i) =>
       if(i > 0) {
-        replSftReg_d1(i-1) := Mux(req_d2.Addr.set === reqSftReg_d1(i).Addr.set, newReplMes_d2, sft)
+        replSftReg_d1(i-1) := Mux(reqSet_d2 === reqSftReg_d1(i).Addr.set, newReplMes_d2, sft)
       }
   }
 
@@ -222,38 +229,42 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   req_d2      := reqSftReg_d1.head
   metaVec_d2  := metaRespReg_d1
   replMes_d2  := replSftReg_d1.head
-  addrVec_d2.zip(tagRespReg_d1).foreach { case(addr, tag) => addr.Addr.cat(io.config.bankId, tag, req_d2.Addr.set, dirBank.U(dirBankBits.W)) }
+  addrVec_d2.zip(tagRespReg_d1).foreach { case(addr, tag) => addr.Addr.cat(io.config.bankId, tag, reqSet_d2, dirBank.U(dirBankBits.W)) }
+  reqTag_d2   := req_d2.Addr.tag
+  reqSet_d2   := req_d2.Addr.set
 
-  // Get Hit Vec
-  val tagHitVec_d2  = addrVec_d2.map(_.Addr.tag === req_d2.Addr.tag)
-  val metaHitVec_d2 = metaVec_d2.map(_.map(_.isValid).reduce(_ | _))
-  val hasInvalid    = metaHitVec_d2.map(!_).reduce(_ | _)
-  val hitVec_d2     = tagHitVec_d2.zip(metaHitVec_d2).map { case(a, b) => a & b }
+  // Get Hit Ve
+  tagHitVec_d2      := addrVec_d2.map(_.Addr.tag === reqTag_d2)
+  metaValVec_d2     := metaVec_d2.map(_.map(_.isValid).reduce(_ | _))
+  val hasInvalid    = metaValVec_d2.map(!_).reduce(_ | _)
+  val hitVec_d2     = tagHitVec_d2.zip(metaValVec_d2).map { case(a, b) => a & b }
   val hit_d2        = hitVec_d2.reduce(_ | _)
   readHit_d2        := shiftReg.read(0) & hit_d2
   HardwareAssertion.withEn(!hit_d2, shiftReg.updTagMeta_d2)
+  HardwareAssertion(PopCount(hitVec_d2) <= 1.U)
 
   // Select Way
-  useWayVec_d2    := lockTable(req_d2.pos.set).map(lock => Mux(lock.valid & lock.set === req_d2.Addr.set, UIntToOH(lock.way), 0.U)).reduce(_ | _)
-  val unuseWay_d2 = PriorityEncoder(useWayVec_d2)
+  useWayVec_d2    := lockTable(req_d2.pos.set).map(lock => Mux(lock.valid & lock.set === reqSet_d2, UIntToOH(lock.way), 0.U)).reduce(_ | _)
+  val unuseWay_d2 = PriorityEncoder(~useWayVec_d2.asUInt)
   val replWay_d2  = repl.get_replace_way(replMes_d2)
   val hitWay_d2   = PriorityEncoder(hitVec_d2)
-  val invWay_d2   = PriorityEncoder(metaHitVec_d2.map(!_))
+  val invWay_d2   = PriorityEncoder(metaValVec_d2.map(!_))
   val selIsUsing  = useWayVec_d2(replWay_d2)
-  selWayOH_d2     := PriorityMux(Seq(
+  val selWay_d2   = PriorityMux(Seq(
     hit_d2        -> hitWay_d2,
     hasInvalid    -> invWay_d2,
     selIsUsing    -> unuseWay_d2,
     true.B        -> replWay_d2
   ))
+  HardwareAssertion.withEn(PopCount(useWayVec_d2) < param.ways.U, !hit_d2)
 
   // Output Directory Resp
-  val selWay            = OHToUInt(selWayOH_d2)
+  selWayOH_d2          := UIntToOH(selWay_d2)
   io.resp.valid        := shiftReg.outDirResp_d2
-  io.resp.bits.addr    := addrVec_d2(selWay).addr
+  io.resp.bits.addr    := addrVec_d2(selWay_d2).addr
   io.resp.bits.wayOH   := selWayOH_d2
   io.resp.bits.hit     := hit_d2
-  io.resp.bits.metaVec := metaVec_d2(selWay)
+  io.resp.bits.metaVec := metaVec_d2(selWay_d2)
   io.resp.bits.pos     := req_d2.pos
   HardwareAssertion.placePipe(Int.MaxValue-3)
 
@@ -262,19 +273,34 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     case(lockSet, i) =>
       lockSet.zipWithIndex.foreach {
         case(lock, j) =>
-          val readHitLock = readHit_d2             & req_d2.pos.idxMatch(i, j)
-          val replLock    = shiftReg.updTagMeta_d2 & req_d2.pos.idxMatch(i, j)
-          val writeLock   = shiftReg.wriUpdRepl_d2 & req_d2.pos.idxMatch(i, j)
-          val cleanLock   = io.unlock.valid        & io.unlock.bits.idxMatch(i, j)
-          when(readHitLock | replLock | writeLock) {
+          val hit         = req_d2.pos.idxMatch(i, j)
+          val write       = !shiftReg.read(0) &  shiftReg.write(0) & !shiftReg.repl(0) & hit
+          val readRepl    =  shiftReg.read(0) & !shiftReg.write(0) &  shiftReg.repl(0) & hit
+          val read        =  shiftReg.read(0) & !shiftReg.write(0) & !shiftReg.repl(0) & hit
+          val wriRepl     = !shiftReg.read(0) &  shiftReg.write(0) &  shiftReg.repl(0) & hit
+          val clean       = io.unlock.valid & io.unlock.bits.idxMatch(i, j)
+
+          when((read & hit_d2) | readRepl) {
             lock.valid  := true.B
-            lock.way    := selWay
-          }.elsewhen(cleanLock) {
+            lock.way    := selWay_d2
+          }.elsewhen(clean) {
             lock.valid  := false.B
-            lock.way    := selWay
+            lock.way    := selWay_d2
           }
-          HardwareAssertion(PopCount(Seq(readHitLock, replLock, writeLock, cleanLock)) <= 1.U, cf"Lock Table Index[$i][$j]")
-          HardwareAssertion.withEn(!lock.valid, readHitLock | replLock | writeLock, cf"Lock Table Index[$i][$j]")
+
+          // read_hit -> write -> clean
+          //     ^                  ^
+          //    lock              unlock
+          //
+          // read_miss -> readRepl -> wriRepl -> clean
+          //                 ^                     ^
+          //                lock                 unlock
+          HardwareAssertion(PopCount(Seq(read & hit_d2, readRepl, clean)) <= 1.U, cf"Lock Table Index[$i][$j]")
+          HardwareAssertion.withEn(!lock.valid, read, cf"Lock Table Index[$i][$j]")
+          HardwareAssertion.withEn( lock.valid, write, cf"Lock Table Index[$i][$j]")
+          HardwareAssertion.withEn(!lock.valid, readRepl, cf"Lock Table Index[$i][$j]")
+          // HardwareAssertion.withEn( lock.valid, wriRepl, cf"Lock Table Index[$i][$j]") // clean may occur before wriRepl
+          // HardwareAssertion.withEn( lock.valid, clean, cf"Lock Table Index[$i][$j]")   // It is possible to execute clean without lock
           HardwareAssertion.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i}][${j}]")
       }
   }

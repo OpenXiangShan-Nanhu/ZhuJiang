@@ -20,18 +20,16 @@ import dongjiang.data.DataTask
 
 
 object State {
-  val width       = 6
-  val FREE        = "b000000".U
-  val REQDB       = "b000001".U
-  val SENDSNP     = "b000010".U
-  val WAITRESP    = "b000100".U
-  val CLEANDATA   = "b001000".U
-  val WAITDATA    = "b010000".U
-  val RESP        = "b100000".U
+  val width       = 5
+  val FREE        = "b0000".U
+  val REQDB       = "b0001".U
+  val SENDSNP     = "b0010".U
+  val WAITRESP    = "b0100".U
+  val RESP        = "b1000".U
 }
 
 class CMState(implicit p: Parameters) extends DJBundle {
-  // CHI: Free --> ReqDB --> SendSnp --> WaitResp0 --> WaitResp1 --> CleanData --> WaitData --> Resp --> Free
+  // CHI: Free --> ReqDB --> SendSnp --> WaitResp0 --> WaitResp1 --> Resp --> Free
   val state       = UInt(State.width.W)
   val alrSendVec  = Vec(nrSfMetas, Bool())
   val getRespVec  = Vec(nrSfMetas, Bool())
@@ -42,9 +40,7 @@ class CMState(implicit p: Parameters) extends DJBundle {
   def isReqDB     = state(0)
   def isSendSnp   = state(1)
   def isWaitResp  = state(2)
-  def isCleanData = state(3)
-  def isWaitData  = state(4)
-  def isResp      = state(5)
+  def isResp      = state(3)
 }
 
 
@@ -54,6 +50,8 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config      = new DJConfigIO()
+    // Get Full Addr In PoS
+    val getAddr     = new GetAddr()
     // Commit Task In
     val alloc       = Flipped(Decoupled(new CMTask))
     // CHI
@@ -64,9 +62,6 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
     val respCmt     = Decoupled(new RespToCmt)
     // Req To Data
     val reqDB       = Decoupled(new PackLLCTxnID with HasDataVec)
-    // DataTask
-    val dataTask    = Decoupled(new DataTask)
-    val dataResp    = Flipped(Valid(new PackLLCTxnID()))
     // Resp To Replace
     val respRepl    = Decoupled(new PackLLCTxnID() with HasChiChannel with HasChiResp)
   })
@@ -88,8 +83,10 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   datNodeId.fromLAN := NocType.rxIs(io.rxDat.bits, LAN)
   rspNodeId.nodeId  := io.rxRsp.bits.SrcID
   datNodeId.nodeId  := io.rxDat.bits.SrcID
-  val rspMetaId     = rspNodeId.metaId
-  val datMetaId     = datNodeId.metaId
+  val rspMetaId     = OHToUInt(rspNodeId.metaIdOH)
+  val datMetaId     = OHToUInt(datNodeId.metaIdOH)
+  HardwareAssertion.withEn(rspNodeId.metaIdOH.orR, io.rxRsp.valid)
+  HardwareAssertion.withEn(datNodeId.metaIdOH.orR, io.rxDat.valid)
 
   /*
    * Receive Task IO
@@ -117,35 +114,23 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   val cm_sSnp     = cmRegVec(cmId_sSnp)
   val metaId_sSnp = OHToUInt(task_sSnp.snpVec.asUInt ^ cm_sSnp.alrSendVec.asUInt)
   val snpIsFst    = cm_sSnp.alrSendVec.asUInt === 0.U
-  nodeId_sSnp.setNodeId(metaId_sSnp)
+  nodeId_sSnp.setSnpNodeId(metaId_sSnp)
   // valid
   io.txSnp.valid  := cmVec_sSnp.reduce(_ | _)
+  // get addr
+  io.getAddr.llcTxnID       := task_sSnp.llcTxnID
   // bits
   io.txSnp.bits             := DontCare
   io.txSnp.bits.RetToSrc    := Mux(snpIsFst, task_sSnp.chi.retToSrc, false.B)
   io.txSnp.bits.DoNotGoToSD := false.B
-  io.txSnp.bits.Addr        := task_sSnp.addr
+  io.txSnp.bits.Addr        := io.getAddr.result.addr
   io.txSnp.bits.Opcode      := Mux(snpIsFst, task_sSnp.chi.opcode, task_sSnp.chi.getNoFwdSnpOp)
   io.txSnp.bits.FwdTxnID    := task_sSnp.chi.txnID
   io.txSnp.bits.FwdNID      := task_sSnp.chi.nodeId
   io.txSnp.bits.TxnID       := task_sSnp.llcTxnID.get
   io.txSnp.bits.SrcID       := Mux(nodeId_sSnp.fromLAN, LAN.U, BBN.U)
   io.txSnp.bits.TgtID       := nodeId_sSnp.nodeId
-
-
-  /*
-   * Clean Data
-   */
-  val cmVec_clean = cmRegVec.map(_.isCleanData)
-  val cmId_clean  = StepRREncoder(cmVec_clean, io.dataTask.fire)
-  val task_clean  = msgRegVec(cmId_clean).task
-  // valid
-  io.dataTask.valid := cmVec_clean.reduce(_ | _)
-  // bits
-  io.dataTask.bits              := DontCare
-  io.dataTask.bits.dataOp.clean := true.B
-  io.dataTask.bits.llcTxnID     := task_clean.llcTxnID
-
+  
 
   /*
    * Send Resp To Commit
@@ -160,9 +145,9 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   io.respCmt.bits.llcTxnID    := msg_resp.task.llcTxnID
   io.respCmt.bits.inst        := msg_resp.inst
   io.respCmt.bits.inst.valid  := true.B
-  io.respCmt.bits.alrDB       := msg_resp.task.alrDB
+  io.respCmt.bits.alr         := msg_resp.task.alr
   // bits respCmt
-  io.respRepl.bits.channel    := SNP
+  io.respRepl.bits.channel    := msg_resp.inst.channel
   io.respRepl.bits.llcTxnID   := msg_resp.task.llcTxnID
   io.respRepl.bits.resp       := msg_resp.inst.resp
 
@@ -170,11 +155,6 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   /*
    * Modify Ctrl Machine Table
    */
-  val hwaVec2 = WireInit(VecInit(Seq.fill(nrReadCM) {
-    VecInit(Seq.fill(6) {
-      true.B
-    })
-  }))
   cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
     case ((cm, msg), i) =>
       val allocHit    = io.alloc.fire    & i.U === cmId_rec
@@ -182,8 +162,6 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
       val sendSnpHit  = io.txSnp.fire    & i.U === cmId_sSnp
       val recRespHit  = io.rxRsp.fire    & msg.task.llcTxnID.get === io.rxRsp.bits.TxnID & (io.rxRsp.bits.Opcode === SnpResp | io.rxRsp.bits.Opcode === SnpRespFwded)
       val recDataHit  = io.rxDat.fire    & msg.task.llcTxnID.get === io.rxDat.bits.TxnID & (io.rxRsp.bits.Opcode === SnpRespData | io.rxRsp.bits.Opcode === SnpRespDataFwded)
-      val cleanHit    = io.dataTask.fire & i.U === cmId_clean
-      val respHit     = io.dataResp.fire & msg.task.llcTxnID.get === io.dataResp.bits.llcTxnID.get
       val respCmtHit  = io.respCmt.fire  & i.U === cmId_resp
 
       // Store Msg From Frontend
@@ -194,7 +172,7 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
         msg.inst := 0.U.asTypeOf(new TaskInst)
       // Store AlrReqDB
       }.elsewhen(reqDBHit) {
-        msg.task.alrDB.reqs := true.B
+        msg.task.alr.reqs := true.B
       // Store Message
       }.elsewhen(recDataHit | recRespHit) {
         // inst
@@ -249,16 +227,13 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
 
       // Get Next State
       val alrSnpAll = PopCount(msg.task.snpVec.asUInt ^ cm.alrSendVec.asUInt) === 1.U
-      val alrGetAll = PopCount(msg.task.snpVec.asUInt ^ cm.getRespVec.asUInt) === 0.U & cm.getDataVec.asUInt === msg.task.chi.dataVec.asUInt
-      val needRepl  = msg.task.fromRepl & msg.inst.resp =/= ChiState.I
+      val alrGetAll = PopCount(msg.task.snpVec.asUInt ^ cm.getRespVec.asUInt) === 0.U & (cm.getDataVec.asUInt === msg.task.chi.dataVec.asUInt | !msg.task.chi.retToSrc) // TODO
       cm.state := PriorityMux(Seq(
-        allocHit   -> Mux(io.alloc.bits.needDB & !io.alloc.bits.alrDB.reqs, REQDB, SENDSNP),
+        allocHit   -> Mux(io.alloc.bits.needReqDB, REQDB, SENDSNP),
         reqDBHit   -> SENDSNP,
-        sendSnpHit -> Mux(alrSnpAll, WAITDATA, SENDSNP),
-        recRespHit -> Mux(alrGetAll, Mux(needRepl, CLEANDATA, RESP), RESP),
-        recDataHit -> Mux(alrGetAll, Mux(needRepl, CLEANDATA, RESP), RESP),
-        cleanHit   -> WAITDATA,
-        respHit    -> RESP,
+        sendSnpHit -> Mux(alrSnpAll, WAITRESP, SENDSNP),
+        recRespHit -> Mux(alrGetAll, RESP, WAITRESP),
+        recDataHit -> Mux(alrGetAll, RESP, WAITRESP),
         respCmtHit -> FREE,
         true.B     -> cm.state,
       ))
@@ -268,8 +243,6 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
       HardwareAssertion.withEn(cm.isSendSnp,    sendSnpHit)
       HardwareAssertion.withEn(cm.isWaitResp,   recRespHit)
       HardwareAssertion.withEn(cm.isWaitResp,   recDataHit)
-      HardwareAssertion.withEn(cm.isCleanData,  cleanHit)
-      HardwareAssertion.withEn(cm.isWaitData,   respHit)
       HardwareAssertion.withEn(cm.isResp,       respCmtHit)
       HardwareAssertion.checkTimeout(cm.isFree, TIMEOUT_SNP, cf"TIMEOUT: Snoop Index[${i}]")
   }

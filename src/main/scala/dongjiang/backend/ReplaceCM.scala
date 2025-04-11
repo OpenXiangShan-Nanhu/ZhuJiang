@@ -7,7 +7,7 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle.{HasAddr, HasPackLLCTxnID, PackChi, _}
-import dongjiang.data.HasAlrDB
+import dongjiang.data.HasAlready
 import xs.utils.debug._
 import dongjiang.directory.{DirEntry, DirMsg, HasPackDirMsg}
 import dongjiang.frontend.decode.{HasPackCmtCode, _}
@@ -18,35 +18,30 @@ import dongjiang.backend._
 import dongjiang.backend.replace.State._
 
 object State {
-  val width   = 5
-  val FREE    = "b00000".U
-  val WRITE   = "b00001".U
-  val WAITDIR = "b00010".U
-  val REPL    = "b00100".U
-  val WAITCM  = "b01000".U
-  val RESP    = "b10000".U
+  val width   = 6
+  val FREE    = "b000000".U
+  val WRIDIR  = "b000001".U
+  val WAITDIR = "b000010".U
+  val REPLSF  = "b000100".U
+  val REPLLLC = "b001000".U
+  val WAITCM  = "b010000".U
+  val RESP    = "b100000".U
 }
 
-// TODO
 class CMState(implicit p: Parameters) extends DJBundle {
-  // FREE --> WRITE --> WAITDIR --> REPLSF/RESPLLC --> WAITCM --> WRITE --> WAITDIR --> RESPLLC --> WAITCM --> RESP
-  //            ^                         ^                         ^                      ^
-  //         lockSet                  unLockSet                  lockSet                unLockSet
+  // FREE --> WRIDIR --> WAITDIR --> REPL(SF) --> WAITCM --> WRITE --> WAITDIR --> RESP(LLC) --> WAITCM --> RESP
+  //                  ^           ^                                 ^           ^
+  //               lockSet    unLockSet                          lockSet    unLockSet
   val state     = UInt(State.width.W)
-  val waitSF    = Bool()
-  val waitLLC   = Bool()
-  val replSF    = Bool()
-  val replLLC   = Bool()
-  def needWait  = waitSF | waitLLC
-  def needRepl  = replSF | replLLC
 
   def isValid   = state.orR
   def isFree    = !isValid
-  def isWrite   = state(0)
+  def isWriDir  = state(0)
   def isWaitDir = state(1)
-  def isRepl    = state(2)
-  def isWaitCM  = state(3)
-  def isResp    = state(4)
+  def isReplSF  = state(2)
+  def isReplLLC = state(3)
+  def isWaitCM  = state(4)
+  def isResp    = state(5)
 }
 
 
@@ -57,11 +52,13 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config          = new DJConfigIO()
+    // Get Full Addr In PoS
+    val getAddr         = new GetAddr()
     // Commit Task In
     val alloc           = Flipped(Decoupled(new ReplTask))
     val resp            = Valid(new LLCTxnID())
     // Send Task To CM
-    val cmAllocVec      = Vec(nrTaskCM, Decoupled(new CMTask))
+    val cmAllocVec      = Vec(2, Decoupled(new CMTask)) // SNP and WOA
     // Update PoS Message
     val updPosTag       = Valid(new LLCTxnID with HasAddr)
     val lockPosSet      = Valid(new LLCTxnID)
@@ -77,19 +74,15 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
       val sf            = Flipped(Valid(new DirEntry("sf")))
     }
     // Resp From TaskCM
-    val respRepl        = Flipped(Valid(new PackLLCTxnID with HasChiChannel with HasChiResp))
+    val respRepl        = Flipped(Valid(new PackLLCTxnID with HasChiChannel with HasChiResp)) // Channel and Resp only use in SnpResp
 
   })
-
-  io.cmAllocVec(CMID.READ) <> DontCare
-  io.cmAllocVec(CMID.DL)   <> DontCare
-
 
   /*
    * Reg and Wire declaration
    */
   val cmRegVec  = RegInit(VecInit(Seq.fill(nrReplaceCM) { 0.U.asTypeOf(new CMState()) }))
-  val msgRegVec = Reg(Vec(nrReplaceCM, chiselTypeOf(io.alloc.bits)))
+  val msgRegVec = Reg(Vec(nrReplaceCM, new ReplTask()))
   val waitPipe  = Module(new Pipe(UInt(log2Ceil(nrReplaceCM).W), readDirLatency))
 
 
@@ -103,37 +96,61 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   /*
    * [WRITE]
    */
-  val cmVec_wri = cmRegVec.map(_.isWrite)
+  val cmVec_wri = cmRegVec.map(_.isWriDir)
   val cmId_wri  = RREncoder(cmVec_wri)
   val msg_wri   = msgRegVec(cmId_wri)
+  // getAddr
+  io.getAddr.llcTxnID           := msg_wri.llcTxnID
   // llc
-  io.writeDir.llc.valid         := msg_wri.wriLLC
-  io.writeDir.llc.bits.addr     := msg_wri.addr
+  io.writeDir.llc.valid         := cmVec_wri.reduce(_ | _) & msg_wri.wriLLC & (!msg_wri.wriSF | io.writeDir.sf.ready)
+  io.writeDir.llc.bits.addr     := io.getAddr.result.addr
   io.writeDir.llc.bits.wayOH    := msg_wri.dir.llc.wayOH
   io.writeDir.llc.bits.hit      := msg_wri.dir.llc.hit
   io.writeDir.llc.bits.metaVec  := msg_wri.dir.llc.metaVec
   io.writeDir.llc.bits.pos      := msg_wri.llcTxnID.pos
   // sf
-  io.writeDir.sf.valid          := msg_wri.wriSF
-  io.writeDir.sf.bits.addr      := msg_wri.addr
+  io.writeDir.sf.valid          := cmVec_wri.reduce(_ | _) & msg_wri.wriSF & (!msg_wri.wriLLC | io.writeDir.llc.ready)
+  io.writeDir.sf.bits.addr      := io.getAddr.result.addr
   io.writeDir.sf.bits.wayOH     := msg_wri.dir.sf.wayOH
   io.writeDir.sf.bits.hit       := msg_wri.dir.sf.hit
   io.writeDir.sf.bits.metaVec   := msg_wri.dir.sf.metaVec
   io.writeDir.sf.bits.pos       := msg_wri.llcTxnID.pos
   // waitPipe
-  waitPipe.io.enq.valid := (io.writeDir.llc.fire & !msg_wri.dir.llc.hit) | (io.writeDir.sf.fire & !io.writeDir.sf.bits.hit)
+  waitPipe.io.enq.valid := (io.writeDir.llc.fire | io.writeDir.sf.fire) & msg_wri.replDIR
   waitPipe.io.enq.bits  := cmId_wri
-  HardwareAssertion.withEn(io.respDir.sf.valid | io.respDir.llc.valid, waitPipe.io.deq.valid)
+
+  /*
+   * Update PoS Tag and Lock
+   */
+  val cm_get      = waitPipe.io.deq.valid
+  val cmId_get    = waitPipe.io.deq.bits
+  val msg_get     = msgRegVec(cmId_get)
+  val addr_get    = Mux(io.respDir.sf.valid, io.respDir.sf.bits.addr, io.respDir.llc.bits.addr)
+  val needReplSF  = io.respDir.sf.valid & io.respDir.sf.bits.metaVec.map(_.isValid).reduce(_ | _)
+  val needReplLLC = io.respDir.llc.valid & io.respDir.llc.bits.metaVec.head.isValid
+  HardwareAssertion.withEn(io.respDir.sf.valid ^ io.respDir.llc.valid, cm_get)
+  HardwareAssertion.withEn(cm_get, io.respDir.sf.valid | io.respDir.llc.valid)
+  // updPosTag
+  io.updPosTag.valid        := cm_get & (needReplSF | needReplLLC)
+  io.updPosTag.bits.dirBank := msg_get.llcTxnID.dirBank
+  io.updPosTag.bits.pos     := msg_get.llcTxnID.pos
+  io.updPosTag.bits.addr    := addr_get
+  // lock
+  io.lockPosSet.valid       := io.writeDir.llc.fire | io.writeDir.sf.fire
+  io.lockPosSet.bits        := msg_wri.llcTxnID
+  // unlock
+  io.unlockPosSet.valid     := cm_get
+  io.unlockPosSet.bits      := msg_get.llcTxnID
 
 
   /*
-   * [REPL]
+   * [REPLSF]
    */
-  val cmVec_repl  = cmRegVec.map(_.isRepl)
-  val cmId_repl   = RREncoder(cmVec_repl)
-  val msg_repl    = msgRegVec(cmId_repl)
+  val cmVec_rpSF  = cmRegVec.map(_.isReplSF)
+  val cmId_rpSF   = RREncoder(cmVec_rpSF)
+  val msg_rpSF    = msgRegVec(cmId_rpSF)
   // SNP
-  io.cmAllocVec(CMID.SNP).valid             := cmRegVec(cmId_repl).replSF
+  io.cmAllocVec(CMID.SNP).valid             := cmVec_rpSF.reduce(_ | _)
   io.cmAllocVec(CMID.SNP).bits              := DontCare
   io.cmAllocVec(CMID.SNP).bits.chi.nodeId   := DontCare
   io.cmAllocVec(CMID.SNP).bits.chi.channel  := ChiChannel.SNP
@@ -141,52 +158,38 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.cmAllocVec(CMID.SNP).bits.chi.dataVec  := Seq(true.B, true.B)
   io.cmAllocVec(CMID.SNP).bits.chi.retToSrc := true.B
   io.cmAllocVec(CMID.SNP).bits.chi.toLAN    := DontCare
-  io.cmAllocVec(CMID.SNP).bits.addr         := msg_repl.addr
-  io.cmAllocVec(CMID.SNP).bits.llcTxnID     := msg_repl.llcTxnID
-  io.cmAllocVec(CMID.SNP).bits.needDB       := true.B
-  io.cmAllocVec(CMID.SNP).bits.alrDB        := msg_repl.alrDB
-  io.cmAllocVec(CMID.SNP).bits.snpVec       := msg_repl.dir.sf.metaVec.map(_.state.asBool)
+  io.cmAllocVec(CMID.SNP).bits.llcTxnID     := msg_rpSF.llcTxnID
+  io.cmAllocVec(CMID.SNP).bits.alr          := msg_rpSF.alr
+  io.cmAllocVec(CMID.SNP).bits.snpVec       := msg_rpSF.dir.sf.metaVec.map(_.state.asBool)
   io.cmAllocVec(CMID.SNP).bits.fromRepl     := true.B
-  io.cmAllocVec(CMID.SNP).bits.ds.bank      := DontCare
-  io.cmAllocVec(CMID.SNP).bits.ds.idx       := DontCare
-  io.cmAllocVec(CMID.SNP).bits.cbResp       := DontCare
+  io.cmAllocVec(CMID.SNP).bits.alr          := msg_rpSF.alr
+  io.cmAllocVec(CMID.SNP).bits.dataOp.reqs  := true.B
+
+  /*
+   * [REPLLLC]
+   */
+  val cmVec_rpLLC = cmRegVec.map(_.isReplLLC)
+  val cmId_rpLLC  = RREncoder(cmVec_rpLLC)
+  val msg_rpLLC   = msgRegVec(cmId_rpLLC)
   // REQ
-  io.cmAllocVec(CMID.WOA).valid             := cmRegVec(cmId_repl).replLLC & !(io.writeDir.llc.fire | io.writeDir.sf.fire)
+  io.cmAllocVec(CMID.WOA).valid             :=cmVec_rpLLC.reduce(_ | _)
   io.cmAllocVec(CMID.WOA).bits              := DontCare
   io.cmAllocVec(CMID.WOA).bits.chi.nodeId   := DontCare
   io.cmAllocVec(CMID.WOA).bits.chi.channel  := ChiChannel.REQ
-  io.cmAllocVec(CMID.WOA).bits.chi.opcode   := Mux(msg_repl.Addr.isToLAN(io.config.ci), ReqOpcode.WriteNoSnpFull, ReqOpcode.WriteEvictOrEvict)
+  io.cmAllocVec(CMID.WOA).bits.chi.opcode   := DontCare // will remap in WOA
   io.cmAllocVec(CMID.WOA).bits.chi.dataVec  := Seq(true.B, true.B)
   io.cmAllocVec(CMID.WOA).bits.chi.memAttr.allocate   := false.B
   io.cmAllocVec(CMID.WOA).bits.chi.memAttr.device     := false.B
   io.cmAllocVec(CMID.WOA).bits.chi.memAttr.cacheable  := true.B
   io.cmAllocVec(CMID.WOA).bits.chi.memAttr.ewa        := true.B
-  io.cmAllocVec(CMID.WOA).bits.chi.toLAN    := msg_repl.Addr.isToLAN(io.config.ci)
+  io.cmAllocVec(CMID.WOA).bits.chi.toLAN    := DontCare
   io.cmAllocVec(CMID.WOA).bits.fromRepl     := true.B
-  io.cmAllocVec(CMID.WOA).bits.ds.bank      := getDS(msg_repl.addr, msg_repl.dir.llc.way)._1
-  io.cmAllocVec(CMID.WOA).bits.ds.idx       := getDS(msg_repl.addr, msg_repl.dir.llc.way)._2
-  io.cmAllocVec(CMID.SNP).bits.cbResp       := msg_repl.dir.llc.metaVec.head.state
-
-  /*
-   * Update PoS Tag
-   */
-  io.updPosTag.valid        := io.cmAllocVec(CMID.SNP).fire | io.cmAllocVec(CMID.WOA).fire
-  io.updPosTag.bits.dirBank := msg_repl.llcTxnID.dirBank
-  io.updPosTag.bits.pos     := msg_repl.llcTxnID.pos
-  io.updPosTag.bits.addr    := msg_repl.addr
-
-
-  /*
-   * Update PoS Lock
-   */
-  // lock
-  io.lockPosSet.valid           := io.writeDir.llc.fire | io.writeDir.sf.fire
-  io.lockPosSet.bits            := msg_wri.llcTxnID
-  // unlock
-  io.unlockPosSet.valid         := waitPipe.io.deq.valid
-  io.unlockPosSet.bits          := msgRegVec(waitPipe.io.deq.bits).llcTxnID
-
-
+  io.cmAllocVec(CMID.WOA).bits.wrillcWay    := msg_rpLLC.dir.llc.way
+  io.cmAllocVec(CMID.WOA).bits.cbResp       := msg_rpLLC.dir.llc.metaVec.head.cbResp
+  io.cmAllocVec(CMID.WOA).bits.alr          := msg_rpLLC.alr
+  io.cmAllocVec(CMID.WOA).bits.dataOp.reqs  := true.B
+  io.cmAllocVec(CMID.WOA).bits.dataOp.repl  := true.B
+  io.cmAllocVec(CMID.WOA).bits.dataOp.read  := true.B
 
   /*
    * [RESP]
@@ -202,32 +205,22 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   /*
    * Modify Ctrl Machine Table
    */
-  val hwaVec2 = WireInit(VecInit(Seq.fill(nrReplaceCM) { VecInit(Seq.fill(8) { true.B }) }))
   cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
     case ((cm, msg), i) =>
       val allocHit    = io.alloc.fire & cmId_rec === i.U
       val writeHit    = (io.writeDir.llc.fire | io.writeDir.sf.fire) & cmId_wri === i.U
       val waitHit     = waitPipe.io.deq.valid & waitPipe.io.deq.bits === i.U
-      val replSFHit   = io.cmAllocVec(CMID.SNP).fire & cmId_repl === i.U
-      val replLLCHit  = io.cmAllocVec(CMID.WOA).fire & cmId_repl === i.U
+      val replSFHit   = io.cmAllocVec(CMID.SNP).fire & cmId_rpSF === i.U
+      val replLLCHit  = io.cmAllocVec(CMID.WOA).fire & cmId_rpLLC === i.U
       val cmRespHit   = io.respRepl.fire & io.respRepl.bits.llcTxnID.get === msg.llcTxnID.get
       val respHit     = io.resp.fire & cmId_resp === i.U
 
       // Message
-      val wriAll      = WireInit(false.B)
-      val needSecRepl = cmRespHit & !io.respRepl.bits.isInvalid & io.respRepl.bits.isSnp
+      val needSecRepl = cmRespHit & !io.respRepl.bits.isValid
+      HardwareAssertion.withEn(msg.replSF, needSecRepl)
+      HardwareAssertion.withEn(io.respRepl.bits.isDat, needSecRepl)
       when(allocHit) {
         msg := io.alloc.bits
-      }.elsewhen(writeHit) {
-        val wriSF_nxt  = msg.wriSF  & !io.writeDir.sf.fire
-        val wriLLC_nxt = msg.wriLLC & !io.writeDir.llc.fire
-        msg.wriSF     := wriSF_nxt
-        msg.wriLLC    := wriLLC_nxt
-        wriAll        := !wriSF_nxt & !wriLLC_nxt
-      }.elsewhen(waitHit) {
-        when(io.respDir.sf.valid)  { msg.dir.sf  := io.respDir.sf.bits  }
-        when(io.respDir.llc.valid) { msg.dir.llc := io.respDir.llc.bits }
-        msg.addr := Mux(io.respDir.sf.valid, io.respDir.sf.bits.hit, io.respDir.llc.bits.addr)
       }.elsewhen(needSecRepl) {
         msg.wriLLC        := true.B
         msg.dir.llc.wayOH := DontCare
@@ -237,65 +230,32 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
         msg := 0.U.asTypeOf(msg)
       }
 
-      // Ctrl Machine Wait
-      val waitAll = WireInit(false.B)
-      when(allocHit) {
-        cm.waitSF   := io.alloc.bits.wriSF  & !io.alloc.bits.dir.llc.hit
-        cm.waitLLC  := io.alloc.bits.wriLLC & !io.alloc.bits.dir.llc.hit
-      }.elsewhen(waitHit) {
-        // wait
-        val waitSFnxt   = cm.waitSF  & !io.respDir.sf.valid
-        val waitLLCnxt  = cm.waitLLC & !io.respDir.llc.valid
-        cm.waitSF       := waitSFnxt
-        cm.waitLLC      := waitLLCnxt
-        waitAll         := !waitSFnxt & !waitLLCnxt
-      }.elsewhen(needSecRepl) {
-        cm.waitLLC      := true.B
-      }
-
-      // Ctrl Machine Repl
-      val replAll   = WireInit(false.B)
-      val needRepl  = WireInit(false.B)
-      when(waitHit) {
-        val replSF  = io.respDir.sf.valid  & io.respDir.sf.bits.metaVec.map(_.isValid).reduce(_ | _)
-        val replLLC = io.respDir.llc.valid & io.respDir.llc.bits.metaVec.head.isValid
-        cm.replSF   := cm.replSF | replSF
-        cm.replLLC  := cm.replLLC | replLLC
-        needRepl    := cm.needRepl | replSF | replLLC
-      }.elsewhen(replSFHit | replLLCHit) {
-        val replSF_nxt  = cm.replSF  & !replSFHit
-        val replLLC_nxt = cm.replLLC & !replLLCHit
-        cm.replSF       := replSF_nxt
-        cm.replLLC      := replLLC_nxt
-        replAll         := !replSF_nxt & !replLLC_nxt
-      }.elsewhen(needSecRepl) {
-        cm.replLLC      := true.B
-      }
-
       // Ctrl Machine State
       cm.state := PriorityMux(Seq(
-        allocHit  -> WRITE,
-        wriAll    -> Mux(cm.needWait, WAITDIR, RESP),
-        waitAll   -> Mux(needRepl, REPL, RESP),
-        replAll   -> WAITCM,
-        cmRespHit -> Mux(needSecRepl, REPL, RESP),
-        respHit   -> FREE,
-        true.B    -> cm.state
+        allocHit    -> WRIDIR,
+        writeHit    -> Mux(msg.replDIR, WAITDIR, RESP),
+        waitHit     -> Mux(needReplSF, REPLSF, Mux(needReplLLC, REPLLLC, RESP)),
+        replSFHit   -> WAITCM,
+        replLLCHit  -> WAITCM,
+        cmRespHit   -> Mux(needSecRepl, REPLLLC, RESP),
+        respHit     -> FREE,
+        true.B      -> cm.state
       ))
 
-      when(allocHit) { hwaVec2(i)(0) := cm.asUInt === 0.U & msg.asUInt === 0.U }
-      when(waitHit)  { hwaVec2(i)(1) := !(cm.replSF & cm.replLLC)  }
-      hwaVec2(i)(2) := !(replSFHit & replLLCHit)
+
+      HardwareAssertion.withEn(cm.asUInt === 0.U & msg.asUInt === 0.U, allocHit, cf"Replace Index[${i}]")
+      HardwareAssertion.withEn(cm.isWriDir,   writeHit, cf"Replace Index[${i}]")
+      HardwareAssertion.withEn(cm.isWaitDir,  waitHit, cf"Replace Index[${i}]")
+      HardwareAssertion.withEn(cm.isReplSF,   replSFHit, cf"Replace Index[${i}]")
+      HardwareAssertion.withEn(cm.isReplLLC,  replLLCHit, cf"Replace Index[${i}]")
+      HardwareAssertion.withEn(cm.isWaitCM,   cmRespHit, cf"Replace Index[${i}]")
+      HardwareAssertion.withEn(cm.isResp,     respHit, cf"Replace Index[${i}]")
+      HardwareAssertion(!(replSFHit & replLLCHit), cf"Replace Index[${i}]")
       HardwareAssertion.checkTimeout(cm.isFree, TIMEOUT_REPLACE, cf"TIMEOUT: Replace Index[${i}]")
   }
 
   /*
    * HardwareAssertion placePipe
    */
-  hwaVec2.transpose.zipWithIndex.foreach {
-    case (vec, i) =>
-      val idx = PriorityEncoder(vec)
-      HardwareAssertion(vec.reduce(_ | _), cf"Index[$idx] : Type[$i]")
-  }
   HardwareAssertion.placePipe(Int.MaxValue-2)
 }

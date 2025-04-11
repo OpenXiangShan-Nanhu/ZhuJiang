@@ -89,6 +89,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  sfSize: ${djparam.sfSizeInB} B
        |  llcWays: ${djparam.llcWays}
        |  sfWays: ${djparam.sfWays}
+       |  sfMetas: ${nrSfMetas}
        |  openDCT: ${djparam.openDCT}
        |  nrPoS: ${djparam.nrPoS}
        |  dataBufSize: ${djparam.dataBufSizeInByte} Byte
@@ -187,7 +188,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
       f.io.cleanPos     := backend.io.cleanPosVec(i)
       f.io.lockPosSet   := backend.io.lockPosSetVec(i)
       f.io.unlockPosSet := backend.io.unlockPosSetVec(i)
-      f.io.getPosAddr   := backend.io.getPosAddrVec(i)
+      f.io.getAddrVec.zip(backend.io.getAddrVec2(i)).foreach { case(a, b) => a <> b }
   }
 
   /*
@@ -204,7 +205,6 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   backend.io.respDir  := directory.io.wResp
   backend.io.cmtAllocVec.zip(frontends.map(_.io.cmtAlloc_s3)).foreach    { case(a, b) => a <> b }
   backend.io.cmAllocVec2.zip(frontends.map(_.io.cmAllocVec_s4)).foreach  { case(a, b) => a <> b }
-  backend.io.posRespAddrVec.zip(frontends.map(_.io.posRespAddr)).foreach { case(a, b) => a := b }
   backend.io.dataResp := dataBlock.io.resp
 
   /*

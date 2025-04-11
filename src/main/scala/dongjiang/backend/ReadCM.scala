@@ -12,6 +12,7 @@ import dongjiang.directory.{DirEntry, DirMsg}
 import dongjiang.frontend._
 import dongjiang.frontend.decode._
 import zhujiang.chi.RspOpcode._
+import zhujiang.chi.DatOpcode._
 import dongjiang.backend._
 import dongjiang.backend.read.State._
 
@@ -47,6 +48,8 @@ class ReadCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config        = new DJConfigIO()
+    // Get Full Addr In PoS
+    val getAddr       = new GetAddr()
     // Commit Task In
     val alloc         = Flipped(Decoupled(new CMTask))
     // CHI
@@ -89,12 +92,14 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   val task_sReq   = msgRegVec(cmId_sReq).task
   // valid
   io.txReq.valid  := cmVec_sReq.reduce(_ | _)
+  // get addr
+  io.getAddr.llcTxnID           := task_sReq.llcTxnID
   // bits
   io.txReq.bits                 := DontCare
   io.txReq.bits.ExpCompAck      := task_sReq.chi.expCompAck
   io.txReq.bits.MemAttr         := task_sReq.chi.memAttr.asUInt
   io.txReq.bits.Order           := Order.None
-  io.txReq.bits.Addr            := task_sReq.addr
+  io.txReq.bits.Addr            := io.getAddr.result.addr
   io.txReq.bits.Size            := task_sReq.chi.getSize
   io.txReq.bits.Opcode          := task_sReq.chi.opcode
   io.txReq.bits.ReturnTxnID.get := Mux(task_sReq.doDMT, task_sReq.chi.txnID,  task_sReq.llcTxnID.get)
@@ -128,7 +133,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   io.respCmt.valid := cmVec_resp.reduce(_ | _)
   // bits
   io.respCmt.bits.llcTxnID  := msg_resp.task.llcTxnID
-  io.respCmt.bits.alrDB     := msg_resp.task.alrDB
+  io.respCmt.bits.alr       := msg_resp.task.alr
   when(msg_resp.task.doDMT) {
     io.respCmt.bits.inst          := 0.U.asTypeOf(new TaskInst)
   }.otherwise {
@@ -143,13 +148,12 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   /*
    * Modify Ctrl Machine Table
    */
-  val hwaVec2 = WireInit(VecInit(Seq.fill(nrReadCM) { VecInit(Seq.fill(6) { true.B }) }))
   cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
     case ((cm, msg), i) =>
       val allocHit    = io.alloc.fire   & i.U === cmId_rec
       val reqDBHit    = io.reqDB.fire   & i.U === cmId_reqDB
       val sendReqHit  = io.txReq.fire   & i.U === cmId_sReq
-      val recDataHit  = io.rxDat.fire   & msg.task.llcTxnID.get === io.rxDat.bits.TxnID
+      val recDataHit  = io.rxDat.fire   & msg.task.llcTxnID.get === io.rxDat.bits.TxnID & io.rxDat.bits.Opcode === CompData
       val sendAckHit  = io.txRsp.fire   & i.U === cmId_sAck
       val respCmtHit  = io.respCmt.fire & i.U === cmId_resp
 
@@ -157,9 +161,9 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       when(allocHit) {
         msg.task := io.alloc.bits
         msg.inst := 0.U.asTypeOf(new TaskInst)
-      // Store AlrReqDB
+      // store already reqs
       }.elsewhen(reqDBHit) {
-        msg.task.alrDB.reqs := true.B
+        msg.task.alr.reqs := true.B
       // Store Message
       }.elsewhen(recDataHit) {
         // chi
@@ -171,7 +175,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
 
       // Get Next State
       cm.state := PriorityMux(Seq(
-        allocHit    -> Mux(io.alloc.bits.needDB & !io.alloc.bits.alrDB.reqs, REQDB, SENDREQ),
+        allocHit    -> Mux(io.alloc.bits.needReqDB, REQDB, SENDREQ),
         reqDBHit    -> SENDREQ,
         sendReqHit  -> Mux(!msg.task.doDMT, WAITDATA0, RESPCMT),
         recDataHit  -> Mux(msg.task.chi.isHalfSize, RESPCMT, WAITDATA1),
@@ -181,12 +185,12 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       ))
 
       // HardwareAssertion
-      when(allocHit)   { hwaVec2(i)(0) := cm.isInvalid }
-      when(reqDBHit)   { hwaVec2(i)(1) := cm.isReqDB }
-      when(sendReqHit) { hwaVec2(i)(2) := cm.isSendReq }
-      when(recDataHit) { hwaVec2(i)(3) := cm.isWaitData }
-      when(sendAckHit) { hwaVec2(i)(4) := cm.isSendCompAck }
-      when(respCmtHit) { hwaVec2(i)(5) := cm.isRespCmt }
+      HardwareAssertion.withEn(cm.isInvalid,      allocHit)
+      HardwareAssertion.withEn(cm.isReqDB,        reqDBHit)
+      HardwareAssertion.withEn(cm.isSendReq,      sendReqHit)
+      HardwareAssertion.withEn(cm.isWaitData,     recDataHit)
+      HardwareAssertion.withEn(cm.isSendCompAck,  sendAckHit)
+      HardwareAssertion.withEn(cm.isRespCmt,      respCmtHit)
       HardwareAssertion.checkTimeout(cm.isInvalid, TIMEOUT_READ, cf"TIMEOUT: Read Index[${i}]")
   }
 
@@ -194,10 +198,5 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   /*
    * HardwareAssertion placePipe
    */
-  hwaVec2.transpose.zipWithIndex.foreach {
-    case(vec, i) =>
-      val idx = PriorityEncoder(vec)
-      HardwareAssertion(vec.reduce(_ | _), cf"Index[$idx] : Type[$i]")
-  }
   HardwareAssertion.placePipe(Int.MaxValue-2)
 }

@@ -18,7 +18,7 @@ import chisel3.util._
 
 
 object Dataless_LAN {
-  // MakeUnique To LAN
+  // MakeUnique
   def makeUnique: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(MakeUnique) | expCompAck, Seq(
     // I I I  -> UD I I
     (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(UC) | wriSRC(true)),
@@ -37,7 +37,7 @@ object Dataless_LAN {
   ))
 
 
-  // Evict To LAN
+  // Evict
   def evict: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(Evict), Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(I)),

@@ -19,6 +19,7 @@ import dongjiang.backend.read._
 import dongjiang.backend.dataless._
 import dongjiang.backend.wrioratm._
 import dongjiang.backend.replace._
+import dongjiang.backend.receive._
 
 class Backend(implicit p: Parameters) extends DJModule {
   /*
@@ -37,8 +38,7 @@ class Backend(implicit p: Parameters) extends DJModule {
     // CHI RESP From Frontend
     val fastResp        = Flipped(Decoupled(new RespFlit()))
     // Get Full Addr In PoS
-    val getPosAddrVec   = Vec(djparam.nrDirBank, Output(new PosIndex()))
-    val posRespAddrVec  = Vec(djparam.nrDirBank, Input(new Addr()))
+    val getAddrVec2     = Vec(djparam.nrDirBank, Vec(nrTaskCM + 1, new GetAddr(true)))
     // Update PoS Message
     val updPosNestVec   = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasNest))
     val updPosTagVec    = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasAddr)) // Only from replace
@@ -74,67 +74,96 @@ class Backend(implicit p: Parameters) extends DJModule {
   val cmtCMs      = Seq.tabulate(djparam.nrDirBank)(i => Module(new CommitCM(i)))
   val replCM      = Module(new ReplaceCM())
   val snoopCM     = Module(new SnoopCM())
+  val wriOrAtmCM  = Module(new WriOrAtmCM())
   val readCM      = Module(new ReadCM())
   val datalessCM  = Module(new DatalessCM())
-  val wriOrAtmCM  = Module(new WriOrAtmCM())
+  val receiveCM   = Module(new ReceiveCM())
 
   /*
-   * Connect
-   *  TODO: optimize it
+   * Connect Config
    */
-  // config
   cmtCMs.foreach(_.io.config := io.config)
   replCM.io.config      := io.config
   snoopCM.io.config     := io.config
   readCM.io.config      := io.config
   datalessCM.io.config  := io.config
   wriOrAtmCM.io.config  := io.config
+  receiveCM.io.config   := io.config
 
-  // io
-  // chi
+  // TODO
+  io.multicore:= DontCare
+
+  /*
+   * Connect CHI IO
+   */
   io.txReq        <> fastRRArb(Seq(readCM.io.txReq, datalessCM.io.txReq, wriOrAtmCM.io.txReq))
   io.txSnp        <> snoopCM.io.txSnp
-  io.txRsp        <> fastRRArb(cmtCMs.map(_.io.txRsp) ++ Seq(readCM.io.txRsp, datalessCM.io.txRsp, FastQueue(io.fastResp, fastRespQSzie)))
+  io.txRsp        <> fastRRArb(cmtCMs.map(_.io.txRsp) ++ Seq(readCM.io.txRsp, datalessCM.io.txRsp, receiveCM.io.txRsp, FastQueue(io.fastResp, fastRespQSzie)))
   io.rxRsp.ready  := true.B
-  // frontend
-  io.getPosAddrVec.zip(cmtCMs.map(_.io.getPosAddr)).foreach { case(get, cmt) => get := cmt }
+
+  /*
+   * Connect Frontend
+   */
+  // getAddrVec2
+  val mods_getAddr = Seq(replCM.io.getAddr, snoopCM.io.getAddr, wriOrAtmCM.io.getAddr, readCM.io.getAddr, datalessCM.io.getAddr)
+  io.getAddrVec2.transpose.head.zip(cmtCMs.map(_.io.getAddr)).foreach { case(a, b) => a <> b }
+  io.getAddrVec2.transpose.tail.zip(mods_getAddr).foreach { case(get, mods) =>
+    val addrVec = Wire(Vec(djparam.nrDirBank, new Addr()))
+    addrVec.zip(get.map(_.result)).foreach { case(a, b) => a.addr := b.addr }
+    // Output
+    get.foreach(_.pos := mods.llcTxnID.pos)
+    // Input
+    mods.result := addrVec(mods.llcTxnID.dirBank)
+  }
+
+  // updPosNestVec
   io.updPosNestVec.zipWithIndex.foreach { case(upd, i) => upd <> fastRRArb(Seq(cmtCMs(i).io.updPosNest, wriOrAtmCM.io.updPosNestVec(i))) }
+
+  // updPosTagVec
   io.updPosTagVec.zipWithIndex.foreach { case(upd, i) =>
     upd.valid := replCM.io.updPosTag.valid & replCM.io.updPosTag.bits.dirBank === i.U
     upd.bits  := replCM.io.updPosTag.bits
   }
+
+  // cleanPosVec
   io.cleanPosVec.zip(cmtCMs.map(_.io.cleanPos)).foreach { case(a, b) => a := b }
+
+  // lockPosSetVec
   io.lockPosSetVec.zip(io.unlockPosSetVec).zipWithIndex.foreach { case ((lock, unlock), i) =>
     lock.valid    := replCM.io.lockPosSet.valid & replCM.io.lockPosSet.bits.dirBank === i.U
     lock.bits     := replCM.io.lockPosSet.bits
     unlock.valid  := replCM.io.unlockPosSet.valid & replCM.io.unlockPosSet.bits.dirBank === i.U
     unlock.bits   := replCM.io.unlockPosSet.bits
   }
-  // dir
+
+  /*
+   * Connect Directory
+   */
   io.writeDir <> replCM.io.writeDir
   io.unlockVec.zip(cmtCMs.map(_.io.unlock)).foreach { case (a, b) => a <> b }
-  // data
-  io.reqDB    <> fastRRArb(Seq(snoopCM.io.reqDB, readCM.io.reqDB))
-  io.dataTask <> fastRRArb(cmtCMs.map(_.io.dataTask) ++ Seq(wriOrAtmCM.io.dataTask, snoopCM.io.dataTask))
-  // other
-  io.multicore:= DontCare
+
+  /*
+   * Connect Data Block
+   */
+  io.reqDB    <> fastRRArb(Seq(snoopCM.io.reqDB, readCM.io.reqDB, receiveCM.io.reqDB))
+  io.dataTask <> fastRRArb(cmtCMs.map(_.io.dataTask) ++ Seq(wriOrAtmCM.io.dataTask))
 
 
-  // commits
+  /*
+   * Connect Commits
+   */
   val respCmtVec      = Wire(Vec(nrTaskCM, Decoupled(new RespToCmt())))
   val respCmtSelIdVec = Wire(Vec(djparam.nrDirBank, UInt(log2Ceil(nrTaskCM).W)))
-  respCmtVec          <> Seq(snoopCM.io.respCmt, readCM.io.respCmt, datalessCM.io.respCmt, wriOrAtmCM.io.respCmt)
-  respCmtVec.zipWithIndex.foreach { case(r, i) => r.ready := respCmtSelIdVec.map(_ === i.U).reduce(_ | _) }
+  respCmtVec          <> Seq(snoopCM.io.respCmt, wriOrAtmCM.io.respCmt, readCM.io.respCmt, datalessCM.io.respCmt, receiveCM.io.respCmt)
+  respCmtVec.zipWithIndex.foreach { case(r, i) => r.ready := respCmtSelIdVec(r.bits.llcTxnID.dirBank) === i.U }
   cmtCMs.zipWithIndex.foreach {
     case(cmt, i) =>
-      cmt.io.alloc          := io.cmtAllocVec(i)
-      cmt.io.rxRsp          := io.rxRsp
-      cmt.io.rxDat          := io.rxDat
-      cmt.io.posRespAddr    := io.posRespAddrVec(i)
-      val respCmtValVec     = respCmtVec.map(r => r.valid & r.bits.llcTxnID.dirBank === i.U)
-      respCmtSelIdVec(i)    := RREncoder(respCmtValVec)
-      cmt.io.respCmt.valid  := respCmtValVec.reduce(_ | _)
-      cmt.io.respCmt.bits   := respCmtVec(respCmtSelIdVec(i)).bits
+      cmt.io.alloc              := io.cmtAllocVec(i)
+      cmt.io.rxRsp              := io.rxRsp
+      val respCmtValVec         = respCmtVec.map(r => r.valid & r.bits.llcTxnID.dirBank === i.U)
+      respCmtSelIdVec(i)        := RREncoder(respCmtValVec)
+      cmt.io.respCmt.valid      := respCmtValVec.reduce(_ | _)
+      cmt.io.respCmt.bits       := respCmtVec(respCmtSelIdVec(i)).bits
       // replResp
       cmt.io.replResp.valid     := replCM.io.resp.valid & replCM.io.resp.bits.dirBank === i.U
       cmt.io.replResp.bits.pos  := replCM.io.resp.bits.pos
@@ -143,29 +172,45 @@ class Backend(implicit p: Parameters) extends DJModule {
       cmt.io.dataResp.bits.pos  := io.dataResp.bits.llcTxnID.pos
   }
 
-  // repl
-  replCM.io.alloc <> fastRRArb(cmtCMs.map(_.io.replAlloc))
-  replCM.io.respDir := io.respDir
-  replCM.io.respRepl <> fastArb.validOut(Seq(snoopCM.io.respRepl, wriOrAtmCM.io.respRepl))
+  /*
+   * Connect replCM
+   */
+  replCM.io.alloc     <> fastRRArb(cmtCMs.map(_.io.replAlloc))
+  replCM.io.respDir   := io.respDir
+  replCM.io.respRepl  <> fastArb.validOut(Seq(snoopCM.io.respRepl, wriOrAtmCM.io.respRepl))
 
-  // snoop
-  snoopCM.io.alloc <> fastArb(Seq(fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.SNP)) ++ Seq(replCM.io.cmAllocVec(CMID.SNP)))) ++ io.cmAllocVec2.map(_(CMID.SNP)))
-  snoopCM.io.rxRsp := io.rxRsp
-  snoopCM.io.rxDat := io.rxDat
-  snoopCM.io.dataResp := io.dataResp
+  /*
+   * Connect replCM
+   */
+  snoopCM.io.alloc    <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.SNP)) ++ Seq(replCM.io.cmAllocVec(CMID.SNP)) ++ io.cmAllocVec2.map(_(CMID.SNP)))
+  snoopCM.io.rxRsp    := io.rxRsp
+  snoopCM.io.rxDat    := io.rxDat
 
-  // read
-  readCM.io.alloc <> fastArb(Seq(fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.READ)) ++ Seq(replCM.io.cmAllocVec(CMID.READ)))) ++ io.cmAllocVec2.map(_(CMID.READ)))
+  /*
+   * Connect wriOrAtmCM
+   */
+  wriOrAtmCM.io.alloc     <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.WOA)) ++ Seq(replCM.io.cmAllocVec(CMID.WOA)) ++ io.cmAllocVec2.map(_(CMID.WOA)))
+  wriOrAtmCM.io.rxRsp     := io.rxRsp
+  wriOrAtmCM.io.dataResp  := io.dataResp
+
+  /*
+   * Connect readCM
+   */
+  readCM.io.alloc <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.READ)) ++ io.cmAllocVec2.map(_(CMID.READ)))
   readCM.io.rxDat := io.rxDat
 
-  // dataless
-  datalessCM.io.alloc <> fastArb(Seq(fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.DL)) ++ Seq(replCM.io.cmAllocVec(CMID.DL)))) ++ io.cmAllocVec2.map(_(CMID.DL)))
+  /*
+   * Connect datalessCM
+   */
+  datalessCM.io.alloc <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.DL)) ++ io.cmAllocVec2.map(_(CMID.DL)))
   datalessCM.io.rxRsp := io.rxRsp
 
-  // write or atomic
-  wriOrAtmCM.io.alloc <> fastArb(Seq(fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.WOA)) ++ Seq(replCM.io.cmAllocVec(CMID.WOA)))) ++ io.cmAllocVec2.map(_(CMID.WOA)))
-  wriOrAtmCM.io.rxRsp := io.rxRsp
-  wriOrAtmCM.io.dataResp := io.dataResp
+  /*
+   * Connect receiveCM
+   */
+  receiveCM.io.alloc <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.REC)) ++ io.cmAllocVec2.map(_(CMID.REC)))
+  receiveCM.io.rxRsp := io.rxRsp
+  receiveCM.io.rxDat := io.rxDat
 
   /*
    * HardwareAssertion placePipe

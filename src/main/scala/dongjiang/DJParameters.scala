@@ -91,8 +91,8 @@ trait HasParseZJParam extends HasZJParams {
   lazy val nrHnfPort        = lanHnfNodes.map(_.hfpId).distinct.length
   lazy val nrBank           = lanHnfNodes.length / nrHnfPort
   lazy val nrCcNode         = lanCcNodes.length
-  lazy val nrCI             = 16 // TODO: parameterize
-  lazy val nrSfMetas        = nrCcNode + nrCI
+  lazy val nrCI             = 1 << ciIdBits
+  lazy val nrSfMetas        = if(hasBBN) nrCcNode + (nrCI - 1) else nrCcNode
   lazy val metaIdBits       = log2Ceil(nrSfMetas)
 
   // ICN Number Per Bank
@@ -223,9 +223,9 @@ trait HasDJParam extends HasParseZJParam {
   def getDS       (a: UInt, way: UInt) = {
     require(way.getWidth == llcWayBits)
     val temp = Cat(getLlcSet(a), way, getDirBank(a))
-    val idx  = temp(dsIdx_ds_hi,  dsIdx_ds_lo)
     val bank = temp(dsBank_ds_hi, dsBank_ds_lo)
-    (idx, bank)
+    val idx  = temp(dsIdx_ds_hi,  dsIdx_ds_lo)
+    (bank, idx)
   }
 
   // Data Parameters
@@ -268,25 +268,27 @@ trait HasDJParam extends HasParseZJParam {
 
   // Backend Parameters
   lazy val nrReplaceCM      = djparam.nrPoS / 2
-  lazy val nrTaskCM         = 4
+  lazy val nrTaskCM         = 5
   lazy val nrSnoopCM        = djparam.nrPoS / 4
   lazy val nrReadCM         = djparam.nrPoS / 2
   lazy val nrDatalessCM     = djparam.nrPoS / 4
   lazy val nrWriOrAtmCM     = djparam.nrPoS / 4
+  lazy val nrReceiveCM      = djparam.nrPoS / 4
   lazy val fastRespQSzie    = djparam.nrPoS / 8
 
 
   // TIMEOUT CHECK CNT VALUE
   lazy val TIMEOUT_TASKBUF  = 30000
   lazy val TIMEOUT_POS      = 20000
+  lazy val TIMEOUT_DATACM   = 20000
   lazy val TIMEOUT_COMMIT   = 18000
   lazy val TIMEOUT_LOCK     = 18000
   lazy val TIMEOUT_REPLACE  = 15000
-  lazy val TIMEOUT_DATACM   = 10000
   lazy val TIMEOUT_ISSUE    = 10000
   lazy val TIMEOUT_SNP      = 10000
   lazy val TIMEOUT_READ     = 10000
   lazy val TIMEOUT_WOA      = 10000
+  lazy val TIMEOUT_REC      = 10000
 }
 
 

@@ -86,11 +86,11 @@ class Directory(implicit p: Parameters) extends DJModule {
   io.rRespVec.map(_.bits.dir.sf ).zip( sfs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
 
   // Store Write LLC Resp DirBank
-  wriLLCBankPipe.io.enq.valid := io.write.llc.fire
+  wriLLCBankPipe.io.enq.valid := io.write.llc.fire & !io.write.llc.bits.hit
   wriLLCBankPipe.io.enq.bits  := io.write.llc.bits.Addr.dirBank
 
   // Store Write SF Resp DirBank
-  wriSFBankPipe.io.enq.valid  := io.write.sf.fire
+  wriSFBankPipe.io.enq.valid  := io.write.sf.fire & !io.write.sf.bits.hit
   wriSFBankPipe.io.enq.bits   := io.write.sf.bits.Addr.dirBank
 
   // Output wResp and rHitMesVec

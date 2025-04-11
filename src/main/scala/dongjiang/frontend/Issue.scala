@@ -7,7 +7,7 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
-import dongjiang.data.HasAlrDB
+import dongjiang.data._
 import dongjiang.directory._
 import xs.utils.debug._
 import dongjiang.frontend.decode._
@@ -21,7 +21,7 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // Configuration
     val config        = new DJConfigIO()
     // In
-    val task_s3       = Flipped(Valid(new PackChi with HasAddr with HasPackPosIndex with HasPackDirMsg with HasAlrDB with HasPackTaskCode with HasPackCmtCode))
+    val task_s3       = Flipped(Valid(new PackChi with HasAddr with HasPackPosIndex with HasPackDirMsg with HasAlready with HasPackTaskCode with HasPackCmtCode))
     // Out
     val cmtAlloc_s3   = Valid(new CommitTask())
     val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new CMTask()))
@@ -47,7 +47,7 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.cmtAlloc_s3.bits.chi       := io.task_s3.bits.chi
   io.cmtAlloc_s3.bits.pos       := io.task_s3.bits.pos
   io.cmtAlloc_s3.bits.dir       := io.task_s3.bits.dir
-  io.cmtAlloc_s3.bits.alrDB     := io.task_s3.bits.alrDB
+  io.cmtAlloc_s3.bits.alr       := io.task_s3.bits.alr
   io.cmtAlloc_s3.bits.ops       := io.task_s3.bits.code
   io.cmtAlloc_s3.bits.commit    := io.task_s3.bits.commit
   io.cmtAlloc_s3.bits.ds.bank   := getDS(io.task_s3.bits.addr, io.task_s3.bits.dir.llc.way)._1
@@ -59,24 +59,26 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * [S3] Receive task and trans to cmTask
    */
   val task_s3               = io.task_s3.bits
-  cmTask_s3.addr            := task_s3.addr
   cmTask_s3.llcTxnID.pos    := task_s3.pos
   cmTask_s3.llcTxnID.dirBank:= dirBank.U
   cmTask_s3.chi             := task_s3.chi
-  cmTask_s3.alrDB           := task_s3.alrDB
-  cmTask_s3.ds.bank         := getDS(task_s3.addr, task_s3.dir.llc.way)._1
-  cmTask_s3.ds.idx          := getDS(task_s3.addr, task_s3.dir.llc.way)._2
+  cmTask_s3.alr             := task_s3.alr
+  cmTask_s3.dataOp          := task_s3.code.dataOp
   cmTask_s3.fromRepl        := false.B
-  cmTask_s3.cbResp          := task_s3.dir.llc.metaVec.head.state
+  cmTask_s3.cbResp          := task_s3.dir.llc.metaVec.head.cbResp
+  cmTask_s3.wrillcWay       := task_s3.dir.llc.way
+  cmTask_s3.doDMT           := task_s3.code.doDMT
   // set by decode
-  cmTask_s3.chi.channel     := Mux(task_s3.code.snoop, ChiChannel.SNP, ChiChannel.REQ)
+  cmTask_s3.chi.channel     := PriorityMux(Seq(
+    task_s3.code.snoop      -> ChiChannel.SNP,
+    task_s3.code.receive    -> ChiChannel.RSP,
+    true.B                  -> ChiChannel.REQ,
+  ))
   cmTask_s3.chi.opcode      := task_s3.code.opcode
   cmTask_s3.chi.expCompAck  := task_s3.code.expCompAck
   cmTask_s3.chi.retToSrc    := task_s3.code.retToSrc
-  cmTask_s3.needDB          := task_s3.code.needDB
   // snp tgt vec
-  val metaId_s3     = task_s3.chi.metaId
-  cmTask_s3.snpVec := task_s3.dir.getSnpVec(task_s3.code.snpTgt, metaId_s3)
+  cmTask_s3.snpVec := task_s3.dir.getSnpVec(task_s3.code.snpTgt, task_s3.chi.metaIdOH)
 
 
   /*
@@ -103,22 +105,26 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val readVec_s4  = taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === CMID.READ.U)
   val dlVec_s4    = taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === CMID.DL.U)
   val woaVec_s4   = taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === CMID.WOA.U)
+  val recVec_s4   = taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === CMID.REC.U)
   val zeroVec_s4  = taskNidVecReg_s4.map(_ === 0.U)
   // id
   val snpId_s4  = PriorityEncoder(snpVec_s4.zip(zeroVec_s4).map (a => a._1 & a._2))
   val readId_s4 = PriorityEncoder(readVec_s4.zip(zeroVec_s4).map(a => a._1 & a._2))
   val dlId_s4   = PriorityEncoder(dlVec_s4.zip(zeroVec_s4).map  (a => a._1 & a._2))
   val woaId_s4  = PriorityEncoder(woaVec_s4.zip(zeroVec_s4).map (a => a._1 & a._2))
+  val recId_s4  = PriorityEncoder(recVec_s4.zip(zeroVec_s4).map (a => a._1 & a._2))
   // valid
   io.cmAllocVec_s4(CMID.SNP).valid  := snpVec_s4.reduce(_ | _)
   io.cmAllocVec_s4(CMID.READ).valid := readVec_s4.reduce(_ | _)
   io.cmAllocVec_s4(CMID.DL).valid   := dlVec_s4.reduce(_ | _)
   io.cmAllocVec_s4(CMID.WOA).valid  := woaVec_s4.reduce(_ | _)
+  io.cmAllocVec_s4(CMID.REC).valid  := recVec_s4.reduce(_ | _)
   // bits
   io.cmAllocVec_s4(CMID.SNP).bits   := cmTaskBufReg_s4(snpId_s4)
   io.cmAllocVec_s4(CMID.READ).bits  := cmTaskBufReg_s4(readId_s4)
   io.cmAllocVec_s4(CMID.DL).bits    := cmTaskBufReg_s4(dlId_s4)
   io.cmAllocVec_s4(CMID.WOA).bits   := cmTaskBufReg_s4(woaId_s4)
+  io.cmAllocVec_s4(CMID.REC).bits   := cmTaskBufReg_s4(recId_s4)
   // invalid
   taskOpsVecReg_s4.zipWithIndex.foreach {
     case(ops, i) =>

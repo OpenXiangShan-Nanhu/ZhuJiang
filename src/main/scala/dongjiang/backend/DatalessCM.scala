@@ -22,6 +22,8 @@ class DatalessCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config        = new DJConfigIO()
+    // Get Full Addr In PoS
+    val getAddr       = new GetAddr()
     // Commit Task In
     val alloc         = Flipped(Decoupled(new CMTask))
     // CHI

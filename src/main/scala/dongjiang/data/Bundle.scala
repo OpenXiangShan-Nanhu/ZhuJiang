@@ -12,10 +12,11 @@ import dongjiang.data.State._
 /*
  * HasAlrDB
  */
-trait HasAlrDB { this: DJBundle =>
-  val alrDB   = new DJBundle {
+trait HasAlready { this: DJBundle =>
+  val alr     = new DJBundle {
     val reqs  = Bool() // Already request DataCM and DataBuf. If set it, commit will clean when done all
-    val fast  = Bool() // Already Send Task[reqs+read+send+clean] to DataBlock
+    val sDBID = Bool() // Already retrun XDBIDResp to RN
+    val sData = Bool() // Already Send Task[reqs+read+send+clean] to DataBlock
   }
 }
 
@@ -23,37 +24,38 @@ trait HasAlrDB { this: DJBundle =>
  * HasDataOp -> DataOp -> HasPackDataOp -> PackDataOp
  */
 // Optional Combination
-// 1. read SRAM:                    read
-// 2. save in SRAM:                 save (must without reqs)
-// 3. send to CHI:                  send (must without reqs)
-// 4. read SRAM and send to CHI:    read -> send
-// 5. replace:                      read -> save (must without reqs,  with repl and clean)
-// 6. send to CHI and save in SRAM: send -> save (must without reqs)
-trait HasDataOp { this: DJBundle =>
+trait HasDataOp { this: Bundle =>
   // flag
-  val reqs  = Bool() // Request DataCM and DataBuf
-  val repl  = Bool() // Replace
-  val clean = Bool() // Release DataCM and DataBuf; Node: need set dataVec
+  val reqs    = Bool() // Request DataCM and DataBuf
+  val repl    = Bool() // Replace, data will not save in DataBuffer
   // operation (need resp to CommitCM)
-  val read  = Bool() // sram -> buffer
-  val send  = Bool() // buffer -> chi
-  val save  = Bool() // buffer -> sram
+  // read > send > save > clean
+  // note: send and save cant be true at the same time
+  // note: send and repl cant be true at the same time
+  val read    = Bool() // sram -> buffer
+  val send    = Bool() // buffer -> chi
+  val save    = Bool() // buffer -> sram
+  val clean   = Bool() // Release DataCM and DataBuf; Node: need set dataVec
+
+  def valid   = reqs | read | send | save | clean
 }
 
-class DataOp(implicit p: Parameters) extends DJBundle with HasDataOp
+class DataOp extends Bundle with HasDataOp
 
-trait HasPackDataOp { this: DJBundle => val dataOp = new DataOp }
+trait HasPackDataOp { this: Bundle => val dataOp = new DataOp }
 
 class PackDataOp(implicit p: Parameters) extends DJBundle with HasPackDataOp
 
 /*
  * HasDsIdx
  */
+class DsIdx(implicit p: Parameters) extends DJBundle {
+  val idx  = UInt(dsIdxBits.W)
+  val bank = UInt(dsBankBits.W)
+}
+
 trait HasDsIdx { this: DJBundle =>
-  val ds = new DJBundle {
-    val idx  = UInt(dsIdxBits.W)
-    val bank = UInt(dsBankBits.W)
-  }
+  val ds = new DsIdx()
 }
 
 /*
@@ -106,7 +108,8 @@ object State {
   val SAVE1 = 6.U
   val SEND0 = 7.U
   val SEND1 = 8.U
-  val RESP  = 9.U
+  val CLEAN = 9.U
+  val RESP  = 10.U
 }
 
 class DCState(implicit p: Parameters) extends DJBundle {
@@ -126,6 +129,7 @@ class DCState(implicit p: Parameters) extends DJBundle {
   def isSave1 = state === SAVE1
   def isSend0 = state === SEND0
   def isSend1 = state === SEND1
+  def isClean = state === CLEAN
   def isResp  = state === RESP
 
   // getDataId
@@ -139,21 +143,36 @@ class DCState(implicit p: Parameters) extends DJBundle {
       isRead1 -> Mux(dataVec(0), WAIT0, WAIT1),
       // WAIT0
       isWait0 -> PriorityMux(Seq(
-        dataVec(1)  -> WAIT1,
-        dataOp.save -> SAVE0,
-        dataOp.send -> SAVE0,
-        true.B      -> RESP)),
+        dataVec(1)    -> WAIT1,
+        dataOp.save   -> SAVE0,
+        dataOp.send   -> SAVE0,
+        dataOp.clean  -> CLEAN,
+        true.B        -> RESP)),
       // WAIT1
       isWait1 -> PriorityMux(Seq(
-        dataOp.send -> Mux(dataVec(0), SEND0, SEND1),
-        dataOp.save -> Mux(dataVec(0), SAVE0, SAVE1),
-        true.B      -> RESP)),
-      // SEND
-      isSend0 -> Mux(dataVec(1), SEND1, Mux(dataOp.save, SAVE0, RESP)),
-      isSave1 -> Mux(dataOp.save, Mux(dataVec(0), SAVE0, SAVE1), RESP),
+        dataOp.send   -> Mux(dataVec(0), SEND0, SEND1),
+        dataOp.save   -> Mux(dataVec(0), SAVE0, SAVE1),
+        dataOp.clean  -> CLEAN,
+        true.B        -> RESP)),
+      // SEND0
+      isSend0 -> PriorityMux(Seq(
+        dataVec(1)    -> SEND1,
+        dataOp.save   -> SAVE0,
+        dataOp.clean  -> CLEAN,
+        true.B        -> RESP)),
+      // SEND1
+      isSend1 -> PriorityMux(Seq(
+        dataOp.save   -> Mux(dataVec(0), SAVE0, SAVE1),
+        dataOp.clean  -> CLEAN,
+        true.B        -> RESP)),
       // SAVE
-      isSave0 -> Mux(dataVec(1), SAVE1, RESP),
-      isSave1 -> RESP,
+      isSave0 -> PriorityMux(Seq(
+        dataVec(1)    -> SAVE1,
+        dataOp.clean  -> CLEAN,
+        true.B        -> RESP)),
+      isSave1 -> Mux(dataOp.clean, CLEAN, RESP),
+      // CLEAN
+      isClean -> RESP,
       // RESP
       isResp  -> NOTASK,
     ))

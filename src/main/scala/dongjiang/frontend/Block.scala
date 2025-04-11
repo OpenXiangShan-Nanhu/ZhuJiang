@@ -21,7 +21,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val config        = new DJConfigIO()
     // Task
     val chiTask_s0    = Flipped(Valid(new Chi with HasAddr))
-    val task_s1       = Valid(new PackChi with HasAddr with HasPackPosIndex with HasAlrDB)
+    val task_s1       = Valid(new PackChi with HasAddr with HasPackPosIndex with HasAlready)
     // Read Directory
     val readDir_s1    = Decoupled(new Addr with HasPackPosIndex)
     // Message from PoS
@@ -84,8 +84,9 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.task_s1.bits.chi   := taskReg_s1
   io.task_s1.bits.addr  := taskReg_s1.addr
   io.task_s1.bits.pos   := io.posIdx_s1
-  io.task_s1.bits.alrDB.reqs := io.reqDB_s1.fire
-  io.task_s1.bits.alrDB.fast := false.B
+  io.task_s1.bits.alr.reqs  := io.reqDB_s1.fire
+  io.task_s1.bits.alr.sDBID := io.fastResp_s1.fire & taskReg_s1.isWrite
+  io.task_s1.bits.alr.sData := false.B
 
   /*
    * Read Directory
@@ -113,9 +114,10 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.fastResp_s1.bits.TxnID   := taskReg_s1.txnID
   io.fastResp_s1.bits.Opcode  := PriorityMux(Seq(
     (taskReg_s1.isRead  & taskReg_s1.isEO)        -> ReadReceipt,
-    (taskReg_s1.isWrite & taskReg_s1.memAttr.ewa) -> CompDBIDResp, // TODO: Commit need to send Comp when get Comp from SN
-    (taskReg_s1.isWrite)                          -> DBIDResp,
+    (taskReg_s1.isWrite & taskReg_s1.isOWO)       -> DBIDResp, // TODO: Cant send DBIDResp here for WriteUnique
+    (taskReg_s1.isWrite & taskReg_s1.memAttr.ewa) -> CompDBIDResp
   ))
+  HardwareAssertion.withEn(taskReg_s1.isOWO | taskReg_s1.memAttr.ewa, validReg_s1 | taskReg_s1.isWrite)
   io.fastResp_s1.bits.RespErr := RespErr.NormalOkay
   io.fastResp_s1.bits.DBID    := io.posIdx_s1.getLLCTxnID(dirBank)
 

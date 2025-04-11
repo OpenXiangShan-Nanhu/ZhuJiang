@@ -31,41 +31,46 @@ trait HasNodeId { this: DJBundle =>
   def fromCcRni:  Bool = fromCc  & lanAId === 2.U
   def fromRniDma: Bool = fromRni & lanAId === 0.U
 
-  // metaId
-  def metaId: UInt = {
-    val metaId = WireInit(0.U(metaIdBits.W))
+  // metaIdOH
+  def metaIdOH: UInt = {
+    val idxOH = WireInit(0.U(nrSfMetas.W))
     when(fromLAN) {
       ccNodeIdSeq.zipWithIndex.foreach {
         case (ccId, i) =>
           when(ccId.U >> lanABits === lanNId) {
-            metaId := i.U
+            idxOH := UIntToOH(i.U)
           }
       }
     }.otherwise {
-      metaId := bbnCI
+      idxOH := UIntToOH(bbnCI + nrCcNode.U)
     }
-    metaId
+    idxOH
   }
 
   // setNodeId
-  def setNodeId(metaId: UInt): Unit = {
-    require(metaId.getWidth == metaIdBits)
-    // fromLAN
-    val _fromLAN = metaId < nrCcNode.U
-    // LAN
-    val _lan_nodeId = WireInit(0.U(nodeIdBits.W))
-    ccNodeIdSeq.zipWithIndex.foreach {
-      case(ccNodeId, i) =>
-        when(i.U === metaId) {
-          _lan_nodeId := ccNodeId.U | 1.U // RNF agentId always be 1
-        }
+  def setSnpNodeId(metaId: UInt): Unit = {
+    if(nrSfMetas > 1) {
+      require(metaId.getWidth == metaIdBits, s"${metaId.getWidth} =/= $metaIdBits")
+      // fromLAN
+      val _fromLAN = metaId < nrCcNode.U
+      // LAN
+      val _lan_nodeId = WireInit(0.U(nodeIdBits.W))
+      ccNodeIdSeq.zipWithIndex.foreach {
+        case (ccNodeId, i) =>
+          when(i.U === metaId) {
+            _lan_nodeId := ccNodeId.U | 1.U // RNF agentId always be 1
+          }
+      }
+      // BBN
+      val _bbn_nodeId = WireInit(0.U(nodeIdBits.W))
+      _bbn_nodeId := (metaId - nrCcNode.U) << bbnBBits // bbNBId will be remap in BBN Router
+      // Set value
+      this.fromLAN := _fromLAN
+      this.nodeId := Mux(_fromLAN, _lan_nodeId, _bbn_nodeId)
+    } else {
+      this.fromLAN := true.B
+      this.nodeId := ccNodeIdSeq.head.U | 1.U
     }
-    // BBN
-    val _bbn_nodeId = WireInit(0.U(nodeIdBits.W))
-    _bbn_nodeId := (metaId - nrCcNode.U) << bbnBBits  // bbNBId will be remap in BBN Router
-    // Set value
-    this.fromLAN := _fromLAN
-    this.nodeId  := Mux(_fromLAN, _lan_nodeId, _bbn_nodeId)
   }
 }
 

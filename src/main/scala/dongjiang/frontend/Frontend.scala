@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.{CMTask, CommitTask}
+import dongjiang.backend.{CMTask, CommitTask, GetAddr}
 import dongjiang.utils._
 import dongjiang.bundle._
 import dongjiang.data.DataTask
@@ -34,8 +34,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val cmtAlloc_s3   = Valid(new CommitTask())
     val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new CMTask()))
     // Get Full Addr In PoS
-    val getPosAddr    = Input(new PosIndex())
-    val posRespAddr   = Output(new Addr())
+    val getAddrVec    = Vec(nrTaskCM + 1, Flipped(new GetAddr(true)))
     // Update PoS Message
     val updPosNest    = Flipped(Decoupled(new PackPosIndex with HasNest))
     val updPosTag     = Flipped(Valid(new PackPosIndex with HasAddr))
@@ -80,7 +79,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   issue.io.config           := io.config
 
   // io
-  io.posRespAddr            := posTable.io.respAddr
+  io.getAddrVec.zip(posTable.io.getAddrVec).foreach { case(a, b) => a <> b }
   io.reqDB_s1               <> block.io.reqDB_s1
   io.fastData_s3            <> decode.io.fastData_s3
   io.readDir_s1             <> block.io.readDir_s1
@@ -123,7 +122,6 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   posTable.io.clean         := io.cleanPos
   posTable.io.lockSet       := io.lockPosSet
   posTable.io.unlockSet     := io.unlockPosSet
-  posTable.io.getAddr       := io.getPosAddr
 
   // block [S1]
   block.io.chiTask_s0       := fastRRArb(Seq(snpTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0))
