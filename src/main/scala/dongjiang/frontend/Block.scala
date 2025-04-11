@@ -117,7 +117,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
     (taskReg_s1.isWrite & taskReg_s1.isOWO)       -> DBIDResp, // TODO: Cant send DBIDResp here for WriteUnique
     (taskReg_s1.isWrite & taskReg_s1.memAttr.ewa) -> CompDBIDResp
   ))
-  HardwareAssertion.withEn(taskReg_s1.isOWO | taskReg_s1.memAttr.ewa, validReg_s1 | taskReg_s1.isWrite)
+  HardwareAssertion.withEn(taskReg_s1.isOWO | taskReg_s1.memAttr.ewa, validReg_s1 && taskReg_s1.isWrite)
   io.fastResp_s1.bits.RespErr := RespErr.NormalOkay
   io.fastResp_s1.bits.DBID    := io.posIdx_s1.getLLCTxnID(dirBank)
 
