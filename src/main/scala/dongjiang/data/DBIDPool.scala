@@ -25,7 +25,7 @@ class DBIDPool(implicit p: Parameters) extends DJModule {
 
   // reset
   val rstCounter = Counter(djparam.nrDataBuf/2)
-  val rstDoneReg = RegEnable(true.B, false.B, rstCounter.inc)
+  val rstDoneReg = RegEnable(true.B, false.B, rstCounter.inc())
 
   // enq
   val enqOne  = io.enq0.valid ^ io.enq1.valid
