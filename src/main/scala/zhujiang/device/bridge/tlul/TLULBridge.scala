@@ -7,6 +7,7 @@ import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
 import xs.utils.{PickOneLow, ResetRRArbiter}
 import zhujiang.ZJModule
+import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.chi.{DatOpcode, DataFlit, ReqFlit, RespFlit}
 import zhujiang.tilelink.{DOpcode, TLULBundle, TilelinkParams}
 
@@ -78,13 +79,14 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
   private val readDataPipe = Module(new Queue(gen = new DataFlit, entries = 1, pipe = true))
   private val ctrlVec = VecInit(cms.map(_.io.info.bits))
   private val ctrlSel = ctrlVec(tl.d.bits.source(log2Ceil(node.outstanding) - 1, 0))
+  private val ackData = tl.d.bits.opcode === DOpcode.AccessAckData && tl.d.valid
 
-  readDataPipe.io.enq.valid := tl.d.valid
-  tl.d.ready := readDataPipe.io.enq.ready
+  readDataPipe.io.enq.valid := ackData
+  tl.d.ready := Mux(ackData, readDataPipe.io.enq.ready, true.B)
 
   readDataPipe.io.enq.bits := DontCare
   readDataPipe.io.enq.bits.Data := Fill(dw / busDataBits, tl.d.bits.data)
-  readDataPipe.io.enq.bits.Opcode := Mux(tl.d.bits.opcode === DOpcode.AccessAckData, DatOpcode.CompData, 0.U)
+  readDataPipe.io.enq.bits.Opcode := DatOpcode.CompData
   readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4)
   readDataPipe.io.enq.bits.SrcID := 0.U
   readDataPipe.io.enq.bits.Resp := "b010".U
@@ -100,7 +102,5 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
     readDataPipe.io.enq.bits.DBID := tl.d.bits.source
   }
 
-  icn.tx.data.get.valid := readDataPipe.io.deq.valid && readDataPipe.io.deq.bits.Opcode === DatOpcode.CompData
-  icn.tx.data.get.bits := readDataPipe.io.deq.bits.asTypeOf(icn.tx.data.get.bits)
-  readDataPipe.io.deq.ready := icn.tx.data.get.ready
+  connIcn(icn.tx.data.get, readDataPipe.io.deq)
 }
