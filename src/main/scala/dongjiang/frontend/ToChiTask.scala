@@ -66,16 +66,16 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
       HAssert.withEn( task.noOrder   , task.isRead                                                                       , "Requests from RNI should use EndpointOrder(EO) in read transactions"      )
       HAssert.withEn( task.isOWO     , task.isWrite                                                                      , "Requests from RNI should use OrderedWriteOrder(OWO) in write transactions")
     }
-    when(task.fromCcRni) {
+    when(task.fromCcRni & (task.reqIs(ReadNoSnp) | task.reqIs(WriteNoSnpPtl))) {
       HAssert(!task.snpAttr                           , "CC-RNI Request should not assert SnpAttr"                                 )
       HAssert(!task.snoopMe                           , "CC-RNI Request should not assert SnoopMe"                                 )
       HAssert.withEn( task.isEO  && !task.expCompAck  , task.isRead   , "Requests of read from CC-RNI should use EndpointOrder(EO)")
       HAssert.withEn( task.isOWO &&  task.expCompAck  , task.isWrite  , "Request of write form CC-RNI should use OWO"              )
     }
-    when(task.fromCcRnf) {
+    when(task.fromCcRnf & !(task.reqIs(ReadNoSnp) | task.reqIs(WriteNoSnpPtl))) {
       HAssert( task.snpAttr                           , "Requests from CC-RNF must assert SnpAttr"                                                                                                 )
       HAssert( task.noOrder                           , "Requests from CC-RNF should not assert Order"                                                                                             )
-      HAssert.withEn( task.expCompAck                 , task.isRead & task.opcode =/= ReqOpcode.ReadNoSnp          , "Reuqests from CC-RNF should assert ExpCompAck in read transactions"          )
+      HAssert.withEn( task.expCompAck                 , task.isRead                                                , "Reuqests from CC-RNF should assert ExpCompAck in read transactions"          )
       HAssert.withEn( task.expCompAck                 , task.opcode === ReqOpcode.WriteEvictOrEvict                , cf"Requests from CC-RNF which Opcode is ${task.opcode} must assert ExpCompAck")
       HAssert.withEn(!task.expCompAck                 , task.isWrite & task.opcode =/= ReqOpcode.WriteEvictOrEvict , "Request from CC-RNF which ExpCompAck should not be asserted"                 )
     }
