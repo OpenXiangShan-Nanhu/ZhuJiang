@@ -8,7 +8,7 @@ import xijiang.{NodeType, Ring}
 import xs.utils.debug.HardwareAssertionKey
 import xs.utils.sram.SramBroadcastBundle
 import xs.utils.{DFTResetSignals, ResetGen}
-import zhujiang.axi.{AxiBundle, ExtAxiBundle}
+import zhujiang.axi.{AxiBoundaryBuffer, AxiBundle, ExtAxiBundle}
 import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.dma.Axi2Chi
@@ -65,45 +65,71 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   private val memDatIcns = ring.icnSns.get
   private val (memDevSeq, memNameSeq) = memDatIcns.map({ icn =>
     val nidStr = icn.node.nodeId.toHexString
-    val attrStr = if(icn.node.attr == "") "" else "_" + icn.node.attr
-    val bridge = Module(new AxiBridge(icn.node.copy(attr = s"0x$nidStr$attrStr")))
+    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
+    val bridge = Module(new AxiBridge(icn.node.copy(attr = attrStr)))
     val nameStr = s"chi_to_axi_0x$nidStr"
     bridge.reset := placeResetGen(nameStr, icn)
     bridge.icn <> icn
     (bridge, nameStr)
   }).unzip
   memDevSeq.zip(memNameSeq).foreach({case(a, b) => a.suggestName(b)})
-  private val memAxiPorts = memDevSeq.map(_.axi)
+  private val memAxiPorts = memDevSeq.map(d => {
+    val buf = Module(new AxiBoundaryBuffer(d.axi.params))
+    buf.reset := d.reset
+    buf.io.mst <> d.axi
+    buf.suggestName(s"m_axi_${d.axi.params.attr}_buf")
+    buf.io.slv
+  })
 
   private val cfgIcnSeq = ring.icnHis.get
   require(cfgIcnSeq.nonEmpty)
   require(cfgIcnSeq.count(_.node.defaultHni) == 1)
   private val (cfgDevSeq, cfgNameSeq) = cfgIcnSeq.map({ icn =>
     val nidStr = icn.node.nodeId.toHexString
-    val attrStr = if(icn.node.attr == "") "" else "_" + icn.node.attr
+    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
     val nameStr = s"chi_to_axi_lite_0x$nidStr"
-    val cfg = Module(new AxiLiteBridge(icn.node.copy(attr = s"0x$nidStr$attrStr"), 64, 3))
+    val cfg = Module(new AxiLiteBridge(icn.node.copy(attr = attrStr), 64, 3))
     cfg.icn <> icn
     cfg.reset := placeResetGen(nameStr, icn)
     cfg.nodeId := icn.node.nodeId.U
     (cfg, nameStr)
   }).unzip
   cfgDevSeq.zip(cfgNameSeq).foreach({case(a, b) => a.suggestName(b)})
-  private val cfgAxiPorts = cfgDevSeq.map(_.axi)
+  private val cfgAxiPorts = cfgDevSeq.map(d => {
+    if(d.axi.params.attr.contains("main")) {
+      d.axi
+    } else {
+    val buf = Module(new AxiBoundaryBuffer(d.axi.params))
+    buf.reset := d.reset
+    buf.io.mst <> d.axi
+    buf.suggestName(s"m_axi_${d.axi.params.attr}_buf")
+    buf.io.slv
+      }
+  })
 
   private val dmaIcnSeq = ring.icnRis.get
   require(dmaIcnSeq.nonEmpty)
   private val (dmaDevSeq, dmaNameSeq) = dmaIcnSeq.zipWithIndex.map({case(icn, idx) =>
     val nidStr = icn.node.nodeId.toHexString
-    val attrStr = if(icn.node.attr == "") "" else "_" + icn.node.attr
+    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
     val nameStr = s"axi_to_chi_0x$nidStr"
-    val dma = Module(new Axi2Chi(icn.node.copy(attr = s"0x$nidStr$attrStr")))
+    val dma = Module(new Axi2Chi(icn.node.copy(attr = attrStr)))
     dma.icn <> icn
     dma.reset := placeResetGen(nameStr, icn)
     (dma, nameStr)
   }).unzip
   dmaDevSeq.zip(dmaNameSeq).foreach({case(a, b) => a.suggestName(b)})
-  private val dmaAxiPorts = dmaDevSeq.map(_.axi)
+  private val dmaAxiPorts = dmaDevSeq.map(d => {
+    if(d.axi.params.attr.contains("main")) {
+      d.axi
+    } else {
+      val buf = Module(new AxiBoundaryBuffer(d.axi.params))
+      buf.reset := d.reset
+      d.axi <> buf.io.slv
+      buf.suggestName(s"s_axi_${d.axi.params.attr}_buf")
+      buf.io.mst
+    }
+  })
 
   require(ring.icnCcs.get.nonEmpty)
   private val ccnIcnSeq = ring.icnCcs.get
