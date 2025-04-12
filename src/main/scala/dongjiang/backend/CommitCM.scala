@@ -127,10 +127,12 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val taskVal_rec       = alloc_rec.ops.valid
   val cmtVal_rec        = alloc_rec.commit.valid
   // check decode result
-  HardwareAssertion.withEn(alloc_rec.commit.asUInt === 0.U | alloc_rec.commit.flag, !cmtVal_rec)
-  HardwareAssertion.withEn(taskVal_rec ^ cmtVal_rec, io.alloc.valid)
-  HardwareAssertion.withEn(!taskVal_rec, io.alloc.valid & io.alloc.bits.alr.sData)
-  HardwareAssertion.withEn(alloc_rec.commit.channel === ChiChannel.DAT, alloc_rec.commit.dataOp.send)
+  when(io.alloc.valid) {
+    HardwareAssertion(taskVal_rec ^ cmtVal_rec)
+    HardwareAssertion.withEn(alloc_rec.commit.asUInt === 0.U | alloc_rec.commit.flag, !cmtVal_rec)
+    HardwareAssertion.withEn(!taskVal_rec, io.alloc.bits.alr.sData)
+    HardwareAssertion.withEn(alloc_rec.commit.channel === ChiChannel.DAT, alloc_rec.commit.dataOp.send)
+  }
   // msg
   msg_rec.chi           := alloc_rec.chi
   msg_rec.dir           := alloc_rec.dir
@@ -177,12 +179,13 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val deoccde_resp  = Decode.decode(msg_resp.chi.getChiInst.asUInt, msg_resp.dir.getStateInst(msg_resp.chi.metaIdOH).asUInt, taskInst_resp.asUInt, secInst_resp.asUInt)._4
 
 
-  // HardwareAssertion
-  // check decode flag
-  HardwareAssertion.withEn(deoccde_resp._2.flag, io.respCmt.valid, cf"Task inst invalid in Commit[${pos_resp.set}][${pos_resp.way}]" +
-    cf"\n${msg_resp.chi.getChiInst}\n${msg_resp.dir.getStateInst(msg_resp.chi.metaIdOH)}\n${taskInst_resp}\nSec${secInst_resp}")
-  HardwareAssertion.withEn(deoccde_resp._3.flag, io.respCmt.valid, cf"Task inst invalid in Commit[${pos_resp.set}][${pos_resp.way}]" +
-    cf"\n${msg_resp.chi.getChiInst}\n${msg_resp.dir.getStateInst(msg_resp.chi.metaIdOH)}\n${taskInst_resp}\nSec${secInst_resp}")
+  // HardwareAssertion: check decode flag
+  when(io.respCmt.valid) {
+    HardwareAssertion(deoccde_resp._2.flag, cf"Task inst invalid in Commit[${pos_resp.set}][${pos_resp.way}]" +
+      cf"\n${msg_resp.chi.getChiInst}\n${msg_resp.dir.getStateInst(msg_resp.chi.metaIdOH)}\n${taskInst_resp}\nSec${secInst_resp}")
+    HardwareAssertion(deoccde_resp._3.flag, cf"Task inst invalid in Commit[${pos_resp.set}][${pos_resp.way}]" +
+      cf"\n${msg_resp.chi.getChiInst}\n${msg_resp.dir.getStateInst(msg_resp.chi.metaIdOH)}\n${taskInst_resp}\nSec${secInst_resp}")
+  }
 
 
   // get decode result
@@ -199,11 +202,12 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
     cmt_rCmt    := 0.U.asTypeOf(new CommitCode)
   }
   // HardwareAssertion
-  HardwareAssertion.withEn(cmt_rCmt.valid,  io.respCmt.valid)
-  HardwareAssertion.withEn(code_rCmt.valid, io.respCmt.valid & cmt_temp.waitSecDone)
-  HardwareAssertion.withEn(code_rCmt.asUInt === 0.U | code_rCmt.flag, !code_rCmt.valid)
-  HardwareAssertion.withEn(cmt_rCmt.asUInt === 0.U  | cmt_rCmt.flag,  !cmt_rCmt.valid)
-  
+  when(io.respCmt.valid) {
+    HardwareAssertion(cmt_rCmt.valid)
+    HardwareAssertion.withEn(code_rCmt.valid, cmt_temp.waitSecDone)
+    HardwareAssertion.withEn(code_rCmt.asUInt === 0.U | code_rCmt.flag, !code_rCmt.valid)
+    HardwareAssertion.withEn(cmt_rCmt.asUInt === 0.U | cmt_rCmt.flag, !cmt_rCmt.valid)
+  }
   // cm internal send
   cm_rCmt.intl.s.data0    := cmt_rCmt.dataOp.read | cmt_rCmt.dataOp.send
   cm_rCmt.intl.s.data1    := cmt_rCmt.dataOp.save | cmt_rCmt.dataOp.clean
@@ -267,8 +271,10 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
     io.dataTask.bits.dataOp.save  := msg_dt.commit.dataOp.save
     io.dataTask.bits.dataOp.clean := msg_dt.commit.dataOp.clean
   }
-  HardwareAssertion.withEn(!io.dataTask.bits.dataOp.reqs, io.dataTask.valid & msg_dt.alr.reqs)
-  HardwareAssertion.withEn(PopCount(io.dataTask.bits.dataOp.asUInt) =/= 0.U, io.dataTask.valid)
+  when(io.dataTask.valid) {
+    HardwareAssertion(PopCount(io.dataTask.bits.dataOp.asUInt) =/= 0.U)
+    HardwareAssertion.withEn(!io.dataTask.bits.dataOp.reqs, msg_dt.alr.reqs)
+  }
   // txDat
   // TODO: SnpRespData
   io.dataTask.bits.txDat.DBID       := cmPos_dt.getLLCTxnID(dirBank)
