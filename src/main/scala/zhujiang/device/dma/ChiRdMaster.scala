@@ -42,7 +42,7 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
 /* 
  * Reg/Wire Define
  */
-  private val chiEntrys   = Reg(Vec(rni.chiEntrySize, new CHIREntry(dmt = rni.readDMT)))
+  private val chiEntrys   = RegInit(VecInit(Seq.fill(rni.chiEntrySize)(0.U.asTypeOf(new CHIREntry(dmt = rni.readDMT)))))
   // Pointer
   private val headPtr     = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val tailPtr     = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
