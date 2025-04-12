@@ -135,7 +135,7 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
   val toLAN     = Bool() // TODO: It should be in CommitTask?
 
 
-  def needSendDBID(sfHit: Bool = false.B) = isAtomic | (isWrite & !reqIs(WriteEvictOrEvict)) | (!sfHit & reqIs(WriteEvictOrEvict))
+  def needSendDBID(othHit: Bool = false.B) = isAtomic | (isWrite & !reqIs(WriteEvictOrEvict)) | (!othHit & reqIs(WriteEvictOrEvict))
 
   def getNoC = Mux(toLAN, LAN.U, BBN.U)
 

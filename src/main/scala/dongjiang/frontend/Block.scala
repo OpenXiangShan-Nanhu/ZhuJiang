@@ -74,7 +74,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   block_s1.rsvd     := needRsvdReg_s1
   block_s1.pos      := io.posBlock_s1
   block_s1.dir      := !io.readDir_s1.ready & taskReg_s1.memAttr.cacheable
-  block_s1.resp     := (needRespReadReg_s1 | (needRespDBIDReg_s1 & !io.reqDB_s1.ready)) & !io.fastResp_s1.ready
+  block_s1.resp     := !io.fastResp_s1.ready & needRespReadReg_s1
   io.retry_s1       := validReg_s1 & block_s1.all
 
   /*
@@ -87,6 +87,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.task_s1.bits.alr.reqs  := io.reqDB_s1.fire
   io.task_s1.bits.alr.sDBID := io.fastResp_s1.fire & taskReg_s1.isWrite
   io.task_s1.bits.alr.sData := false.B
+  HardwareAssertion.withEn(io.task_s1.bits.alr.reqs, validReg_s1 & io.task_s1.bits.alr.sDBID)
 
   /*
    * Read Directory
@@ -102,12 +103,12 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   needRespReadReg_s1          := io.chiTask_s0.bits.isRead & io.chiTask_s0.bits.isEO
   needRespDBIDReg_s1          := io.chiTask_s0.bits.needSendDBID()
   // Send Req To Data
-  io.reqDB_s1.valid           := validReg_s1 & needRespDBIDReg_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
+  io.reqDB_s1.valid           := validReg_s1 & needRespDBIDReg_s1 & !block_s1.all
   io.reqDB_s1.bits.dataVec    := taskReg_s1.dataVec
   io.reqDB_s1.bits.llcTxnID.pos     := io.posIdx_s1
   io.reqDB_s1.bits.llcTxnID.dirBank := dirBank.U
   // Send Fast Resp To CHI
-  io.fastResp_s1.valid        := validReg_s1 & (needRespReadReg_s1 | (needRespDBIDReg_s1 & !io.reqDB_s1.ready)) & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
+  io.fastResp_s1.valid        := validReg_s1 & (needRespReadReg_s1 | (needRespDBIDReg_s1 & io.reqDB_s1.ready)) & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
   io.fastResp_s1.bits         := DontCare
   io.fastResp_s1.bits.SrcID   := taskReg_s1.getNoC(io.config.ci)
   io.fastResp_s1.bits.TgtID   := taskReg_s1.nodeId

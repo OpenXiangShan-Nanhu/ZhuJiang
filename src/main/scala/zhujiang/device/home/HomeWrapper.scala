@@ -92,7 +92,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
       val addr = txBd.bits.asTypeOf(new HReqFlit).Addr.asTypeOf(new ReqAddrBundle)
       val memSelOH = mems.map(m => m.addrCheck(addr, io.ci))
       val memIds = mems.map(_.nodeId.U(niw.W))
-      when(txBd.valid) { assert(PopCount(memSelOH) === 1.U) }
+      when(txBd.valid) { assert(PopCount(memSelOH) === 1.U, "addr: 0x%x", addr.asUInt) }
       Mux1H(memSelOH, memIds)
     } else {
       txBd.bits.asTypeOf(new RingFlit(txBd.bits.getWidth)).TgtID
