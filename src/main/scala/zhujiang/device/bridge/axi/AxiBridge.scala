@@ -19,6 +19,8 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule {
 
   val icn = IO(new DeviceIcnBundle(node))
   val axi = IO(new AxiBundle(axiParams))
+  dontTouch(icn)
+  dontTouch(axi)
 
   private def compareTag(addr0: UInt, addr1: UInt): Bool = {
     addr0(compareTagBits + tagOffset - 1, tagOffset) === addr1(compareTagBits + tagOffset - 1, tagOffset)
