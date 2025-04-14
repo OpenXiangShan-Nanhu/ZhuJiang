@@ -50,6 +50,20 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   taskCodeVecReg_s3.zip(result_s2._2).foreach  { case(a, b) => a := b.asTypeOf(a) }
   commitVecReg_s3.zip(result_s2._3).foreach    { case(a, b) => a := b.asTypeOf(a) }
   dontTouch(chiInst_s2)
+  /*
+   * Task Inst Description:
+   * 1. Channel   : 0 -> REQ; 1 -> DAT; 2 -> RSP; 3 -> SNP; Task must be REQ/SNP
+   * 2. fromLAN   : true -> Task from LAN(CC/RNI) NoC; false -> Task from BBN(HNX) NoC
+   * 3. toLAN     : true -> Task to LAN(SN) NoC; false -> Task to BBN(HNX) NoC
+   * 4. opcode    : REQ/SNP Opcode
+   * 5. expCompAck: REQ.ExpCompAck
+   * 6. allocate  : REQ.MemAttr.allocate
+   * 7. ewa       : REQ.MemAttr.ewa
+   * 8. order     : REQ.Order
+   *
+   * Note0: TaskInst comes from the CHI Bundle, and the CHI Bundle is uniformly assigned in ToChiTask.
+   * Note1: Please refer to https://saluyk0ac00.feishu.cn/wiki/OHENwBqbeil9VIkkRQacWTAnnFd?from=from_copylink for the concepts of LAN and BBN.
+   */
   HardwareAssertion.withEn(taskCodeVecReg_s3.map(_.flag).reduce(_ & _), io.task_s2.valid, cf"Task s2 inst invalid in Decode\n${chiInst_s2}")
   HardwareAssertion.withEn(commitVecReg_s3.map(_.flag).reduce(_ & _),   io.task_s2.valid, cf"Task s2 inst invalid in Decode\n${chiInst_s2}")
 
