@@ -23,7 +23,6 @@ class DataBlock(implicit p: Parameters) extends DJModule {
     val task  = Flipped(Decoupled(new DataTask()))
     val resp  = Valid(new PackLLCTxnID())
   })
-  io <> DontCare
 
   /*
    * Modudle declaration

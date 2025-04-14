@@ -231,13 +231,14 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
       val taskAllocHit  = io.task.fire  & cmFreeId_rec === i.U & io.task.bits.dataOp.reqs
       val reqAllocHit   = io.reqDB.fire & cmFreeId_rec === i.U
       val respHit       = io.resp.fire  & dcid_resp  === i.U
+      val release       = respHit       & dc._2.msg.dataOp.clean
 
       // Valid and DBID
       when(taskAllocHit | reqAllocHit) {
         dc._1.valid  := true.B
         dc._2.dbid0  := dbidPool.io.deq0.bits
         dc._2.dbid1  := dbidPool.io.deq1.bits
-      }.elsewhen(respHit) {
+      }.elsewhen(release) {
         dc._1.valid  := false.B
       }
 
@@ -246,7 +247,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
         dc._2.msg := io.task.bits
       }.elsewhen(reqAllocHit) {
         dc._2.msg.llcTxnID := io.reqDB.bits.llcTxnID
-      }.elsewhen(respHit) {
+      }.elsewhen(release) {
         dc._2.msg := 0.U.asTypeOf(dc._2.msg)
       }
 
@@ -262,6 +263,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
         (taskAllocHit | taskHit & io.task.bits.dataOp.send)  -> Mux(io.task.bits.dataVec(0), SAVE0, SAVE1),
         (taskAllocHit | taskHit & io.task.bits.dataOp.save)  -> Mux(io.task.bits.dataVec(0), SAVE0, SAVE1),
         (taskAllocHit | taskHit & io.task.bits.dataOp.clean) -> CLEAN,
+        (taskAllocHit | taskHit & io.task.bits.dataOp.reqs)  -> RESP, // Nothing need to do
         (readHit | waitHit | sendHit | saveHit | releaseHit | respHit) -> nxs,
         true.B -> dc._1.state
       ))

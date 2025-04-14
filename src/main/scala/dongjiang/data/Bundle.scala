@@ -35,7 +35,7 @@ trait HasDataOp { this: Bundle =>
   val read    = Bool() // sram -> buffer
   val send    = Bool() // buffer -> chi
   val save    = Bool() // buffer -> sram
-  val clean   = Bool() // Release DataCM and DataBuf; Node: need set dataVec
+  val clean   = Bool() // Release DataBuf
 
   def valid   = reqs | read | send | save | clean
 }

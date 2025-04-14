@@ -21,8 +21,8 @@ class CMState(implicit p: Parameters) extends DJBundle {
   val intl = new DJBundle {
     // internal send
     val s = new DJBundle {
-      val data0     = Bool() // Send Data Task(read, send)
-      val data1     = Bool() // Send Data Task(save, clean). // Note: Need wait repl done
+      val data0     = Bool() // Send Data Task(reqs, read, send)
+      val data1     = Bool() // Send Data Task(save, clean)  // Note: Need wait repl done
       val wriDir    = Bool() // Send Write Task To Replace   // Note: Need wait data0 done
       val canNest   = Bool() // Indicate PoS This Entry Can Be Nested
       val secTask   = Bool() // Send Task To TaskCM
@@ -33,7 +33,7 @@ class CMState(implicit p: Parameters) extends DJBundle {
       val cmResp    = Bool() // Wait TaskCM Resp
       val secResp   = Bool() // Wait Second TaskCM Resp
       val repl      = Bool() // Wait Replace Done
-      val data0     = Bool() // Wait Data Task(read, send) Done
+      val data0     = Bool() // Wait Data Task(read, send, send) Done
       val data1     = Bool() // Wait Data Task(save, clean) Done
     }
   }
@@ -94,7 +94,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // data(read, send, save, clean)
   val cmVec2_d      = Wire(Vec(posSets, Vec(posWays, Bool())))
   val cmPoS_d       = Wire(new PosIndex())
-  // data0(read, send)
+  // data0(reqs, read, send)
   val cmVec2_d0     = Wire(Vec(posSets, Vec(posWays, Bool())))
   val cmPoS_d0      = Wire(new PosIndex())
   // data1(save, clean)
@@ -157,7 +157,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   cm_rec.intl.w.cmResp  := alloc_rec.ops.valid
   cm_rec.intl.w.secResp := false.B
   cm_rec.intl.w.repl    := cm_rec.intl.s.wriDir
-  cm_rec.intl.w.data0   := alloc_rec.commit.dataOp.read | alloc_rec.commit.dataOp.send
+  cm_rec.intl.w.data0   := alloc_rec.commit.dataOp.reqs | alloc_rec.commit.dataOp.read | alloc_rec.commit.dataOp.send
   cm_rec.intl.w.data1   := alloc_rec.commit.dataOp.save | alloc_rec.commit.dataOp.clean
   // cm chi send
   cm_rec.chi.s_resp     := alloc_rec.commit.commit & alloc_rec.commit.channel === ChiChannel.RSP
@@ -209,7 +209,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
     HardwareAssertion.withEn(cmt_rCmt.asUInt === 0.U | cmt_rCmt.flag, !cmt_rCmt.valid)
   }
   // cm internal send
-  cm_rCmt.intl.s.data0    := cmt_rCmt.dataOp.read | cmt_rCmt.dataOp.send
+  cm_rCmt.intl.s.data0    := cmt_rCmt.dataOp.reqs | cmt_rCmt.dataOp.read | cmt_rCmt.dataOp.send
   cm_rCmt.intl.s.data1    := cmt_rCmt.dataOp.save | cmt_rCmt.dataOp.clean
   cm_rCmt.intl.s.wriDir   := cmt_rCmt.wriDir
   cm_rCmt.intl.s.canNest  := code_rCmt.canNest
@@ -231,13 +231,13 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * [DataTask] Priority: data > data0 > data1
    */
-  // data (read, send, save, clean)
+  // data (reqs, read, send, save, clean)
   cmVec2_d.zip(cmTable).foreach { case(a, b) => a.zip(b).foreach { case(a, b) => a := b.intl.s.data0 & (b.intl.s.data1 & !b.intl.w.repl) } }
   cmPoS_d.set   := RREncoder(cmVec2_d.map(_.reduce(_ | _)))
   cmPoS_d.way   := RREncoder(cmVec2_d(cmPoS_d.set))
   val valid_d   = cmVec2_d.asUInt.orR
 
-  // data0 (read, send)
+  // data0 (reqs, read, send)
   cmVec2_d0.zip(cmTable).foreach { case(a, b) => a.zip(b).foreach { case(a, b) => a := b.intl.s.data0 } }
   cmPoS_d0.set  := RREncoder(cmVec2_d0.map(_.reduce(_ | _)))
   cmPoS_d0.way  := RREncoder(cmVec2_d0(cmPoS_d0.set))
@@ -248,6 +248,11 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   cmPoS_d1.set  := RREncoder(cmVec2_d1.map(_.reduce(_ | _)))
   cmPoS_d1.way  := RREncoder(cmVec2_d1(cmPoS_d1.set))
   val valid_d1  = cmVec2_d1.asUInt.orR
+
+  // dontTouch
+  dontTouch(valid_d)
+  dontTouch(valid_d0)
+  dontTouch(valid_d1)
 
   // data task
   val cmPos_dt  = PriorityMux(Seq(
@@ -263,11 +268,13 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // dataOp
   when(valid_d) {
     io.dataTask.bits.dataOp       := msg_dt.commit.dataOp
-  }.elsewhen(valid_d1) {
+  }.elsewhen(valid_d0) {
+    io.dataTask.bits.dataOp       := 0.U.asTypeOf(new DataOp)
     io.dataTask.bits.dataOp.reqs  := msg_dt.commit.dataOp.reqs
     io.dataTask.bits.dataOp.read  := msg_dt.commit.dataOp.read
     io.dataTask.bits.dataOp.send  := msg_dt.commit.dataOp.send
   }.otherwise {
+    io.dataTask.bits.dataOp       := 0.U.asTypeOf(new DataOp)
     io.dataTask.bits.dataOp.save  := msg_dt.commit.dataOp.save
     io.dataTask.bits.dataOp.clean := msg_dt.commit.dataOp.clean
   }
@@ -451,7 +458,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             cm  := cm_rCmt
           }.otherwise {
             // internal send
-            cm.intl.s.data0     := cm.intl.s.data0    & !(dataTaskHit & (io.dataTask.bits.dataOp.read | io.dataTask.bits.dataOp.send))
+            cm.intl.s.data0     := cm.intl.s.data0    & !(dataTaskHit & (io.dataTask.bits.dataOp.reqs | io.dataTask.bits.dataOp.read | io.dataTask.bits.dataOp.send))
             cm.intl.s.data1     := cm.intl.s.data1    & !(dataTaskHit & (io.dataTask.bits.dataOp.save | io.dataTask.bits.dataOp.clean))
             cm.intl.s.wriDir    := cm.intl.s.wriDir   & !wDirHit
             cm.intl.s.canNest   := cm.intl.s.canNest  & !canNestHit
