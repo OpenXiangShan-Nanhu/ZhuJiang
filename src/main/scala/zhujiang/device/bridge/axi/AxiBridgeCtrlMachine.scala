@@ -73,6 +73,7 @@ class AxiBridgeCtrlMachine(
   private val largeLen = (1.U(8.W) << (payload.info.size - busSize)).asUInt
   private val len = Mux(payload.info.size > busSize, largeLen - 1.U, 0.U)
   private val size = Mux(payload.info.size > busSize, busSize, payload.info.size)
+  private val cache = Cat(false.B, false.B, !payload.info.device, payload.info.ewa)
   axi.aw.valid := valid && payload.state.axiWaddr && !waiting.orR
   axi.aw.bits := DontCare
   axi.aw.bits.id := io.idx
@@ -80,7 +81,7 @@ class AxiBridgeCtrlMachine(
   axi.aw.bits.len := len
   axi.aw.bits.burst := 1.U
   axi.aw.bits.size := size
-  axi.aw.bits.cache := Mux(payload.info.device, "b0000".U, "b0010".U)
+  axi.aw.bits.cache := cache
 
   axi.ar.valid := valid && payload.state.axiRaddr && !waiting.orR
   axi.ar.bits := DontCare
@@ -89,7 +90,7 @@ class AxiBridgeCtrlMachine(
   axi.ar.bits.len := len
   axi.ar.bits.burst := 1.U
   axi.ar.bits.size := size
-  axi.ar.bits.cache := Mux(payload.info.device, "b0000".U, "b0010".U)
+  axi.ar.bits.cache := cache
 
   axi.w.valid := valid && payload.state.axiWdata && !waiting.orR
   axi.w.bits := DontCare
