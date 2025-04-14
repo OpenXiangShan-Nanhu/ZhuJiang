@@ -71,7 +71,7 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
  */
   private val txReqPtrAdd = io.chiReq.fire
   private val rxRspPtrAdd = io.chiReq.fire & (io.chiReq.bits.Order === 0.U) | rcvIsRct
-  private val txRspPtrAdd = io.chiTxRsp.get.fire || chiEntrys(txRspPtr.value).haveSendAck.get
+  private val txRspPtrAdd = io.chiTxRsp.get.fire || chiEntrys(txRspPtr.value).haveSendAck.get & validVec(txRspPtr.value)
 
   headPtr  := Mux(io.axiAr.fire, headPtr  + 1.U, headPtr )
   reqDBPtr := Mux(io.reqDB.fire, reqDBPtr + 1.U, reqDBPtr)
