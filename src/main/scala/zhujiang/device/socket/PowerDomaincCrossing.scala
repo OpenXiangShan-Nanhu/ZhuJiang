@@ -15,6 +15,10 @@ class PowerDomainCrossingBundle[T <: Data](gen:T) extends Bundle {
   val grant = Input(Bool())
 }
 
+object PowerDomainCrossing {
+  val tokens = 6
+}
+
 class PowerDomainCrossingTx[T <: Data](gen:T) extends Module {
   val io = IO(new Bundle {
     val enq = Flipped(Decoupled(gen))
@@ -22,21 +26,21 @@ class PowerDomainCrossingTx[T <: Data](gen:T) extends Module {
     val clean = Output(Bool())
   })
   private val enqFire = io.enq.fire
-  private val tokens = RegInit(5.U(3.W))
+  private val tokens = RegInit(PowerDomainCrossing.tokens.U(log2Ceil(PowerDomainCrossing.tokens + 1).W))
   private val rxg = RegNext(io.pdc.grant, false.B)
   private val txv = RegNext(enqFire, false.B)
   private val txd = RegEnable(io.enq.bits, enqFire)
   io.pdc.valid := txv
   io.pdc.bits := txd
   io.enq.ready := tokens.orR
-  io.clean := tokens === 5.U
+  io.clean := tokens === PowerDomainCrossing.tokens.U
 
   when(enqFire && !rxg) {
     tokens := tokens - 1.U
   }.elsewhen(!enqFire && rxg) {
     tokens := tokens + 1.U
   }
-  assert(tokens <= 5.U)
+  assert(tokens <= PowerDomainCrossing.tokens.U)
 }
 
 class PowerDomainCrossingRx[T <: Data](gen:T) extends Module {
@@ -45,7 +49,7 @@ class PowerDomainCrossingRx[T <: Data](gen:T) extends Module {
     val deq = Decoupled(gen)
     val clean = Output(Bool())
   })
-  private val rxq = Module(new Queue(gen = gen, entries = 5, flow = true))
+  private val rxq = Module(new FastQueue(gen = gen, size = PowerDomainCrossing.tokens, false))
   private val rxv = RegNext(io.pdc.valid, false.B)
   private val rxd = RegNext(io.pdc.bits)
   private val txg = RegNext(io.deq.fire, false.B)
