@@ -138,8 +138,6 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
         ctrl.nid.get  := Mux(recTaskHit, newTaskNID, nextNID)
       }
       // assert Hit
-      HardwareAssertion(PopCount(Seq(recTaskHit0, recTaskHit1, sendTaskHit, sleepHit, retryHit, wakeupHit)) <= 1.U,
-                                                              desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       HardwareAssertion.withEn(ctrl.isFree,     recTaskHit0,  desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       HardwareAssertion.withEn(ctrl.isFree,     recTaskHit1,  desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       HardwareAssertion.withEn(ctrl.isBeSend,   sendTaskHit,  desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
@@ -150,11 +148,15 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
       // assert Ack
       HardwareAssertion.withEn(toFreeHit,       sleepHit,     desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       HardwareAssertion.withEn(toFreeHit,       retryHit,     desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
+      // assert hit num
+      HardwareAssertion(PopCount(Seq(recTaskHit0, recTaskHit1, sendTaskHit, wakeupHit, sleepHit | retryHit | toFreeHit)) <= 1.U,
+                                                              desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       // assert NID
       HardwareAssertion.withEn(ctrl.nid.getOrElse(0.U) === 0.U, recTaskHit | sendTaskHit | sleepHit | retryHit | toFreeHit,
                                                               desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
       HardwareAssertion.withEn(ctrl.nid.getOrElse(0.U) > 0.U, reduceHit,
                                                               desc = cf"Task Buffer Index[${i}] State[${ctrl.state}]")
+      // aseert timeout
       HardwareAssertion.checkTimeout(ctrl.isFree, TIMEOUT_TASKBUF, cf"TIMEOUT: Task Buffer Index[${i}]")
   }
   HardwareAssertion.placePipe(Int.MaxValue-3)

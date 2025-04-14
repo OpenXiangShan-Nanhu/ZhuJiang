@@ -16,6 +16,7 @@ import zhujiang.chi.DatOpcode._
 import dongjiang.backend._
 import dongjiang.backend.receive.State._
 import dongjiang.data._
+import xs.utils.queue.FastQueue
 
 object State {
   val width   = 5
@@ -31,7 +32,6 @@ class CMState(implicit p: Parameters) extends DJBundle {
   // CHI: Free --> ReqDB --> Send --> Wait0 --> Wait1 --> RespCmt --> Free
   val state   = UInt(State.width.W)
 
-  // TODO: There might be situations where the data has arrived, but the task gets blocked.
   def isValid = state.orR
   def isFree  = !isValid
   def isReqDB = state(0)
@@ -63,8 +63,10 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val cmRegVec = RegInit(VecInit(Seq.fill(nrReadCM) { 0.U.asTypeOf(new CMState) }))
+  val cmRegVec  = RegInit(VecInit(Seq.fill(nrReadCM) { 0.U.asTypeOf(new CMState) }))
   val msgRegVec = Reg(Vec(nrReadCM, new PackCMTask with HasPackTaskInst))
+  val tempDatQ  = Module(new FastQueue(new PackLLCTxnID with HasChiResp { val opcode = UInt(ChiOpcodeBits.W) }, djparam.nrPoS*2 + 1, false))
+  val datHitVec = Wire(Vec(nrReadCM, Bool()))
 
   /*
    * [Free] Receive Task IO
@@ -120,6 +122,26 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
 
 
   /*
+   * Temporary Data Response
+   */
+  val datIsWrData       = io.rxDat.fire & (io.rxDat.bits.Opcode === NonCopyBackWriteData | io.rxDat.bits.Opcode === CopyBackWriteData)
+  val deqNoHit          = tempDatQ.io.deq.valid & !tempDatQ.io.deq.ready
+  // enq
+  tempDatQ.io.enq.valid := datIsWrData | deqNoHit
+  when(datIsWrData) {
+    tempDatQ.io.enq.bits.llcTxnID := io.rxDat.bits.TxnID.asTypeOf(new LLCTxnID())
+    tempDatQ.io.enq.bits.opcode   := io.rxDat.bits.Opcode
+    tempDatQ.io.enq.bits.resp     := io.rxDat.bits.Resp
+  }.otherwise {
+    tempDatQ.io.enq.bits          := tempDatQ.io.deq.bits
+  }
+  // deq
+  tempDatQ.io.deq.ready := Mux(datIsWrData, datHitVec.reduce(_ | _), true.B)
+  // HardwareAssertion
+  HardwareAssertion.withEn(tempDatQ.io.enq.ready, tempDatQ.io.enq.valid)
+  HardwareAssertion.withEn(PopCount(datHitVec) <= 1.U, tempDatQ.io.deq.valid)
+
+  /*
    * Modify Ctrl Machine Table
    */
   cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
@@ -129,9 +151,11 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
       val sRspHit     = io.txRsp.fire   & cmId_sRsp === i.U
       val waitRspHit  = io.rxRsp.fire   & io.rxRsp.bits.TxnID === msg.task.llcTxnID.get &
                         io.rxRsp.bits.Opcode === CompAck & cm.isValid
-      val waitDatHit  = io.rxDat.fire   & io.rxDat.bits.TxnID === msg.task.llcTxnID.get &
-                        (io.rxDat.bits.Opcode === NonCopyBackWriteData | io.rxDat.bits.Opcode === CopyBackWriteData) & cm.isValid
+      val waitDatHit  = tempDatQ.io.deq.valid & tempDatQ.io.deq.bits.llcTxnID.get === msg.task.llcTxnID.get & cm.isValid
       val respHit     = io.respCmt.fire & cmId_resp === i.U
+
+      // datHitVec
+      datHitVec(i) := waitDatHit
 
       // Message
       when(allocHit) {
@@ -144,8 +168,8 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
       // Store Inst
       }.elsewhen(waitRspHit | waitDatHit) {
         msg.inst.channel := Mux(waitRspHit, ChiChannel.RSP,       ChiChannel.DAT)
-        msg.inst.opcode  := Mux(waitRspHit, io.rxRsp.bits.Opcode, io.rxDat.bits.Opcode)
-        msg.inst.resp    := Mux(waitRspHit, io.rxRsp.bits.Resp,   io.rxDat.bits.Resp)
+        msg.inst.opcode  := Mux(waitRspHit, io.rxRsp.bits.Opcode, tempDatQ.io.deq.bits.opcode)
+        msg.inst.resp    := Mux(waitRspHit, io.rxRsp.bits.Resp,   tempDatQ.io.deq.bits.resp)
       }
 
       // ctrl machine state

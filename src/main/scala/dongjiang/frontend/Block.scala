@@ -115,7 +115,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.fastResp_s1.bits.TxnID   := taskReg_s1.txnID
   io.fastResp_s1.bits.Opcode  := PriorityMux(Seq(
     (taskReg_s1.isRead  & taskReg_s1.isEO)        -> ReadReceipt,
-    (taskReg_s1.isWrite & taskReg_s1.isOWO)       -> DBIDResp, // TODO: Cant send DBIDResp here for WriteUnique
+    (taskReg_s1.isWrite & taskReg_s1.isOWO)       -> DBIDResp,
     (taskReg_s1.isWrite & taskReg_s1.memAttr.ewa) -> CompDBIDResp
   ))
   HardwareAssertion.withEn(taskReg_s1.isOWO | taskReg_s1.memAttr.ewa, validReg_s1 && taskReg_s1.isWrite)
