@@ -43,7 +43,7 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
  * Reg/Wire Define
  */
   //AxiWr to ChiWr entrys
-  private val chiEntrys = RegInit(VecInit(Seq.fill(rni.chiEntrySize)(0.U.asTypeOf(new CHIWEntry))))
+  private val chiEntrys = Reg(Vec(rni.chiEntrySize, new CHIWEntry))
   //Pointer
   private val headPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val tailPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
