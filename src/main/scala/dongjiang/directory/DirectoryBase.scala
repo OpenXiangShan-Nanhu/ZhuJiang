@@ -193,15 +193,14 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   // --------------------------------------- [D1]: Get SRAM Resp and Update repl resp ------------------------------------- //
   // ---------------------------------------------------------------------------------------------------------------------- //
   // reqSftReg_d1
-  reqSftReg_d1.last.addr      := Mux(io.write.valid, io.write.bits.addr, io.read.bits.addr)
-  reqSftReg_d1.last.pos       := Mux(io.write.valid, io.write.bits.pos,  io.read.bits.pos)
-  reqSftReg_d1.last.wriWayOH  := io.write.bits.wayOH
-  reqSftReg_d1.last.metaVec   := io.write.bits.metaVec
-  reqSftReg_d1.zipWithIndex.foreach {
-    case(sft, i) =>
-      if(i > 0) {
-        reqSftReg_d1(i-1) := sft
-      }
+  when(io.write.fire | io.read.fire) {
+    reqSftReg_d1.last.addr      := Mux(io.write.valid, io.write.bits.addr,    io.read.bits.addr)
+    reqSftReg_d1.last.pos       := Mux(io.write.valid, io.write.bits.pos,     io.read.bits.pos)
+    reqSftReg_d1.last.wriWayOH  := Mux(io.write.valid, io.write.bits.wayOH,   0.U)
+    reqSftReg_d1.last.metaVec   := Mux(io.write.valid, io.write.bits.metaVec, 0.U.asTypeOf(reqSftReg_d1.last.metaVec))
+  }
+  reqSftReg_d1.zipWithIndex.foreach {  case (sft, i) =>
+    if (i > 0) { reqSftReg_d1(i - 1) := sft }
   }
 
   // tagReg_d1 and metaVecReg_d1
@@ -266,7 +265,6 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   io.resp.bits.hit     := hit_d2
   io.resp.bits.metaVec := metaVec_d2(selWay_d2)
   io.resp.bits.pos     := req_d2.pos
-  HardwareAssertion.placePipe(Int.MaxValue-3)
 
   // Update Lock Table
   lockTable.zipWithIndex.foreach {

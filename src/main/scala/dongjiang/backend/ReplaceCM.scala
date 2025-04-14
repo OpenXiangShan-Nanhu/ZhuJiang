@@ -243,7 +243,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
       ))
 
 
-      HardwareAssertion.withEn(cm.asUInt === 0.U & msg.asUInt === 0.U, allocHit, cf"Replace Index[${i}]")
+      HardwareAssertion.withEn(cm.isFree,     allocHit, cf"Replace Index[${i}]")
       HardwareAssertion.withEn(cm.isWriDir,   writeHit, cf"Replace Index[${i}]")
       HardwareAssertion.withEn(cm.isWaitDir,  waitHit, cf"Replace Index[${i}]")
       HardwareAssertion.withEn(cm.isReplSF,   replSFHit, cf"Replace Index[${i}]")

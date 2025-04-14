@@ -2,6 +2,7 @@ package dongjiang.utils
 
 import chisel3._
 import chisel3.util._
+import xs.utils.ResetRRArbiter
 
 class ArbiterWithReset[T <: Data](gen:T, size:Int, rr:Boolean) extends Module {
   val io = IO(new Bundle {
@@ -10,7 +11,7 @@ class ArbiterWithReset[T <: Data](gen:T, size:Int, rr:Boolean) extends Module {
   })
 
   if(rr) {
-    val arb = Module(new RRArbiter(gen, size))
+    val arb = Module(new ResetRRArbiter(gen, size))
     arb.io.in.zip(io.in).foreach { case (a, b) => a <> b }
     io.out <> arb.io.out
   } else {

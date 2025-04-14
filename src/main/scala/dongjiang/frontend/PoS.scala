@@ -135,7 +135,6 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
           }
           HardwareAssertion(!(updHit & reqHit))
       }
-      HardwareAssertion.placePipe(Int.MaxValue-3)
   }
 
   /*
