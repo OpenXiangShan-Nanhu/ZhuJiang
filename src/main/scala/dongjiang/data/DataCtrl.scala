@@ -69,8 +69,10 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   val cmHasFree_rec     = dcFreeVec_rec.reduce(_ | _)
   val cmFreeId_rec      = PriorityEncoder(dcFreeVec_rec)
   // DB
-  val taskBlockByDB_rec = (io.task.bits.dataVec(0)  ^ dbidPool.io.deq0.valid) | (io.task.bits.dataVec(1)  ^ dbidPool.io.deq1.valid)
-  val reqBlockByDB_rec  = (io.reqDB.bits.dataVec(0) ^ dbidPool.io.deq0.valid) | (io.reqDB.bits.dataVec(1) ^ dbidPool.io.deq1.valid)
+  val taskDataVec_rec   = Mux(io.task.valid,  io.task.bits.dataVec,  0.U.asTypeOf(Vec(2, Bool())))
+  val reqDataVec_rec    = Mux(io.reqDB.valid, io.reqDB.bits.dataVec, 0.U.asTypeOf(Vec(2, Bool())))
+  val taskBlockByDB_rec = (taskDataVec_rec(0)  ^ dbidPool.io.deq0.valid) | (taskDataVec_rec(1)  ^ dbidPool.io.deq1.valid); dontTouch(taskBlockByDB_rec)
+  val reqBlockByDB_rec  = (reqDataVec_rec(0) ^ dbidPool.io.deq0.valid) | (reqDataVec_rec(1) ^ dbidPool.io.deq1.valid); dontTouch(reqBlockByDB_rec)
   // Set ready
   io.task.ready  := (cmHasFree_rec & !taskBlockByDB_rec) | !io.task.bits.dataOp.reqs
   io.reqDB.ready := cmHasFree_rec & !reqBlockByDB_rec & (!io.task.valid | !io.task.bits.dataOp.reqs)
@@ -252,13 +254,13 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
       }
 
       // Transfer State
-      val nxs = dc._1.getNXS(dc._2.msg.dataOp, dc._2.msg.dataVec)
-      val readHit = io.readDs.fire      & io.readDs.bits.dcid === i.U
-      val waitHit = io.respDs.fire      & io.respDs.bits.dcid === i.U
-      val sendHit = datBuf.io.rreq.fire & dcid_txDat === i.U & v_txDat
-      val saveHit = datBuf.io.rreq.fire & dcid_wDS   === i.U & v_wDs & !v_txDat
-      val releaseHit = dcVec_rel(i)
-      dc._1.state   := PriorityMux(Seq(
+      val nxs         = dc._1.getNXS(dc._2.msg.dataOp, dc._2.msg.dataVec)
+      val readHit     = io.readDs.fire      & io.readDs.bits.dcid === i.U
+      val waitHit     = io.respDs.fire      & io.respDs.bits.dcid === i.U
+      val sendHit     = datBuf.io.rreq.fire & dcid_txDat          === i.U & v_txDat
+      val saveHit     = datBuf.io.rreq.fire & dcid_wDS            === i.U & v_wDs & !v_txDat
+      val releaseHit  = dcVec_rel(i)        & dcId_rel            === i.U
+      dc._1.state     := PriorityMux(Seq(
         (taskAllocHit | taskHit & io.task.bits.dataOp.read)  -> Mux(io.task.bits.dataVec(0), READ0, READ1),
         (taskAllocHit | taskHit & io.task.bits.dataOp.send)  -> Mux(io.task.bits.dataVec(0), SAVE0, SAVE1),
         (taskAllocHit | taskHit & io.task.bits.dataOp.save)  -> Mux(io.task.bits.dataVec(0), SAVE0, SAVE1),
@@ -292,6 +294,9 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   // deq
   dbidPool.io.deq0.ready := (io.task.fire & io.task.bits.dataOp.reqs & io.task.bits.dataVec(0)) | (io.reqDB.fire & io.reqDB.bits.dataVec(0))
   dbidPool.io.deq1.ready := (io.task.fire & io.task.bits.dataOp.reqs & io.task.bits.dataVec(1)) | (io.reqDB.fire & io.reqDB.bits.dataVec(1))
+  // HardwareAssertion
+  HardwareAssertion.withEn(dbidPool.io.deq0.valid, dbidPool.io.deq0.ready)
+  HardwareAssertion.withEn(dbidPool.io.deq1.valid, dbidPool.io.deq1.ready)
 
   /*
    * HardwareAssertion placePipe
