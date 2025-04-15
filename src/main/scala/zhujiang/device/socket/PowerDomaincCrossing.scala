@@ -16,7 +16,7 @@ class PowerDomainCrossingBundle[T <: Data](gen:T) extends Bundle {
 }
 
 object PowerDomainCrossing {
-  val tokens = 6
+  val tokens = 5
 }
 
 class PowerDomainCrossingTx[T <: Data](gen:T) extends Module {
@@ -49,7 +49,7 @@ class PowerDomainCrossingRx[T <: Data](gen:T) extends Module {
     val deq = Decoupled(gen)
     val clean = Output(Bool())
   })
-  private val rxq = Module(new FastQueue(gen = gen, size = PowerDomainCrossing.tokens, false))
+  private val rxq = Module(new Queue(gen = gen, entries = PowerDomainCrossing.tokens, flow = true))
   private val rxv = RegNext(io.pdc.valid, false.B)
   private val rxd = RegNext(io.pdc.bits)
   private val txg = RegNext(io.deq.fire, false.B)
