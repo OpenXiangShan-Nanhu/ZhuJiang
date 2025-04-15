@@ -33,8 +33,8 @@ object Read_LAN_DCT_DMT {
   // ReadNoSnp With ExpCompAck And NoOrder
   def readNoSnp2: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck | noOrder, readNoSnp0._2)
 
-  // ReadOnce With Allocate
-  def readOnce0: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | allocate | ewa | noOrder, Seq(
+  // ReadOnce
+  def readOnce: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | noOrder, Seq(
     // I I I  -> UC I I
     (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | doDMT, wriSRC(true)),
     // I I SC -> UC I I
@@ -57,9 +57,6 @@ object Read_LAN_DCT_DMT {
       (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(cdop("clean") | wriSNP(false)), // I I I
     )),
   ))
-
-  // ReadOnce Without Allocate
-  def readOnce1: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | noOrder, readOnce0._2)
 
   // ReadNotSharedDirty
   def readNotSharedDirty: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadNotSharedDirty) | expCompAck | noOrder, Seq(
@@ -120,5 +117,5 @@ object Read_LAN_DCT_DMT {
   ))
 
   // readNoSnp ++ readOnce ++ readNotSharedDirty ++ readUnique
-  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(readNoSnp0, readNoSnp1, readNoSnp2, readOnce0, readOnce1, readNotSharedDirty, readUnique)
+  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(readNoSnp0, readNoSnp1, readNoSnp2, readOnce, readNotSharedDirty, readUnique)
 }
