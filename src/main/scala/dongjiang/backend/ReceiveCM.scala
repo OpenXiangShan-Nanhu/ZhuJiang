@@ -132,6 +132,7 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
     tempDatQ.io.enq.bits.llcTxnID := io.rxDat.bits.TxnID.asTypeOf(new LLCTxnID())
     tempDatQ.io.enq.bits.opcode   := io.rxDat.bits.Opcode
     tempDatQ.io.enq.bits.resp     := io.rxDat.bits.Resp
+    HardwareAssertion(io.rxDat.bits.TxnID >> new LLCTxnID().getWidth === 0.U)
   }.otherwise {
     tempDatQ.io.enq.bits          := tempDatQ.io.deq.bits
   }

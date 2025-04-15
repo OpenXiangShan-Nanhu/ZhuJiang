@@ -94,8 +94,8 @@ class PackPosIndex(implicit p: Parameters) extends DJBundle with HasPackPosIndex
  * HasLLCTxnID -> LLCTxnID -> HasPackLLCTxnID -> PackLLCTxnID
  */
 trait HasLLCTxnID extends DJBundle { this: DJBundle =>
-  val pos     = new PosIndex()
   val dirBank = UInt(dirBankBits.W)
+  val pos     = new PosIndex()
   def get     = pos.getLLCTxnID(dirBank)
 }
 
