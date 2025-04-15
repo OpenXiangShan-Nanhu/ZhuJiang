@@ -63,6 +63,7 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   private val rdDBBdl   = WireInit(0.U.asTypeOf(io.rdDB.bits))
   private val txAckBdl  = WireInit(0.U.asTypeOf(io.chiTxRsp.bits))
   //Simplified Writing
+  private val rcvResp    = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.Comp)
   private val rcvIsDBID  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp)
   private val rcvIsComp  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.Comp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp)
   private val rspTxnid   = io.chiRxRsp.bits.TxnID(log2Ceil(rni.chiEntrySize) - 1, 0)
@@ -104,7 +105,7 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
         e.dbSite1  := io.respDB.bits.buf(0)
         e.dbSite2  := io.respDB.bits.buf(1)
       }
-      when(rcvIsDBID & rspTxnid === i.U){
+      when(rcvResp & rspTxnid === i.U){
         e.dbid     := io.chiRxRsp.bits.DBID
         e.tgtid    := io.chiRxRsp.bits.SrcID
       }
@@ -152,7 +153,7 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   io.rdDB.bits      := rdDBBdl
   io.rdDB.valid     := (txDatPtr =/= rxDatPtr) & (txDatPtr =/= rxDBIDPtr)
   io.chiTxRsp.bits  := txAckBdl
-  io.chiTxRsp.valid := chiEntrys(txAckPtr.value).haveRcvComp & txAckPtr =/= txReqPtr
+  io.chiTxRsp.valid := txAckPtr =/= rxDBIDPtr & !(io.rdDB.fire & io.rdDB.bits.withAck)
 
 /* 
  * Assertion
@@ -160,7 +161,7 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   assert(txReqPtr <= headPtr  )
   assert(reqDBPtr <= headPtr  )
   assert(txBPtr   <= txReqPtr )
-  assert(txAckPtr <= txReqPtr )
+  assert(txAckPtr <= rxDBIDPtr )
   assert(txDatPtr <= rxDBIDPtr)
   assert(tailPtr  <= txDatPtr )
   assert(tailPtr  <= txBPtr   )
