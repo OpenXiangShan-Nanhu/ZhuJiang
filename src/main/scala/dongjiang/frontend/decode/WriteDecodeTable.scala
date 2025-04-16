@@ -40,7 +40,10 @@ object Write_LAN {
     (sfMiss | llcIs(UC))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp)  | wriLLC(UD)))),
     // I I UD -> I I UD
     (sfMiss | llcIs(UD))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp)  | wriLLC(UD)))),
-    // I V I  -> I V I // TODO: modify alr.snp, dataVec
+    // I V I  -> I V I
+    // TODO: Create alr.snp
+    // TODO: Send Snp and DBIDResp at the same time
+    // TODO: Separate the mask in DataBuffer
   ))
 
   // WriteUnique Without Allocate

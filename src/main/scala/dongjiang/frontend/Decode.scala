@@ -2,6 +2,7 @@ package dongjiang.frontend
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.BundleLiterals._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import zhujiang.chi.DatOpcode._
@@ -44,34 +45,18 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * [S2]: Pre-Decode
    */
-  chiInst_s2          := io.task_s2.bits.chi.getChiInst
-  val result_s2       = Decode.decode(chiInst_s2.asUInt)._1
+  chiInst_s2          := io.task_s2.bits.chi.getChiInst(io.task_s2.valid)
+  val result_s2       = Decode.decode(chiInst_s2)
   stateInstVecReg_s3.zip(result_s2._1).foreach { case(a, b) => a := b.asTypeOf(a) }
   taskCodeVecReg_s3.zip(result_s2._2).foreach  { case(a, b) => a := b.asTypeOf(a) }
   commitVecReg_s3.zip(result_s2._3).foreach    { case(a, b) => a := b.asTypeOf(a) }
   dontTouch(chiInst_s2)
-  /*
-   * Task Inst Description:
-   * 1. Channel   : 0 -> REQ; 1 -> DAT; 2 -> RSP; 3 -> SNP; Task must be REQ/SNP
-   * 2. fromLAN   : true -> Task from LAN(CC/RNI) NoC; false -> Task from BBN(HNX) NoC
-   * 3. toLAN     : true -> Task to LAN(SN) NoC; false -> Task to BBN(HNX) NoC
-   * 4. opcode    : REQ/SNP Opcode
-   * 5. expCompAck: REQ.ExpCompAck
-   * 6. allocate  : REQ.MemAttr.allocate
-   * 7. ewa       : REQ.MemAttr.ewa
-   * 8. order     : REQ.Order
-   *
-   * Note0: TaskInst comes from the CHI Bundle, and the CHI Bundle is uniformly assigned in ToChiTask.
-   * Note1: Please refer to https://saluyk0ac00.feishu.cn/wiki/OHENwBqbeil9VIkkRQacWTAnnFd?from=from_copylink for the concepts of LAN and BBN.
-   */
-  HardwareAssertion.withEn(taskCodeVecReg_s3.map(_.flag).reduce(_ & _), io.task_s2.valid, cf"Task s2 inst invalid in Decode\n${chiInst_s2}")
-  HardwareAssertion.withEn(commitVecReg_s3.map(_.flag).reduce(_ & _),   io.task_s2.valid, cf"Task s2 inst invalid in Decode\n${chiInst_s2}")
 
   /*
    * [S3]: Decode
    */
   val dirValid_s3 = io.respDir_s3.valid
-  stateInst_s3    := Mux(dirValid_s3, io.respDir_s3.bits.dir.getStateInst(taskReg_s3.chi.metaIdOH), 0.U.asTypeOf(stateInst_s3))
+  stateInst_s3    := Mux(dirValid_s3, io.respDir_s3.bits.dir.getStateInst(taskReg_s3.chi.metaIdOH, validReg_s3), (new StateInst).Lit(_.valid -> true.B))
   dontTouch(stateInst_s3)
   HardwareAssertion.withEn(io.respDir_s3.valid, validReg_s3 & taskReg_s3.chi.memAttr.cacheable)
 
@@ -82,8 +67,8 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val cmt_s3  = ParallelLookUp(stateInst_s3.asUInt, stateInstVecReg_s3.map(_.asUInt).zip(commitVecReg_s3))
   dontTouch(code_s3)
   dontTouch(cmt_s3)
-  HardwareAssertion.withEn(code_s3.flag, validReg_s3, cf"State s3 inst invalid in Decode\n${taskReg_s3.chi.getChiInst}\n${code_s3}")
-  HardwareAssertion.withEn(cmt_s3.flag,  validReg_s3, cf"State s3 inst invalid in Decode\n${taskReg_s3.chi.getChiInst}\n${code_s3}")
+  HardwareAssertion.withEn(PopCount(stateInstVecReg_s3.map(_.asUInt === stateInst_s3.asUInt)) === 1.U, validReg_s3, s"StateInst Invalid: $stateInst_s3 \nLegal StateInst:\n${stateInstVecReg_s3}")
+  HardwareAssertion.withEn(code_s3.valid | cmt_s3.valid, validReg_s3)
 
   /*
    * [S3]: Output S3

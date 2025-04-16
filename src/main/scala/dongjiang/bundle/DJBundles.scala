@@ -139,8 +139,9 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
 
   def getNoC = Mux(toLAN, LAN.U, BBN.U)
 
-  def getChiInst: ChiInst = {
+  def getChiInst(valid: Bool = true.B): ChiInst = {
     val inst = Wire(new ChiInst)
+    inst.valid      := valid
     inst.channel    := channel
     inst.fromLAN    := fromLAN
     inst.toLAN      := toLAN

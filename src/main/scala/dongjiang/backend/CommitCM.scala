@@ -129,7 +129,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // check decode result
   when(io.alloc.valid) {
     HardwareAssertion(taskVal_rec ^ cmtVal_rec)
-    HardwareAssertion.withEn(alloc_rec.commit.asUInt === 0.U | alloc_rec.commit.flag, !cmtVal_rec)
+    HardwareAssertion.withEn(alloc_rec.commit.asUInt === 0.U, !cmtVal_rec)
     HardwareAssertion.withEn(!taskVal_rec, io.alloc.bits.alr.sData)
     HardwareAssertion.withEn(alloc_rec.commit.channel === ChiChannel.DAT, alloc_rec.commit.dataOp.send)
   }
@@ -170,23 +170,14 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * [RESP] Receive Resp From TaskCM
    */
+  val respVal       = io.respCmt.valid
   val respCmt       = io.respCmt.bits
   val pos_resp      = respCmt.llcTxnID.pos
   val cm_resp       = cmTable(pos_resp.set)(pos_resp.way)
   val msg_resp      = msgTable(pos_resp.set)(pos_resp.way)
-  val taskInst_resp = Mux(cm_resp.intl.w.cmResp,  io.respCmt.bits.inst, msg_resp.inst)
-  val secInst_resp  = Mux(cm_resp.intl.w.secResp, io.respCmt.bits.inst, 0.U.asTypeOf(new TaskInst))
-  val deoccde_resp  = Decode.decode(msg_resp.chi.getChiInst.asUInt, msg_resp.dir.getStateInst(msg_resp.chi.metaIdOH).asUInt, taskInst_resp.asUInt, secInst_resp.asUInt)._4
-
-
-  // HardwareAssertion: check decode flag
-  when(io.respCmt.valid) {
-    HardwareAssertion(deoccde_resp._2.flag, cf"Task inst invalid in Commit[${pos_resp.set}][${pos_resp.way}]" +
-      cf"\n${msg_resp.chi.getChiInst}\n${msg_resp.dir.getStateInst(msg_resp.chi.metaIdOH)}\n${taskInst_resp}\nSec${secInst_resp}")
-    HardwareAssertion(deoccde_resp._3.flag, cf"Task inst invalid in Commit[${pos_resp.set}][${pos_resp.way}]" +
-      cf"\n${msg_resp.chi.getChiInst}\n${msg_resp.dir.getStateInst(msg_resp.chi.metaIdOH)}\n${taskInst_resp}\nSec${secInst_resp}")
-  }
-
+  val taskInst_resp = Mux(respVal, Mux(cm_resp.intl.w.cmResp,  io.respCmt.bits.inst, msg_resp.inst), 0.U.asTypeOf(new TaskInst))
+  val secInst_resp  = Mux(respVal & cm_resp.intl.w.secResp, io.respCmt.bits.inst, 0.U.asTypeOf(new TaskInst))
+  val deoccde_resp  = Decode.decode(msg_resp.chi.getChiInst(respVal), msg_resp.dir.getStateInst(msg_resp.chi.metaIdOH, respVal), taskInst_resp, secInst_resp)._2
 
   // get decode result
   val code_temp = deoccde_resp._2
@@ -202,11 +193,11 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
     cmt_rCmt    := 0.U.asTypeOf(new CommitCode)
   }
   // HardwareAssertion
-  when(io.respCmt.valid) {
+  when(respVal) {
     HardwareAssertion(cmt_rCmt.valid)
     HardwareAssertion.withEn(code_rCmt.valid, cmt_temp.waitSecDone)
-    HardwareAssertion.withEn(code_rCmt.asUInt === 0.U | code_rCmt.flag, !code_rCmt.valid)
-    HardwareAssertion.withEn(cmt_rCmt.asUInt === 0.U | cmt_rCmt.flag, !cmt_rCmt.valid)
+    HardwareAssertion.withEn(code_rCmt.asUInt === 0.U, !code_rCmt.valid)
+    HardwareAssertion.withEn(cmt_rCmt.asUInt === 0.U, !cmt_rCmt.valid)
   }
   // cm internal send
   cm_rCmt.intl.s.data0    := cmt_rCmt.dataOp.reqs | cmt_rCmt.dataOp.read | cmt_rCmt.dataOp.send
@@ -490,7 +481,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             HardwareAssertion.withEn(cm.chi.w_ack | msg.chi.reqIs(WriteEvictOrEvict),  waitCompAckHit, cf"Commit Index[${i}][${j}]")
             // TIMEOUT
             val timeout = HardwareAssertion.checkTimeout(!cm.valid, TIMEOUT_COMMIT, cf"TIMEOUT: Commit Index[${i}][${j}]" +
-              cf"\nADDR: ${io.getAddr.result.addr}\nInternal Send: ${cm.intl.s}\nInternal Wait: ${cm.intl.w}\nCHI: ${cm.chi}\n${msg.chi.getChiInst}\n${msg.dir.getStateInst(msg.chi.metaIdOH)}")
+              cf"\nADDR: ${io.getAddr.result.addr}\nInternal Send: ${cm.intl.s}\nInternal Wait: ${cm.intl.w}\nCHI: ${cm.chi}\n${msg.chi.getChiInst()}\n${msg.dir.getStateInst(msg.chi.metaIdOH)}")
             when(timeout) {
               timeoutPos.set := i.U
               timeoutPos.way := j.U

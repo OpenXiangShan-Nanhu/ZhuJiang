@@ -1,6 +1,7 @@
 package dongjiang.frontend.decode
 
 import chisel3._
+import chisel3.experimental.SourceInfo
 import chisel3.util._
 import dongjiang.{DJBundle, bundle}
 import org.chipsalliance.cde.config.Parameters
@@ -27,9 +28,24 @@ import dongjiang.data._
  *
  */
 
-class ChiInst extends Bundle {
+/*
+ * Task Inst Description:
+ * 1. Channel   : 0 -> REQ; 1 -> DAT; 2 -> RSP; 3 -> SNP; Task must be REQ/SNP
+ * 2. fromLAN   : true -> Task from LAN(CC/RNI) NoC; false -> Task from BBN(HNX) NoC
+ * 3. toLAN     : true -> Task to LAN(SN) NoC; false -> Task to BBN(HNX) NoC
+ * 4. opcode    : REQ/SNP Opcode
+ * 5. expCompAck: REQ.ExpCompAck
+ * 6. allocate  : REQ.MemAttr.allocate
+ * 7. ewa       : REQ.MemAttr.ewa
+ * 8. order     : REQ.Order
+ *
+ * Note0: TaskInst comes from the CHI Bundle, and the CHI Bundle is uniformly assigned in ToChiTask.
+ * Note1: Please refer to https://saluyk0ac00.feishu.cn/wiki/OHENwBqbeil9VIkkRQacWTAnnFd?from=from_copylink for the concepts of LAN and BBN.
+ */
+class ChiInst extends Bundle  {
   // REQ: LAN -> LAN; LAN -> BBN; BBN -> LAN;
   // SNP: BBN -> LAN
+  val valid       = Bool()
   val channel     = UInt(ChiChannel.width.W)
   val fromLAN     = Bool() // true -> LAN; false -> BBN
   val toLAN       = Bool() // true -> LAN; false -> BBN
@@ -38,6 +54,14 @@ class ChiInst extends Bundle {
   val allocate    = Bool() // Only use in write, ignore it in others
   val ewa         = Bool() // Only use in write, ignore it in others
   val order       = UInt(Order.width.W) // TODO: Looks like there's no need to check the order in ChiInst.
+
+  override def toPrintable: Printable = {
+    var pa = cf""
+    elements.toSeq.reverse.foreach { case (name, value) =>
+      pa = pa + cf"$name -> $value "
+    }
+    pa
+  }
 }
 
 class StateInst extends Bundle {
@@ -45,6 +69,14 @@ class StateInst extends Bundle {
   val srcHit      = Bool()
   val othHit      = Bool()
   val llcState    = UInt(ChiState.width.W)
+
+  override def toPrintable: Printable = {
+    var pa = cf""
+    elements.toSeq.reverse.foreach { case (name, value) =>
+      pa = pa + cf"$name -> $value "
+    }
+    pa
+  }
 }
 
 class TaskInst extends Bundle {
@@ -54,6 +86,14 @@ class TaskInst extends Bundle {
   val opcode      = UInt(RspOpcode.width.max(DatOpcode.width).W)
   val resp        = UInt(ChiResp.width.W)
   val fwdResp     = UInt(ChiResp.width.W)
+
+  override def toPrintable: Printable = {
+    var pa = cf""
+    elements.toSeq.reverse.foreach { case (name, value) =>
+      pa = pa + cf"$name -> $value "
+    }
+    pa
+  }
 }
 
 trait HasPackTaskInst { this: Bundle => val inst = new TaskInst() }
@@ -100,8 +140,6 @@ object SnpTgt {
 trait HasSnpTgt { this: Bundle => val snpTgt = UInt(SnpTgt.width.W) }
 
 trait HasTaskCode { this: Bundle with HasOperations with HasPackDataOp =>
-  val flag        = Bool()
-
   // Common
   val opcode      = UInt(ReqOpcode.width.max(SnpOpcode.width).W)
   val canNest     = Bool()
@@ -138,8 +176,6 @@ class WriDirCode  extends Bundle with HasWriDirCode
 trait HasPackWriDirCode { this: Bundle => val code = new WriDirCode() }
 
 trait HasCommitCode { this: Bundle with HasWriDirCode with HasPackDataOp =>
-  val flag        = Bool()
-
   // Need wait second task done
   val waitSecDone = Bool()
 
@@ -200,8 +236,9 @@ object DecodeCHI {
 
 object Inst {
   // Chi Inst
-  def isReq             : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.channel       := REQ;     temp.asUInt }
-  def isSnp             : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.channel       := SNP;     temp.asUInt }
+  def chiValid          : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.valid         := true.B;  temp.asUInt }
+  def isReq             : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.channel       := REQ;     temp.asUInt | chiValid }
+  def isSnp             : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.channel       := SNP;     temp.asUInt | chiValid }
   def fromLAN           : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.fromLAN       := true.B;  temp.asUInt }
   def fromBBN           : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.fromLAN       := false.B; temp.asUInt }
   def toLAN             : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.toLAN         := true.B;  temp.asUInt }
@@ -240,18 +277,14 @@ object Inst {
 
 
 object Code {
-  // Flag
-  def taskFlag : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode()));   temp.flag := true.B; temp.asUInt }
-  def cmtFlag  : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.flag := true.B; temp.asUInt }
-
   // Task Code Operations
-  def snpAll  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.snoop    := true.B; temp.snpTgt := SnpTgt.ALL; require(x.getWidth == SnpOpcode.width); temp.asUInt | taskFlag }
-  def snpOne  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.snoop    := true.B; temp.snpTgt := SnpTgt.ONE; require(x.getWidth == SnpOpcode.width); temp.asUInt | taskFlag }
-  def snpOth  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.snoop    := true.B; temp.snpTgt := SnpTgt.OTH; require(x.getWidth == SnpOpcode.width); temp.asUInt | taskFlag }
-  def read    (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.read     := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt | taskFlag }
-  def dataless(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.dataless := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt | taskFlag }
-  def wriOrAtm(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.wriOrAtm := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt | taskFlag }
-  def receive (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.receive  := true.B; require(x.getWidth == RspOpcode.width); temp.asUInt | taskFlag }
+  def snpAll  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.snoop    := true.B; temp.snpTgt := SnpTgt.ALL; require(x.getWidth == SnpOpcode.width); temp.asUInt }
+  def snpOne  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.snoop    := true.B; temp.snpTgt := SnpTgt.ONE; require(x.getWidth == SnpOpcode.width); temp.asUInt }
+  def snpOth  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.snoop    := true.B; temp.snpTgt := SnpTgt.OTH; require(x.getWidth == SnpOpcode.width); temp.asUInt }
+  def read    (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.read     := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
+  def dataless(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.dataless := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
+  def wriOrAtm(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.wriOrAtm := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
+  def receive (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.receive  := true.B; require(x.getWidth == RspOpcode.width); temp.asUInt }
 
   // Task Code DataOp
   // note0: only cant set reqs expect of WriOrAtm
@@ -263,13 +296,13 @@ object Code {
   def taskECA           : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.expCompAck := true.B; temp.asUInt }
   def doDMT             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.doDMT      := true.B; temp.asUInt }
   def retToSrc          : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.retToSrc   := true.B; temp.asUInt }
-  def noTask            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode()));                             temp.asUInt | taskFlag }
+  def noTask            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode()));                            temp.asUInt }
 
   // Commit Code Need Wait Second Task Done
   def waitSecDone       : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.waitSecDone := true.B;   temp.asUInt }
 
   // Commit Code Commit
-  def commit            : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.commit     := true.B;    temp.asUInt | cmtFlag }
+  def commit            : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.commit     := true.B;    temp.asUInt }
   def fwdCommit         : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.fwdCommit  := true.B;    temp.asUInt }
   def cmtRsp  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel    := RSP;       temp.commitOp := x; require(x.getWidth == RspOpcode.width); temp.asUInt | commit }
   def cmtDat  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel    := DAT;       temp.commitOp := x; require(x.getWidth == DatOpcode.width); temp.asUInt | commit }
@@ -277,9 +310,9 @@ object Code {
   def fwdResp (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.fwdCommit  := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | fwdCommit }
 
   // Commit Code Write SF/LLC
-  def wriSRC  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.srcValid  := x.asBool;    temp.wriSF := true.B;   temp.asUInt | cmtFlag }
-  def wriSNP  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.snpValid  := x.asBool;    temp.wriSF := true.B;   temp.asUInt | cmtFlag }
-  def wriLLC  (x: UInt)    : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.llcState  := toState(x);  temp.wriLLC := true.B;  require(x.getWidth == DecodeCHI.width); temp.asUInt | cmtFlag }
+  def wriSRC  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.srcValid  := x.asBool;    temp.wriSF := true.B;   temp.asUInt }
+  def wriSNP  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.snpValid  := x.asBool;    temp.wriSF := true.B;   temp.asUInt }
+  def wriLLC  (x: UInt)    : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.llcState  := toState(x);  temp.wriLLC := true.B;  require(x.getWidth == DecodeCHI.width); temp.asUInt }
 
   // Commit Code DataOp
   // If wriDIR(valid) and not hit, the save and clean operation will be delayed until the repl completes.
@@ -287,7 +320,7 @@ object Code {
   def cdop(x: String*): UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // CommitCode NoCMT or ERROR
-  def noCmt             : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.asUInt | cmtFlag }
+  def noCmt             : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.asUInt }
 
   // Use In Decode Table
   def first(commitCode: UInt): (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]) = (noTask, Seq(Inst.noResp -> (noTask, Seq(Inst.noResp -> commitCode))))
@@ -320,11 +353,7 @@ object Decode {
   private val taskInst   = new TaskInst().getWidth
   private val commitCode = new CommitCode().getWidth
 
-  def decode(chi: UInt = 0.U(chiInst.W), state: UInt = 0.U(stateInst.W), task: UInt = 0.U(taskInst.W), secTask: UInt = 0.U(taskInst.W)) = {
-    require(chi.getWidth     == chiInst)
-    require(state.getWidth   == stateInst)
-    require(task.getWidth    == taskInst)
-    require(secTask.getWidth == taskInst)
+  def decode(chi: ChiInst, state: StateInst, task: TaskInst, secTask: TaskInst)(implicit p: Parameters, s: SourceInfo) = {
 
     val chiInstVec      = WireInit(VecInit(Seq.fill(l_ci) { 0.U(chiInst.W) }))
     val stateInstVec2   = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { 0.U(stateInst.W) }) }))
@@ -372,34 +401,77 @@ object Decode {
     }
 
     // First Input ChiInst
-    val stateInstVec_0    = ParallelLookUp(chi, chiInstVec.zip(stateInstVec2))
-    val taskCodeVec_0     = ParallelLookUp(chi, chiInstVec.zip(taskCodeVec2))
+    val stateInstVec_0    = ParallelLookUp(chi.asUInt, chiInstVec.zip(stateInstVec2))
+    val taskCodeVec_0     = ParallelLookUp(chi.asUInt, chiInstVec.zip(taskCodeVec2))
 
-    val taskInstVec2_0    = ParallelLookUp(chi, chiInstVec.zip(taskInstVec3))
-    val secCodeVec2_0     = ParallelLookUp(chi, chiInstVec.zip(secCodeVec3))
+    val taskInstVec2_0    = ParallelLookUp(chi.asUInt, chiInstVec.zip(taskInstVec3))
+    val secCodeVec2_0     = ParallelLookUp(chi.asUInt, chiInstVec.zip(secCodeVec3))
 
-    val secInstVec3_0     = ParallelLookUp(chi, chiInstVec.zip(secInstVec4))
-    val cmtCodeVec3_0     = ParallelLookUp(chi, chiInstVec.zip(commitCodeVec4))
+    val secInstVec3_0     = ParallelLookUp(chi.asUInt, chiInstVec.zip(secInstVec4))
+    val cmtCodeVec3_0     = ParallelLookUp(chi.asUInt, chiInstVec.zip(commitCodeVec4))
     val cmtCodeVec_0      = cmtCodeVec3_0.map(_.head.head)
 
     // Second Input StateInst
-    val taskCode_1        = ParallelLookUp(state, stateInstVec_0.zip(taskCodeVec_0))
+    val taskCode_1        = ParallelLookUp(state.asUInt, stateInstVec_0.zip(taskCodeVec_0))
 
-    val taskInstVec_1     = ParallelLookUp(state, stateInstVec_0.zip(taskInstVec2_0))
-    val secCodeVec_1      = ParallelLookUp(state, stateInstVec_0.zip(secCodeVec2_0))
+    val taskInstVec_1     = ParallelLookUp(state.asUInt, stateInstVec_0.zip(taskInstVec2_0))
+    val secCodeVec_1      = ParallelLookUp(state.asUInt, stateInstVec_0.zip(secCodeVec2_0))
 
-    val secInstVec2_1     = ParallelLookUp(state, stateInstVec_0.zip(secInstVec3_0))
-    val cmtCodeVec2_1     = ParallelLookUp(state, stateInstVec_0.zip(cmtCodeVec3_0))
+    val secInstVec2_1     = ParallelLookUp(state.asUInt, stateInstVec_0.zip(secInstVec3_0))
+    val cmtCodeVec2_1     = ParallelLookUp(state.asUInt, stateInstVec_0.zip(cmtCodeVec3_0))
 
     // Third Input TaskInst
-    val secCode_2         = ParallelLookUp(task, taskInstVec_1.zip(secCodeVec_1))
+    val secCode_2         = ParallelLookUp(task.asUInt, taskInstVec_1.zip(secCodeVec_1))
 
-    val secInstVec_2      = ParallelLookUp(task, taskInstVec_1.zip(secInstVec2_1))
-    val cmtCodeVec_2      = ParallelLookUp(task, taskInstVec_1.zip(cmtCodeVec2_1))
+    val secInstVec_2      = ParallelLookUp(task.asUInt, taskInstVec_1.zip(secInstVec2_1))
+    val cmtCodeVec_2      = ParallelLookUp(task.asUInt, taskInstVec_1.zip(cmtCodeVec2_1))
 
     // Fourth Input SecTaskInst
-    val cmtCode_3         = ParallelLookUp(secTask, secInstVec_2.zip(cmtCodeVec_2))
+    val cmtCode_3         = ParallelLookUp(secTask.asUInt, secInstVec_2.zip(cmtCodeVec_2))
 
-    ((stateInstVec_0, taskCodeVec_0, cmtCodeVec_0), (taskInstVec_1, secCodeVec_1), (secInstVec_2, cmtCodeVec_2), (taskCode_1.asTypeOf(new TaskCode), secCode_2.asTypeOf(new TaskCode), cmtCode_3.asTypeOf(new CommitCode)))
+
+    // Result
+    val taskRes = taskCode_1.asTypeOf(new TaskCode())
+    val secRes  = secCode_2.asTypeOf(new TaskCode())
+    val cmtRes  = cmtCode_3.asTypeOf(new CommitCode())
+
+    // HardwareAssertion valid
+    HardwareAssertion.withEn(chi.valid & state.valid & task.valid, secTask.valid)
+    HardwareAssertion.withEn(chi.valid & state.valid,  task.valid)
+    HardwareAssertion.withEn(chi.valid,  state.valid)
+    // HardwareAssertion result
+    // chiInstVecCf
+    var chiInstVecCf = cf""
+    chiInstVec.zipWithIndex.foreach { case(inst, i) =>
+      chiInstVecCf = chiInstVecCf + cf"[$i] -> [${inst.asTypeOf(new ChiInst)}]\n"
+    }
+    // stateInstVecCf
+    var stateInstVecCf = cf""
+    stateInstVec_0.zipWithIndex.foreach { case (inst, i) =>
+      stateInstVecCf = stateInstVecCf + cf"[$i] -> [${inst.asTypeOf(new StateInst)}]\n"
+    }
+    // taskInstVecCf
+    var taskInstVecCf = cf""
+    taskInstVec_1.zipWithIndex.foreach { case (inst, i) =>
+      taskInstVecCf = taskInstVecCf + cf"[$i] -> [${inst.asTypeOf(new TaskInst)}]\n"
+    }
+    // secInstVecCf
+    var secInstVecCf = cf""
+    secInstVec_2.zipWithIndex.foreach { case (inst, i) =>
+      secInstVecCf = secInstVecCf + cf"[$i] -> [${inst.asTypeOf(new TaskInst)}]\n"
+    }
+    HardwareAssertion.withEn(PopCount(chiInstVec.map(_.asUInt === chi.asUInt)) === 1.U,       chi.valid,
+      cf"\n\nDECODE [ChiInst] ERROR\n\nChiInst:\n$chi\n\nAll Legal ChiInsts:\n" + chiInstVecCf + cf"\n")
+    HardwareAssertion.withEn(PopCount(stateInstVec_0.map(_.asUInt === state.asUInt)) === 1.U, state.valid,
+      cf"\n\nDECODE [StateInst] ERROR\n\nChiInst:\n$chi\nStateInst Invalid:\n$state\n\nAll Legal StateInsts:\n" + stateInstVecCf + cf"\n")
+    HardwareAssertion.withEn(PopCount(taskInstVec_1.map(_.asUInt === task.asUInt)) === 1.U,   task.valid,
+      cf"\n\nDECODE [TaskInst] ERROR\n\nChiInst:\n$chi\nStateInst:\n$state\nTaskInst:\n$task\n\nAll Legal TaskInsts:\n" + taskInstVecCf + cf"\n")
+    HardwareAssertion.withEn(PopCount(secInstVec_2.map(_.asUInt === secTask.asUInt)) === 1.U, secTask.valid,
+      cf"\n\nDECODE [SecTaskInst] ERROR\n\nChiInst:\n$chi\nStateInst:\n$state\nTaskInst:\n$task\nSecond TaskInst:\n$secTask\n\nAll Legal SecTaskInsts:\n" + secInstVecCf + cf"\n")
+
+    // Return
+    ((stateInstVec_0.map(_.asTypeOf(new StateInst)), taskCodeVec_0.map(_.asTypeOf(new TaskCode)), cmtCodeVec_0.map(_.asTypeOf(new CommitCode))), (taskRes, secRes, cmtRes))
   }
+
+  def decode(chi: ChiInst)(implicit p: Parameters, s: SourceInfo):(Seq[StateInst], Seq[TaskCode], Seq[CommitCode]) = decode(chi, 0.U.asTypeOf(new StateInst), 0.U.asTypeOf(new TaskInst), 0.U.asTypeOf(new TaskInst))._1
 }

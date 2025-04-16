@@ -51,10 +51,10 @@ trait HasDirMsg extends DJBundle { this: DJBundle =>
   val sf  = new DJBundle with HasDirParam with HasDirBaseMsg {
     override def paramType: String = "sf"
   }
-  def getStateInst(metaIdOH: UInt): StateInst = {
+  def getStateInst(metaIdOH: UInt, valid: Bool = true.B): StateInst = {
     require(metaIdOH.getWidth == nrSfMetas)
     val inst = Wire(new StateInst)
-    inst.valid    := true.B
+    inst.valid    := valid
     inst.srcHit   := sf.srcHit(metaIdOH)
     inst.othHit   := sf.othHit(metaIdOH)
     inst.llcState := Mux(llc.hit, llc.metaVec.head.state, ChiState.I)
