@@ -81,7 +81,7 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   val cmVec_rec   = cmRegVec.map(_.isFree) // Free Vec
   val cmId_rec    = PriorityEncoder(cmVec_rec)
   io.alloc.ready  := cmVec_rec.reduce(_ | _)
-  HardwareAssertion.withEn(io.alloc.bits.dataOp.reqs & !io.alloc.bits.alr.reqs, io.alloc.valid)
+  HardwareAssertion.withEn(!io.alloc.bits.dataOp.reqs, io.alloc.valid & io.alloc.bits.alr.reqs)
 
   /*
    * [SendReq]

@@ -92,6 +92,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   val cmVec_rec   = cmRegVec.map(_.isFree) // Free Vec
   val cmId_rec    = PriorityEncoder(cmVec_rec)
   io.alloc.ready  := cmVec_rec.reduce(_ | _)
+  HardwareAssertion.withEn(io.alloc.bits.alr.reqs, io.alloc.valid & io.alloc.bits.replLLC)
 
   /*
    * [WRITE]
@@ -172,7 +173,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   val cmId_rpLLC  = RREncoder(cmVec_rpLLC)
   val msg_rpLLC   = msgRegVec(cmId_rpLLC)
   // REQ
-  io.cmAllocVec(CMID.WOA).valid             :=cmVec_rpLLC.reduce(_ | _)
+  io.cmAllocVec(CMID.WOA).valid             := cmVec_rpLLC.reduce(_ | _)
   io.cmAllocVec(CMID.WOA).bits              := DontCare
   io.cmAllocVec(CMID.WOA).bits.chi.nodeId   := DontCare
   io.cmAllocVec(CMID.WOA).bits.chi.channel  := ChiChannel.REQ
@@ -187,9 +188,10 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.cmAllocVec(CMID.WOA).bits.wrillcWay    := msg_rpLLC.dir.llc.way
   io.cmAllocVec(CMID.WOA).bits.cbResp       := msg_rpLLC.dir.llc.metaVec.head.cbResp
   io.cmAllocVec(CMID.WOA).bits.alr          := msg_rpLLC.alr
-  io.cmAllocVec(CMID.WOA).bits.dataOp.reqs  := true.B
+  io.cmAllocVec(CMID.WOA).bits.dataOp.reqs  := false.B
   io.cmAllocVec(CMID.WOA).bits.dataOp.repl  := true.B
   io.cmAllocVec(CMID.WOA).bits.dataOp.read  := true.B
+  HardwareAssertion.withEn(msg_rpLLC.alr.reqs, cmVec_rpLLC.reduce(_ | _))
 
   /*
    * [RESP]
