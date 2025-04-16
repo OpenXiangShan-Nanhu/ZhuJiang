@@ -71,8 +71,8 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   // DB
   val taskDataVec_rec   = Mux(io.task.valid,  io.task.bits.dataVec,  0.U.asTypeOf(Vec(2, Bool())))
   val reqDataVec_rec    = Mux(io.reqDB.valid, io.reqDB.bits.dataVec, 0.U.asTypeOf(Vec(2, Bool())))
-  val taskBlockByDB_rec = (taskDataVec_rec(0)  ^ dbidPool.io.deq0.valid) | (taskDataVec_rec(1)  ^ dbidPool.io.deq1.valid); dontTouch(taskBlockByDB_rec)
-  val reqBlockByDB_rec  = (reqDataVec_rec(0) ^ dbidPool.io.deq0.valid) | (reqDataVec_rec(1) ^ dbidPool.io.deq1.valid); dontTouch(reqBlockByDB_rec)
+  val taskBlockByDB_rec = (taskDataVec_rec(0) & !dbidPool.io.deq0.valid) | (taskDataVec_rec(1) & !dbidPool.io.deq1.valid); dontTouch(taskBlockByDB_rec)
+  val reqBlockByDB_rec  = (reqDataVec_rec(0)  & !dbidPool.io.deq0.valid) | (reqDataVec_rec(1)  & !dbidPool.io.deq1.valid); dontTouch(reqBlockByDB_rec)
   // Set ready
   io.task.ready  := (cmHasFree_rec & !taskBlockByDB_rec) | !io.task.bits.dataOp.reqs
   io.reqDB.ready := cmHasFree_rec & !reqBlockByDB_rec & (!io.task.valid | !io.task.bits.dataOp.reqs)

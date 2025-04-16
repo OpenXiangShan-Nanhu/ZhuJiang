@@ -31,13 +31,11 @@ class DBIDPool(implicit p: Parameters) extends DJModule {
   val enqOne  = io.enq0.valid ^ io.enq1.valid
   val enqTwo  = io.enq0.valid & io.enq1.valid
   val enqSel0 = io.enq0.valid
-  val selQ0   = q0.io.count === q1.io.count
+  val selQ0   = q0.io.count <= q1.io.count
   dontTouch(enqOne)
   dontTouch(enqTwo)
   dontTouch(enqSel0)
   dontTouch(selQ0)
-  HardwareAssertion(q0.io.count >= q1.io.count)
-  HardwareAssertion(q0.io.count - q1.io.count <= 1.U)
 
   // Reset
   q0.io.enq.valid := false.B
