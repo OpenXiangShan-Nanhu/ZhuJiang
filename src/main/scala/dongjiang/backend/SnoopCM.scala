@@ -123,7 +123,7 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   io.txSnp.bits             := DontCare
   io.txSnp.bits.RetToSrc    := Mux(snpIsFst, task_sSnp.chi.retToSrc, false.B)
   io.txSnp.bits.DoNotGoToSD := false.B
-  io.txSnp.bits.Addr        := io.getAddr.result.addr
+  io.txSnp.bits.Addr        := io.getAddr.result.addr >> 3.U // Snoop address in CHI is aligned to 8-bytes boundary
   io.txSnp.bits.Opcode      := Mux(snpIsFst, task_sSnp.chi.opcode, task_sSnp.chi.getNoFwdSnpOp)
   io.txSnp.bits.FwdTxnID    := task_sSnp.chi.txnID
   io.txSnp.bits.FwdNID      := task_sSnp.chi.nodeId
