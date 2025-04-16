@@ -282,6 +282,7 @@ class readWrDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle
 }
 
 class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
+  private val rni  = zjParams.dmaParams
   def RReqInit[T <: CHIREntry](c : T, i : UInt): ReqFlit = {
     this          := 0.U.asTypeOf(this)
     this.Addr     := c.addr
@@ -302,7 +303,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
     this.Addr       := c.addr
     this.Opcode     := Mux(c.memAttr(1), ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteUniquePtl)
     this.Size       := Mux(c.double, 6.U, c.size)
-    this.TxnID      := i
+    this.TxnID      := (1.U << (this.TxnID.getWidth - 1)) | i
     this.MemAttr    := c.memAttr
     this.ExpCompAck := true.B
     this.Order      := "b10".U

@@ -63,9 +63,9 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   private val rdDBBdl   = WireInit(0.U.asTypeOf(io.rdDB.bits))
   private val txAckBdl  = WireInit(0.U.asTypeOf(io.chiTxRsp.bits))
   //Simplified Writing
-  private val rcvResp    = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.Comp)
-  private val rcvIsDBID  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp)
-  private val rcvIsComp  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.Comp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp)
+  private val rcvResp    = io.chiRxRsp.fire & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
+  private val rcvIsDBID  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp) & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
+  private val rcvIsComp  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.Comp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp) & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
   private val rspTxnid   = io.chiRxRsp.bits.TxnID(log2Ceil(rni.chiEntrySize) - 1, 0)
   private val  txIsAck   = io.rdDB.fire & io.rdDB.bits.withAck | io.chiTxRsp.fire
 
