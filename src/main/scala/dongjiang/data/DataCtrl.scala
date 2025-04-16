@@ -51,6 +51,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
     },
     set       = djparam.nrDataBuf,
     way       = djparam.BeatByte,
+    hasMbist  = hasMbist,
     suffix    = "_llc_db"
   ))
   val dbidPool      = Module(new DBIDPool())

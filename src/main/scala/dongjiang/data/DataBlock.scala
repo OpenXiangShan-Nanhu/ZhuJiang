@@ -8,6 +8,7 @@ import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug.HardwareAssertion
+import xs.utils.mbist.MbistPipeline
 import xs.utils.sram.SinglePortSramTemplate
 
 class DataBlock(implicit p: Parameters) extends DJModule {
@@ -29,6 +30,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
    */
   val dataCtrl    = Module(new DataCtrl())
   val dataStorage = Seq.fill(djparam.nrDSBank) { Seq.fill(2) { Module(new BeatStorage) } }
+  MbistPipeline.PlaceMbistPipeline(2, "HomeDataBlock", hasMbist)
 
   /*
    * Connect

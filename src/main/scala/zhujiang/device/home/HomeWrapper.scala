@@ -9,6 +9,8 @@ import xijiang.router.base.DeviceIcnBundle
 import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
 import xs.utils.debug.{HardwareAssertion, HardwareAssertionKey}
+import xs.utils.mbist.{MbistInterface, MbistPipeline}
+import xs.utils.sram.SramHelper
 import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.chi.{ChiBuffer, DataFlit, HReqFlit, NodeIdBundle, ReqAddrBundle, RingFlit}
 import zhujiang.{DftWires, ZJRawModule}
@@ -132,6 +134,27 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
   }
 
   hnx.io.lan.tx.debug.foreach(_ := DontCare)
+
+  private val mbistPl = MbistPipeline.PlaceMbistPipeline(Int.MaxValue, "Home", hasMbist)
+  private val homeMbistIntf = if (hasMbist) {
+    val brc = SramHelper.genBroadCastBundleTop()
+    brc := io.dfx.func
+    val params = mbistPl.get.nodeParams
+    val intf = Some(Module(new MbistInterface(
+      params = Seq(params),
+      ids = Seq(mbistPl.get.childrenIds),
+      name = s"MbistIntfHome",
+      pipelineNum = 1
+    )))
+    intf.get.toPipeline.head <> mbistPl.get.mbist
+    mbistPl.get.registerCSV(intf.get.info, "MbistHome")
+    intf.get.mbist := DontCare
+    dontTouch(intf.get.mbist)
+    //TODO: add mbist controller connections here
+    intf
+  } else {
+    None
+  }
 
   private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, moduleTop = true).map(_.head)
   HardwareAssertion.release(assertionNode, "hwa", "home")

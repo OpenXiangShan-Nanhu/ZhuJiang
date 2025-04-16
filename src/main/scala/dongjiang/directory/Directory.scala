@@ -8,6 +8,7 @@ import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug.HardwareAssertion
+import xs.utils.mbist.MbistPipeline
 
 class Directory(implicit p: Parameters) extends DJModule {
   /*
@@ -36,10 +37,11 @@ class Directory(implicit p: Parameters) extends DJModule {
   /*
    * Module declaration
    */
-  val llcs              = Seq.tabulate(djparam.nrDirBank)(i => Module(new DirectoryBase("llc", i)))
-  val sfs               = Seq.tabulate(djparam.nrDirBank)(i => Module(new DirectoryBase("sf", i)))
+  val llcs              = Seq.tabulate(djparam.nrDirBank)(i => Module(new DirectoryBase("llc")))
+  val sfs               = Seq.tabulate(djparam.nrDirBank)(i => Module(new DirectoryBase("sf")))
   val wriLLCBankPipe    = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
   val wriSFBankPipe     = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
+  MbistPipeline.PlaceMbistPipeline(2, "HomeDirectory", hasMbist)
 
   /*
    * Connect llcs and sfs
@@ -55,6 +57,8 @@ class Directory(implicit p: Parameters) extends DJModule {
       // config
       llc.io.config         := io.config
       sf.io.config          := io.config
+      llc.io.dirBank        := i.U
+      sf.io.dirBank         := i.U
 
       // read valid
       llc.io.read.valid     := io.readVec(i).valid & sf.io.read.ready

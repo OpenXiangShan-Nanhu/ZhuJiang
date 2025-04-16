@@ -8,9 +8,10 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
-import xs.utils.debug.HardwareAssertion
-import xs.utils.sram.{SinglePortSramTemplate, DualPortSramTemplate}
+import xs.utils.debug.{HAssert, HardwareAssertion}
+import xs.utils.sram.{DualPortSramTemplate, SinglePortSramTemplate}
 import freechips.rocketchip.util.ReplacementPolicy
+import xs.utils.mbist.MbistPipeline
 
 class Shift(implicit p: Parameters) extends DJBundle {
   val read  = UInt(readDirLatency.W)
@@ -33,7 +34,8 @@ class Shift(implicit p: Parameters) extends DJBundle {
   def replWillWrite = (repl & read).orR // when it is repl read, cant receive new req
 }
 
-class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) extends DJModule {
+class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
+  override val desiredName = s"Directory${dirType.toUpperCase}"
   val param = new DirParam(dirType)
   val repl  = ReplacementPolicy.fromString("plru", param.ways)
 
@@ -46,6 +48,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     val write     = Flipped(Decoupled(new DirEntry(dirType) with HasPackPosIndex))
     val resp      = Valid(new DirEntry(dirType) with HasPackPosIndex)
     val unlock    = Flipped(Valid(new PosIndex()))
+    val dirBank      = Input(UInt(dirBankBits.W))
   })
   dontTouch(io)
 
@@ -60,6 +63,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     setup       = djparam.dirSetup,
     latency     = djparam.dirLatency,
     extraHold   = djparam.dirExtraHold,
+    outputReg   = true,
     suffix      = s"_${dirType}_meta"
   ))
 
@@ -71,7 +75,9 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     setup       = djparam.dirSetup,
     latency     = djparam.dirLatency,
     extraHold   = djparam.dirExtraHold,
-    suffix      = s"_${dirType}_tag"
+    suffix      = s"_${dirType}_tag",
+    outputReg   = true,
+    hasMbist    = hasMbist
   ))
 
   val replArray = Module(new DualPortSramTemplate(
@@ -80,8 +86,10 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     way         = 1,
     shouldReset = true,
     bypassWrite = true,
-    suffix      = s"_${dirType}_repl"
+    suffix      = s"_${dirType}_repl",
+    hasMbist    = hasMbist
   ))
+  MbistPipeline.PlaceMbistPipeline(1, desiredName, hasMbist)
 
   dontTouch(metaArray.io)
   dontTouch(tagArray.io)
@@ -107,13 +115,12 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     val wriWayOH      = UInt(param.ways.W)
   }) }))
   val replSftReg_d1   = RegInit(VecInit(Seq.fill(readDirLatency-1) { 0.U(repl.nBits.W) }))
-  val tagRespReg_d1   = RegInit(VecInit(Seq.fill(param.ways) { 0.U.asTypeOf(UInt(param.tagBits.W)) }))
-  val metaRespReg_d1  = RegInit(VecInit(Seq.fill(param.ways) { VecInit(Seq.fill(param.nrMetas) { 0.U.asTypeOf(new ChiState(dirType)) }) }))
+  val tagResp_d2   = tagArray.io.resp.bits.data
+  val metaResp_d2  = metaArray.io.resp.bits.data
 
   // [D2]: Select Way and Output DIR Resp
   // from d1
   val req_d2          = WireInit(0.U.asTypeOf(reqSftReg_d1.head))
-  val metaVec_d2      = WireInit(0.U.asTypeOf(metaRespReg_d1))
   val replMes_d2      = WireInit(0.U(repl.nBits.W))
   val addrVec_d2      = WireInit(VecInit(Seq.fill(param.ways) { 0.U.asTypeOf(new DJBundle with HasAddr {
     override def addrType: String = dirType
@@ -203,13 +210,10 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
     if (i > 0) { reqSftReg_d1(i - 1) := sft }
   }
 
-  // tagReg_d1 and metaVecReg_d1
-  when(shiftReg.getTagMeta_d1) {
-    tagRespReg_d1  := tagArray.io.resp.bits.data
-    metaRespReg_d1 := metaArray.io.resp.bits.data
+  when(shiftReg.outDirResp_d2) {
+    HAssert(tagArray.io.resp.valid)
+    HAssert(metaArray.io.resp.valid)
   }
-  HardwareAssertion(!(tagArray.io.resp.valid  ^ shiftReg.getTagMeta_d1))
-  HardwareAssertion(!(metaArray.io.resp.valid ^ shiftReg.getTagMeta_d1))
 
   // Get Repl Resp and Update Repl Resp
   replSftReg_d1.last  := Mux(reqSet_d2 === reqSftReg_d1.last.Addr.set, newReplMes_d2, replArray.io.rresp.bits(0))
@@ -226,15 +230,14 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   // ---------------------------------------------------------------------------------------------------------------------- //
   // Get from D1
   req_d2      := reqSftReg_d1.head
-  metaVec_d2  := metaRespReg_d1
   replMes_d2  := replSftReg_d1.head
-  addrVec_d2.zip(tagRespReg_d1).foreach { case(addr, tag) => addr.Addr.cat(io.config.bankId, tag, reqSet_d2, dirBank.U(dirBankBits.W)) }
+  addrVec_d2.zip(tagResp_d2).foreach { case(addr, tag) => addr.Addr.cat(io.config.bankId, tag, reqSet_d2, io.dirBank) }
   reqTag_d2   := req_d2.Addr.tag
   reqSet_d2   := req_d2.Addr.set
 
   // Get Hit Ve
   tagHitVec_d2      := addrVec_d2.map(_.Addr.tag === reqTag_d2)
-  metaValVec_d2     := metaVec_d2.map(_.map(_.isValid).reduce(_ | _))
+  metaValVec_d2     := metaResp_d2.map(_.map(_.isValid).reduce(_ | _))
   val hasInvalid    = metaValVec_d2.map(!_).reduce(_ | _)
   val hitVec_d2     = tagHitVec_d2.zip(metaValVec_d2).map { case(a, b) => a & b }
   val hit_d2        = hitVec_d2.reduce(_ | _)
@@ -263,7 +266,7 @@ class DirectoryBase(dirType: String, dirBank: Int)(implicit p: Parameters) exten
   io.resp.bits.addr    := addrVec_d2(selWay_d2).addr
   io.resp.bits.wayOH   := selWayOH_d2
   io.resp.bits.hit     := hit_d2
-  io.resp.bits.metaVec := metaVec_d2(selWay_d2)
+  io.resp.bits.metaVec := metaResp_d2(selWay_d2)
   io.resp.bits.pos     := req_d2.pos
 
   // Update Lock Table

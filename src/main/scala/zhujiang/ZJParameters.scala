@@ -182,7 +182,9 @@ case class ZJParameters(
   c2cParams: C2cParams = C2cParams(),
   tfbParams: Option[TrafficBoardParams] = Some(TrafficBoardParams()),
   tfsParams: Option[TrafficSimParams] = None,
-  djParamsOpt: Option[DJParam] = None) {
+  djParamsOpt: Option[DJParam] = None,
+  hasMbist: Boolean = false,
+) {
   lazy val cachelineBytes = 64
   lazy val requestAddrBits = 48
   lazy val snoopAddrBits = requestAddrBits - 3
@@ -239,6 +241,7 @@ trait HasZJParams {
   lazy val ciIdBits = zjParams.ciIdBits
   lazy val clusterIdBits = zjParams.clusterIdBits
   lazy val cpuIdBits = clusterIdBits - ciIdBits
+  lazy val hasMbist = zjParams.hasMbist
 
   lazy val rreqFlitBits = new RReqFlit()(p).getWidth
   lazy val hreqFlitBits = new HReqFlit()(p).getWidth

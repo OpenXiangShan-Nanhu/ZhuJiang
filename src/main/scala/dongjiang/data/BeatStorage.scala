@@ -58,13 +58,13 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
     setup       = djparam.dataSetup,
     latency     = djparam.dataLatency,
     extraHold   = djparam.dataExtraHold,
+    hasMbist    = hasMbist,
+    outputReg   = true,
     suffix      = "_llc_dat"
   ))
   val dcidPipe    = Module(new Pipe(UInt(dcIdBits.W), readDsLatency))
   val shiftReg    = RegInit(0.U.asTypeOf(new Shift))
   val rstDoneReg  = RegEnable(true.B, false.B, array.io.req.ready)
-  val datRespVec  = Wire(Vec(djparam.BeatByte, UInt(8.W)))
-  val dataReg     = Reg(UInt(BeatBits.W))
   HardwareAssertion.withEn(!(array.io.req.ready ^ io.write.ready), rstDoneReg) // Check Shift Reg logic
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -98,13 +98,10 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
 // ---------------------------------------------------------------------------------------------------------------------- //
 // -------------------------------------------- Get SRAM Resp and Output Resp ------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
-  // pre-processing: reverse
-  datRespVec  := array.io.resp.bits.data
-  dataReg     := Mux(shiftReg.getData, datRespVec.asUInt, dataReg)
 
   // Output
   io.resp.valid     := shiftReg.outResp
-  io.resp.bits.beat := dataReg
+  io.resp.bits.beat := array.io.resp.bits.data.asUInt
   io.resp.bits.dcid := dcidPipe.io.deq.bits
 
   HardwareAssertion.withEn(dcidPipe.io.deq.valid, shiftReg.outResp)
