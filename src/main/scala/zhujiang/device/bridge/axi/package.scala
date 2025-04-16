@@ -32,7 +32,7 @@ package object axi {
       when(check) {
         val legalCode = Seq(ReqOpcode.ReadNoSnp, ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteNoSnpFull, ReqOpcode.WriteNoSnpFullCleanInv)
         val legal = Cat(legalCode.map(_ === req.Opcode)).orR
-        assert(legal)
+        assert(legal, "opcode: 0x%x", req.Opcode)
         assert(req.Size <= 6.U)
       }
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
