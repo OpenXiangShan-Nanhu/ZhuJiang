@@ -69,15 +69,16 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
 /* 
  * Pointer logic
  */
-  private val txReqPtrAdd = io.chiReq.fire
-  private val rxRspPtrAdd = io.chiReq.fire & (io.chiReq.bits.Order === 0.U) | rcvIsRct
-  private val txRspPtrAdd = io.chiTxRsp.get.fire || chiEntrys(txRspPtr.value).haveSendAck.get & validVec(txRspPtr.value)
+  private val txReqPtrAdd       = io.chiReq.fire
+  private val rxRspPtrAdd       = io.chiReq.fire & (io.chiReq.bits.Order === 0.U) | rcvIsRct
+  private val rxRspPtrAddDouble = io.chiReq.fire & (io.chiReq.bits.Order === 0.U) & rcvIsRct
+  private val txRspPtrAdd       = chiEntrys(txRspPtr.value).haveSendAck.get & validVec(txRspPtr.value)
 
-  headPtr  := Mux(io.axiAr.fire, headPtr  + 1.U, headPtr )
-  reqDBPtr := Mux(io.reqDB.fire, reqDBPtr + 1.U, reqDBPtr)
-  txReqPtr := Mux(txReqPtrAdd  , txReqPtr + 1.U, txReqPtr)
-  rxRspPtr := Mux(rxRspPtrAdd  , rxRspPtr + 1.U, rxRspPtr)
-  txRspPtr := Mux(txRspPtrAdd  , txRspPtr + 1.U, txRspPtr)
+  headPtr  := Mux(io.axiAr.fire    , headPtr  + 1.U, headPtr )
+  reqDBPtr := Mux(io.reqDB.fire    , reqDBPtr + 1.U, reqDBPtr)
+  txReqPtr := Mux(txReqPtrAdd      , txReqPtr + 1.U, txReqPtr)
+  txRspPtr := Mux(txRspPtrAdd      , txRspPtr + 1.U, txRspPtr)
+  rxRspPtr := Mux(rxRspPtrAddDouble, rxRspPtr + 2.U, Mux(rxRspPtrAdd, rxRspPtr + 1.U, rxRspPtr))
 
   if(!rni.readDMT){
     tailPtr  := Mux(tailPtr =/= txReqPtr & chiEntrys(tailPtr.value).sendComp, tailPtr + 1.U, tailPtr)
