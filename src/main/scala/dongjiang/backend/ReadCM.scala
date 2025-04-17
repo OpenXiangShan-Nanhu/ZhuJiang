@@ -140,7 +140,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
     io.respCmt.bits.inst.valid    := true.B
     io.respCmt.bits.inst.fwdValid := false.B
     io.respCmt.bits.inst.channel  := ChiChannel.DAT
-    io.respCmt.bits.inst.opcode   := msg_resp.inst.opcode
+    io.respCmt.bits.inst.opcode   := CompData
     io.respCmt.bits.inst.resp     := msg_resp.inst.resp
     io.respCmt.bits.inst.fwdResp  := ChiResp.I
   }
@@ -170,7 +170,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
         msg.task.chi.nodeId := io.rxDat.bits.HomeNID
         msg.task.chi.txnID  := io.rxDat.bits.DBID
         // inst
-        msg.inst.resp       := io.rxDat.bits.DBID
+        msg.inst.resp       := io.rxDat.bits.Resp
       }
 
       // Get Next State
