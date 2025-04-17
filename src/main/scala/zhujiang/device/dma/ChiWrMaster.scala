@@ -9,7 +9,7 @@ import zhujiang.chi._
 import zhujiang.axi._
 import xs.utils.sram._
 import xijiang._
-import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
+import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, UIntToMask}
 
 
 class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
@@ -43,7 +43,8 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
  * Reg/Wire Define
  */
   //AxiWr to ChiWr entrys
-  private val chiEntrys = Reg(Vec(rni.chiEntrySize, new CHIWEntry))
+  private val chiEntries     = Reg(Vec(rni.chiEntrySize, new CHIWEntry))
+  private val chiEntriesNext = WireInit(chiEntries)
   //Pointer
   private val headPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val tailPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
@@ -73,9 +74,14 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
 
   // private val rxDatPtrAdd  = io.axiW.fire & ((rxDatBeat === 1.U) | (rxDatBeat === 0.U) & !chiEntrys(rxDatPtr.value).double)
   private val rxDatPtrAdd  = io.axiW.fire & io.axiW.bits.last
-  private val txDatPtrAdd  = io.rdDB.fire & ((txDatBeat === 1.U) | (txDatBeat === 0.U) & !chiEntrys(txDatPtr.value).double)
-  private val rxDatBeatAdd = (chiEntrys(rxDatPtr.value).double & (rxDatBeat === 0.U) || rxDatBeat === 1.U) & io.wrDB.fire
-  private val txDatBeatAdd = (chiEntrys(txDatPtr.value).double & (txDatBeat === 0.U) || txDatBeat === 1.U) & io.rdDB.fire
+  private val txDatPtrAdd  = io.rdDB.fire & ((txDatBeat === 1.U) | (txDatBeat === 0.U) & !chiEntries(txDatPtr.value).double)
+  private val rxDatBeatAdd = (chiEntries(rxDatPtr.value).double & (rxDatBeat === 0.U) || rxDatBeat === 1.U) & io.wrDB.fire
+  private val txDatBeatAdd = (chiEntries(txDatPtr.value).double & (txDatBeat === 0.U) || txDatBeat === 1.U) & io.rdDB.fire
+
+  private val headPtrMask = UIntToMask(headPtr.value, rni.chiEntrySize)
+  private val tailPtrMask = UIntToMask(tailPtr.value, rni.chiEntrySize)
+  private val headXorTail = headPtrMask ^ tailPtrMask
+  private val validVec   = Mux(headPtr.flag ^ tailPtr.flag, ~headXorTail, headXorTail)
   
 /* 
  * Pointer logic
@@ -96,41 +102,45 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
 /* 
  * Assign logic
  */
-  chiEntrys.zipWithIndex.foreach{
-    case(e, i) =>
-      when(io.axiAw.fire & (headPtr.value === i.U)){
-        e.awMesInit(io.axiAw.bits)
-      }
-      when(io.reqDB.fire & reqDBPtr.value === i.U){
-        e.dbSite1  := io.respDB.bits.buf(0)
-        e.dbSite2  := io.respDB.bits.buf(1)
-      }
-      when(rcvResp & rspTxnid === i.U){
-        e.dbid     := io.chiRxRsp.bits.DBID
-        e.tgtid    := io.chiRxRsp.bits.SrcID
-      }
-      when(rcvIsComp & rspTxnid === i.U){
-        e.haveRcvComp := true.B
-      }
+  for(i <- chiEntriesNext.indices) {
+    when(io.axiAw.fire & (headPtr.value === i.U)) {
+      chiEntries(i).awMesInit(io.axiAw.bits)
+    }.elsewhen(validVec(i)) {
+      chiEntries(i) := chiEntriesNext(i)
+    }
   }
 
-  txReqBdl.wReqInit(chiEntrys(txReqPtr.value), txReqPtr.value)
-  rdDBBdl.dataID   := Mux((txDatBeat === 0.U) & !chiEntrys(txDatPtr.value).addr(rni.offset - 1), 0.U, 2.U)
-  rdDBBdl.set      := Mux(txDatBeat === 0.U, chiEntrys(txDatPtr.value).dbSite1, chiEntrys(txDatPtr.value).dbSite2)
-  rdDBBdl.tgtId    := chiEntrys(txDatPtr.value).tgtid
-  rdDBBdl.txnID    := chiEntrys(txDatPtr.value).dbid
+  for((en, i) <- chiEntriesNext.zipWithIndex){
+    when(io.reqDB.fire & reqDBPtr.value === i.U){
+      en.dbSite1     := io.respDB.bits.buf(0)
+      en.dbSite2     := io.respDB.bits.buf(1)
+    }
+    when(rcvResp & rspTxnid === i.U){
+      en.dbid        := io.chiRxRsp.bits.DBID
+      en.tgtid       := io.chiRxRsp.bits.SrcID
+    }
+    when(rcvIsComp & rspTxnid === i.U){
+      en.haveRcvComp := true.B
+    }
+  }
+
+  txReqBdl.wReqInit(chiEntries(txReqPtr.value), txReqPtr.value)
+  rdDBBdl.dataID   := Mux((txDatBeat === 0.U) & !chiEntries(txDatPtr.value).addr(rni.offset - 1), 0.U, 2.U)
+  rdDBBdl.set      := Mux(txDatBeat === 0.U, chiEntries(txDatPtr.value).dbSite1, chiEntries(txDatPtr.value).dbSite2)
+  rdDBBdl.tgtId    := chiEntries(txDatPtr.value).tgtid
+  rdDBBdl.txnID    := chiEntries(txDatPtr.value).dbid
   if(rni.merWrDatAndAck) {
-    rdDBBdl.withAck  := (txAckPtr === txDatPtr) & (chiEntrys(txDatPtr.value).haveRcvComp | (rcvIsComp & (rspTxnid === txDatPtr.value)))
+    rdDBBdl.withAck  := (txAckPtr === txDatPtr) & (chiEntries(txDatPtr.value).haveRcvComp | (rcvIsComp & (rspTxnid === txDatPtr.value)))
   } else {
     rdDBBdl.withAck  := false.B
   }
   axiBBdl          := 0.U.asTypeOf(axiBBdl)
-  axiBBdl.id       := chiEntrys(txBPtr.value).awId
+  axiBBdl.id       := chiEntries(txBPtr.value).awId
 
   txAckBdl         := 0.U.asTypeOf(txAckBdl)
   txAckBdl.SrcID   := rni.rniID.U
-  txAckBdl.TxnID   := chiEntrys(txAckPtr.value).dbid
-  txAckBdl.TgtID   := chiEntrys(txAckPtr.value).tgtid
+  txAckBdl.TxnID   := chiEntries(txAckPtr.value).dbid
+  txAckBdl.TgtID   := chiEntries(txAckPtr.value).tgtid
   txAckBdl.Opcode  := RspOpcode.CompAck
 
   
@@ -138,17 +148,17 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
  * IO Connection Logic
  */
   io.axiAw.ready    := !isFull(headPtr, tailPtr)
-  io.reqDB.bits     := chiEntrys(reqDBPtr.value).double
+  io.reqDB.bits     := chiEntries(reqDBPtr.value).double
   io.reqDB.valid    := reqDBPtr =/= headPtr
   io.wrDB.bits.data := io.axiW.bits.data
   io.wrDB.bits.mask := io.axiW.bits.strb
-  io.wrDB.bits.set  := Mux(rxDatBeat === 0.U, chiEntrys(rxDatPtr.value).dbSite1, chiEntrys(rxDatPtr.value).dbSite2)
+  io.wrDB.bits.set  := Mux(rxDatBeat === 0.U, chiEntries(rxDatPtr.value).dbSite1, chiEntries(rxDatPtr.value).dbSite2)
   io.wrDB.valid     := io.axiW.fire
   io.axiW.ready     := io.wrDB.ready & (rxDatPtr =/= reqDBPtr)
   io.chiReq.valid   := (txReqPtr =/= headPtr) & ((rxDBIDPtr === txReqPtr) | (rxDBIDPtr =/= txReqPtr) & rcvIsDBID)
   io.chiReq.bits    := txReqBdl
   io.chiRxRsp.ready := true.B
-  io.axiB.valid     := chiEntrys(txBPtr.value).haveRcvComp & txBPtr =/= txReqPtr
+  io.axiB.valid     := chiEntries(txBPtr.value).haveRcvComp & txBPtr =/= txReqPtr
   io.axiB.bits      := axiBBdl
   io.rdDB.bits      := rdDBBdl
   io.rdDB.valid     := (txDatPtr =/= rxDatPtr) & (txDatPtr =/= rxDBIDPtr)
