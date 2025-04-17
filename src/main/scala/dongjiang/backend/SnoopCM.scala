@@ -83,10 +83,12 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   datNodeId.fromLAN := NocType.rxIs(io.rxDat.bits, LAN)
   rspNodeId.nodeId  := io.rxRsp.bits.SrcID
   datNodeId.nodeId  := io.rxDat.bits.SrcID
+  val rspFire       = io.rxRsp.fire & (io.rxRsp.bits.Opcode === SnpResp | io.rxRsp.bits.Opcode === SnpRespFwded)
+  val datFire       = io.rxDat.fire & (io.rxRsp.bits.Opcode === SnpRespData | io.rxRsp.bits.Opcode === SnpRespDataFwded)
   val rspMetaId     = OHToUInt(rspNodeId.metaIdOH)
   val datMetaId     = OHToUInt(datNodeId.metaIdOH)
-  HardwareAssertion.withEn(rspNodeId.metaIdOH.orR, io.rxRsp.valid)
-  HardwareAssertion.withEn(datNodeId.metaIdOH.orR, io.rxDat.valid)
+  HardwareAssertion.withEn(rspNodeId.metaIdOH.orR, rspFire)
+  HardwareAssertion.withEn(datNodeId.metaIdOH.orR, datFire)
 
   /*
    * Receive Task IO
@@ -157,12 +159,12 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
    */
   cmRegVec.zip(msgRegVec).zipWithIndex.foreach {
     case ((cm, msg), i) =>
-      val allocHit    = io.alloc.fire    & i.U === cmId_rec
-      val reqDBHit    = io.reqDB.fire    & i.U === cmId_reqDB
-      val sendSnpHit  = io.txSnp.fire    & i.U === cmId_sSnp
-      val recRespHit  = io.rxRsp.fire    & msg.task.llcTxnID.get === io.rxRsp.bits.TxnID & (io.rxRsp.bits.Opcode === SnpResp | io.rxRsp.bits.Opcode === SnpRespFwded)
-      val recDataHit  = io.rxDat.fire    & msg.task.llcTxnID.get === io.rxDat.bits.TxnID & (io.rxRsp.bits.Opcode === SnpRespData | io.rxRsp.bits.Opcode === SnpRespDataFwded)
-      val respCmtHit  = io.respCmt.fire  & i.U === cmId_resp
+      val allocHit    = io.alloc.fire   & i.U === cmId_rec
+      val reqDBHit    = io.reqDB.fire   & i.U === cmId_reqDB
+      val sendSnpHit  = io.txSnp.fire   & i.U === cmId_sSnp
+      val recRespHit  = rspFire         & msg.task.llcTxnID.get === io.rxRsp.bits.TxnID
+      val recDataHit  = datFire         & msg.task.llcTxnID.get === io.rxDat.bits.TxnID
+      val respCmtHit  = io.respCmt.fire & i.U === cmId_resp
 
       // Store Msg From Frontend
       val rspIsFwd = io.rxRsp.bits.Opcode === SnpRespFwded & recRespHit
