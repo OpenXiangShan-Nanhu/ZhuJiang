@@ -60,11 +60,10 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
   /*
    * Receive ChiTask
    */
-  val freeVec     = ctrlEntrys.map(_.isFree)
-  val freeId      = PriorityEncoder(freeVec)
-  val freeNum     = PopCount(freeVec)
-  // Store chi task, reserve an extra entry for the snp task
-  io.chiTaskIn.ready  := Mux(io.chiTaskIn.bits.isSnp, freeVec.reduce(_ | _), freeNum > 1.U)
+  val freeVec         = ctrlEntrys.map(_.isFree)
+  val freeId          = PriorityEncoder(freeVec)
+  val freeNum         = PopCount(freeVec)
+  io.chiTaskIn.ready  := freeVec.reduce(_ | _)
   taskEntrys(freeId)  := io.chiTaskIn.bits
 
   /*
