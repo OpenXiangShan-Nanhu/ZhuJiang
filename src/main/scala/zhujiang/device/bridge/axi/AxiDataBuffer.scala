@@ -98,7 +98,8 @@ class AxiDataBufferRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Parame
     gen = UInt(dw.W),
     set = bufferSize,
     singlePort = false,
-    suffix = "_sn_db"
+    suffix = "_sn_db",
+    hasMbist = hasMbist
   ))
   when(io.writeData.valid) {
     maskRam.write(io.writeData.bits.TxnID(log2Ceil(bufferSize) - 1, 0), io.writeData.bits.BE)

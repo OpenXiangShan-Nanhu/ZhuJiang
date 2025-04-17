@@ -23,7 +23,7 @@ class HwaCollectorEntry(implicit p:Parameters) extends ZJBundle {
   val id = UInt(p(HardwareAssertionKey).maxInfoBits.W)
 }
 
-class HardwareAssertionDevice(implicit p:Parameters) extends Module {
+class HardwareAssertionDevice(implicit p:Parameters) extends ZJModule {
   private val hwaP = p(HardwareAssertionKey)
   private val axiP = new AxiLiteParams(addrBits = log2Ceil(hwaP.hwaDevDepth) + 2, idBits = 8, dataBits = 32, attr = "debug")
   val io = IO(new Bundle {
@@ -39,7 +39,8 @@ class HardwareAssertionDevice(implicit p:Parameters) extends Module {
     way = 1,
     shouldReset = true,
     latency = 2,
-    suffix  = "_hwa"
+    suffix  = "_hwa",
+    hasMbist = hasMbist
   ))
   private val arb = Module(new Arbiter(new SpSramReq(UInt(entryBits.W), hwaP.hwaDevDepth, 1), 2))
   private val rq = FastQueue(io.axi.ar)

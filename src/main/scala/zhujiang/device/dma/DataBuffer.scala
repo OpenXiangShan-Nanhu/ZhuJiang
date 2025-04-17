@@ -71,7 +71,8 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
     gen = UInt(dw.W),
     set = bufferSize,
     bypassWrite = true,
-    suffix = "_rni_db"
+    suffix = "_rni_db",
+    hasMbist = hasMbist
   ))
 
   private val wrRamQ = Module(new Queue(new writeRdDataBuffer(bufferSize), entries = 2, flow = false, pipe = false))
@@ -157,7 +158,7 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
     gen = UInt(8.W),
     set = bufferSize,
     way = bew,
-    suffix = "_rni_db"
+    hasMbist = hasMbist
   ))
 
   private val maskRam = RegInit(0.U.asTypeOf(Vec(bufferSize, UInt(bew.W))))
