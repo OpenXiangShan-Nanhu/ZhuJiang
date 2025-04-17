@@ -235,7 +235,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   reqTag_d2   := req_d2.Addr.tag
   reqSet_d2   := req_d2.Addr.set
 
-  // Get Hit Ve
+  // Get Hit Vec
   tagHitVec_d2      := addrVec_d2.map(_.Addr.tag === reqTag_d2)
   metaValVec_d2     := metaResp_d2.map(_.map(_.isValid).reduce(_ | _))
   val hasInvalid    = metaValVec_d2.map(!_).reduce(_ | _)
@@ -243,7 +243,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   val hit_d2        = hitVec_d2.reduce(_ | _)
   readHit_d2        := shiftReg.read(0) & hit_d2
   HardwareAssertion.withEn(!hit_d2, shiftReg.updTagMeta_d2)
-  HardwareAssertion(PopCount(hitVec_d2) <= 1.U)
+  HardwareAssertion.withEn(PopCount(hitVec_d2) <= 1.U, shiftReg.read(0))
 
   // Select Way
   useWayVec_d2    := lockTable(req_d2.pos.set).map(lock => Mux(lock.valid & lock.set === reqSet_d2, UIntToOH(lock.way), 0.U)).reduce(_ | _)
@@ -258,7 +258,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     selIsUsing    -> unuseWay_d2,
     true.B        -> replWay_d2
   ))
-  HardwareAssertion.withEn(PopCount(useWayVec_d2) < param.ways.U, !hit_d2)
+  HardwareAssertion.withEn(PopCount(useWayVec_d2) < param.ways.U, !hit_d2 & shiftReg.read(0))
 
   // Output Directory Resp
   selWayOH_d2          := UIntToOH(selWay_d2)
