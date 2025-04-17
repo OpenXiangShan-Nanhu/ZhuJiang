@@ -11,6 +11,7 @@ import xs.utils.debug._
 import dongjiang.directory.{DirEntry, DirMsg, HasPackDirMsg}
 import dongjiang.frontend._
 import dongjiang.frontend.decode._
+import zhujiang.chi.ReqOpcode._
 import zhujiang.chi.RspOpcode._
 import dongjiang.backend._
 import dongjiang.backend.wrioratm.State._
@@ -93,13 +94,14 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   io.txReq.valid  := cmVec_sReq.reduce(_ | _)
   // get addr
   io.getAddr.llcTxnID   := task_sReq.llcTxnID
+  val replOp            = Mux(io.getAddr.result.Addr.isToLAN(io.config.ci), WriteNoSnpFull, Mux(task_sReq.cbResp(2), WriteBackFull, WriteEvictOrEvict)) // TODO: adapt to WriteEvictOrEvict in WOA
   // bits
   io.txReq.bits         := DontCare
   io.txReq.bits.MemAttr := task_sReq.chi.memAttr.asUInt
   io.txReq.bits.Order   := Order.None
   io.txReq.bits.Addr    := io.getAddr.result.addr
-  io.txReq.bits.Size    := task_sReq.chi.getSize // TODO
-  io.txReq.bits.Opcode  := task_sReq.chi.opcode
+  io.txReq.bits.Size    := task_sReq.chi.getSize
+  io.txReq.bits.Opcode  := Mux(task_sReq.fromRepl, replOp, task_sReq.chi.opcode)
   io.txReq.bits.TxnID   := task_sReq.llcTxnID.get
   io.txReq.bits.SrcID   := task_sReq.chi.getNoC(io.config.ci)
   // save ds
