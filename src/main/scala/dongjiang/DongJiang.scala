@@ -15,6 +15,7 @@ import xijiang._
 import xijiang.router.base.DeviceIcnBundle
 import zhujiang.chi.FlitHelper.connIcn
 import dongjiang.frontend.decode.Decode._
+import zhujiang.ZJParametersKey
 
 
 class DJConfigIO(implicit p: Parameters) extends DJBundle {
@@ -212,4 +213,81 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    */
   dataBlock.io.reqDB <> fastArb(Seq(backend.io.reqDB) ++ frontends.map(_.io.reqDB_s1))
   dataBlock.io.task  <> fastArb(Seq(backend.io.dataTask) ++ frontends.map(_.io.fastData_s3))
+}
+
+// Top module for unit test only
+class DongJiangTop()(implicit p: Parameters) extends Module {
+  val hnfNode = Node(nodeType = NodeType.HF)
+  val rnfNode = Node(nodeType = NodeType.RF)
+  val snNode = Node(nodeType = NodeType.S)
+  val io = IO(new Bundle {
+    val rnf = Flipped(new DeviceIcnBundle(rnfNode))
+    val sn = Flipped(new DeviceIcnBundle(snNode))
+  })
+
+  io.rnf <> DontCare
+  io.sn <> DontCare
+  dontTouch(io)
+
+  val zjParams = p(ZJParametersKey)
+  val rnfNodes = zjParams.island.filter(_.nodeType == NodeType.CC)
+  val hnfNodes = zjParams.island.filter(_.nodeType == NodeType.HF)
+  val rnfIdSeq = rnfNodes.map(_.nodeId)
+  val hnfIdSeq = hnfNodes.map(_.nodeId)
+
+  def isToHNF(tgtID: UInt) = {
+    VecInit(hnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).asUInt.orR
+  }
+
+  def isToRNF(tgtID: UInt) = {
+    VecInit(rnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits)).asUInt.orR
+  }
+
+  val dj = Module(new DongJiang(hnfNode))
+  dj.io <> DontCare
+  
+  dj.io.lan.rx.req.get <> io.rnf.tx.req.get
+  dj.io.lan.rx.resp.get <> io.rnf.tx.resp.get
+  dj.io.lan.rx.data.get <> io.rnf.tx.data.get
+  val rnfTxDatFlit = io.rnf.tx.data.get.bits.asTypeOf(new DataFlit)
+  val snTxDatFlit = io.sn.tx.data.get.bits.asTypeOf(new DataFlit)
+  val djRxDat = dj.io.lan.rx.data.get
+  val rnfTxDatToHNF = io.rnf.tx.data.get.valid && isToHNF(rnfTxDatFlit.TgtID)
+  val snTxDatToHNF = io.sn.tx.data.get.valid && isToHNF(snTxDatFlit.TgtID)
+  dontTouch(rnfTxDatToHNF)
+  dontTouch(snTxDatToHNF)
+  djRxDat.valid := rnfTxDatToHNF || snTxDatToHNF
+  djRxDat.bits := Mux(rnfTxDatToHNF, io.rnf.tx.data.get.bits, io.sn.tx.data.get.bits)
+  io.rnf.tx.data.get.ready := djRxDat.ready
+  io.sn.tx.data.get.ready := djRxDat.ready && !rnfTxDatToHNF
+
+  io.rnf.rx.resp.get <> dj.io.lan.tx.resp.get
+  io.rnf.rx.data.get <> io.sn.tx.data.get
+  val djTxDatFlit = dj.io.lan.tx.data.get.bits.asTypeOf(new DataFlit)
+  val rnfRxDat = io.rnf.rx.data.get
+  val djTxDatToRNF = dj.io.lan.tx.data.get.valid && isToRNF(djTxDatFlit.TgtID)
+  val snTxDatToRNF = io.sn.tx.data.get.valid && isToRNF(snTxDatFlit.TgtID)
+  dontTouch(djTxDatToRNF)
+  dontTouch(snTxDatToRNF)
+  rnfRxDat.valid := djTxDatToRNF || snTxDatToRNF
+  rnfRxDat.bits := Mux(djTxDatToRNF, dj.io.lan.tx.data.get.bits, io.sn.tx.data.get.bits)
+  dj.io.lan.tx.data.get.ready := rnfRxDat.ready
+  io.sn.tx.data.get.ready := rnfRxDat.ready && !djTxDatToRNF
+
+  io.rnf.rx.snoop.get <> dj.io.lan.tx.snoop.get
+
+  io.sn.rx.req.get <> dj.io.lan.tx.req.get
+  io.sn.rx.data.get <> dj.io.lan.tx.data.get
+
+  val rnfTxRspFlit = io.rnf.tx.resp.get.bits.asTypeOf(new RespFlit)
+  val snTxRspFlit = io.sn.tx.resp.get.bits.asTypeOf(new RespFlit)
+  val djRxRsp = dj.io.lan.rx.resp.get
+  val rnfTxRspToHNF = io.rnf.tx.resp.get.valid && isToHNF(rnfTxRspFlit.TgtID)
+  val snTxRspToHNF = io.sn.tx.resp.get.valid && isToHNF(snTxRspFlit.TgtID)
+  djRxRsp.valid := rnfTxRspToHNF || snTxRspToHNF
+  djRxRsp.bits := Mux(rnfTxRspToHNF, io.rnf.tx.resp.get.bits, io.sn.tx.resp.get.bits)
+  io.rnf.tx.resp.get.ready := djRxRsp.ready
+  io.sn.tx.resp.get.ready := djRxRsp.ready && !rnfTxRspToHNF
+
+  dontTouch(dj.io)
 }

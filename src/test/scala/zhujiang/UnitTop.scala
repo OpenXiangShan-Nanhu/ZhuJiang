@@ -18,7 +18,7 @@ import zhujiang.device.home.HomeWrapper
 import zhujiang.device.tlu2chi.TLUL2ChiBridge
 import zhujiang.tilelink.TilelinkParams
 import zhujiang.{ZJParameters, ZJParametersKey}
-import dongjiang.{DJParam, DongJiang}
+import dongjiang.{DJParam, DongJiang, DongJiangTop}
 import xs.utils.debug.{HardwareAssertionKey, HwaParams}
 
 object UnitTop {
@@ -119,9 +119,8 @@ object HomeTop extends App {
 
 object DongJiangTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
-  val hnfNode = Node(nodeType = NodeType.HF)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new DongJiang(hnfNode)(config.alterPartial({
+    ChiselGeneratorAnnotation(() => new DongJiangTop()(config.alterPartial({
       case HardwareAssertionKey => config(HardwareAssertionKey).copy(enable = false)
       case ZJParametersKey => config(ZJParametersKey).copy(
         djParamsOpt = Some(DJParam(
