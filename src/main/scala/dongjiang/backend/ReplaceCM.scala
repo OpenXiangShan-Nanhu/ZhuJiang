@@ -131,16 +131,16 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   val needReplLLC = io.respDir.llc.valid & io.respDir.llc.bits.metaVec.head.isValid
   HardwareAssertion.withEn(io.respDir.sf.valid ^ io.respDir.llc.valid, cm_get)
   HardwareAssertion.withEn(cm_get, io.respDir.sf.valid | io.respDir.llc.valid)
-  // updPosTag
+  // updPosTag when resp need repl
   io.updPosTag.valid        := cm_get & (needReplSF | needReplLLC)
   io.updPosTag.bits.dirBank := msg_get.llcTxnID.dirBank
   io.updPosTag.bits.pos     := msg_get.llcTxnID.pos
   io.updPosTag.bits.addr    := addr_get
-  // lock
-  io.lockPosSet.valid       := io.writeDir.llc.fire | io.writeDir.sf.fire
+  // lock when write
+  io.lockPosSet.valid       := waitPipe.io.enq.fire
   io.lockPosSet.bits        := msg_wri.llcTxnID
-  // unlock
-  io.unlockPosSet.valid     := cm_get
+  // unlock when get resp
+  io.unlockPosSet.valid     := waitPipe.io.deq.fire
   io.unlockPosSet.bits      := msg_get.llcTxnID
 
 
