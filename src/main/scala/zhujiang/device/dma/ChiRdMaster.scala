@@ -126,7 +126,7 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
       when(rdDBQueue.io.enq.fire & (rdDBQueue.io.enq.bits.arID === e.arId) & (e.nid =/= 0.U) & !(headPtr.value === i.U && io.axiAr.fire)){
         e.nid := e.nid - 1.U
       }
-      when(dataTxnid === i.U & io.wrDB.fire & (e.double | !fromDCT(io.chiDat.bits.SrcID))){
+      when(dataTxnid === i.U & io.chiDat.fire){
         e.haveWrDB1 := Mux(io.chiDat.bits.DataID === 0.U, true.B, e.haveWrDB1)
         e.haveWrDB2 := Mux(io.chiDat.bits.DataID === 2.U, true.B, e.haveWrDB2)
       }
