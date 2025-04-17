@@ -64,7 +64,10 @@ class TaskBuffer(sort: Boolean, nrEntry: Int)(implicit p: Parameters) extends DJ
   val freeId          = PriorityEncoder(freeVec)
   val freeNum         = PopCount(freeVec)
   io.chiTaskIn.ready  := freeVec.reduce(_ | _)
-  taskEntrys(freeId)  := io.chiTaskIn.bits
+  when(io.chiTaskIn.fire) {
+    taskEntrys(freeId)  := io.chiTaskIn.bits
+  }
+  dontTouch(freeId)
 
   /*
    * Count NID
