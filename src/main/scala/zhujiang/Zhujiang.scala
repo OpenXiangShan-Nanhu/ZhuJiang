@@ -59,82 +59,9 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     val dev = Module(new SocketIcnSide(icn.node))
     dev.io.dev <> icn
     dev.reset := placeResetGen(pfxStr, icn)
-    dev.suggestName(s"${pfxStr}_socket")
+    dev.suggestName(icn.node.deviceName)
     dev
   }
-
-  private val memDatIcns = ring.icnSns.get
-  private val (memDevSeq, memNameSeq) = memDatIcns.map({ icn =>
-    val nidStr = icn.node.nodeId.toHexString
-    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
-    val bridge = Module(new AxiBridge(icn.node.copy(attr = attrStr)))
-    val nameStr = s"chi_to_axi_0x$nidStr"
-    bridge.reset := placeResetGen(nameStr, icn)
-    bridge.icn <> icn
-    (bridge, nameStr)
-  }).unzip
-  memDevSeq.zip(memNameSeq).foreach({ case (a, b) => a.suggestName(b) })
-  private val memAxiPorts = memDevSeq.map(d => {
-    val buf = Module(new AxiBuffer(d.axi.params))
-    buf.reset := d.reset
-    buf.io.in <> d.axi
-    buf.suggestName(s"m_axi_${d.axi.params.attr}_buf")
-    buf.io.out
-  })
-
-  private val cfgIcnSeq = ring.icnHis.get
-  require(cfgIcnSeq.nonEmpty)
-  require(cfgIcnSeq.count(_.node.defaultHni) == 1)
-  private val (cfgDevSeq, cfgNameSeq) = cfgIcnSeq.map({ icn =>
-    val nidStr = icn.node.nodeId.toHexString
-    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
-    val nameStr = s"chi_to_axi_lite_0x$nidStr"
-    val cfg = Module(new AxiLiteBridge(icn.node.copy(attr = attrStr), 64, 3))
-    cfg.icn <> icn
-    cfg.reset := placeResetGen(nameStr, icn)
-    cfg.nodeId := icn.node.nodeId.U
-    (cfg, nameStr)
-  }).unzip
-  cfgDevSeq.zip(cfgNameSeq).foreach({ case (a, b) => a.suggestName(b) })
-  private val cfgAxiPorts = cfgDevSeq.map(d => {
-    if(d.axi.params.attr.contains("main")) {
-      d.axi
-    } else {
-      val buf = Module(new AxiBuffer(d.axi.params))
-      buf.reset := d.reset
-      buf.io.in <> d.axi
-      buf.suggestName(s"m_axi_${d.axi.params.attr}_buf")
-      buf.io.out
-    }
-  })
-
-  private val dmaIcnSeq = ring.icnRis.get
-  require(dmaIcnSeq.nonEmpty)
-  private val (dmaDevSeq, dmaNameSeq) = dmaIcnSeq.zipWithIndex.map({ case (icn, idx) =>
-    val nidStr = icn.node.nodeId.toHexString
-    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
-    val nameStr = s"axi_to_chi_0x$nidStr"
-    val dma = Module(new Axi2Chi(icn.node.copy(attr = attrStr)))
-    dma.icn <> icn
-    dma.reset := placeResetGen(nameStr, icn)
-    (dma, nameStr)
-  }).unzip
-  dmaDevSeq.zip(dmaNameSeq).foreach({ case (a, b) => a.suggestName(b) })
-  private val dmaAxiPorts = dmaDevSeq.map(d => {
-    if(d.axi.params.attr.contains("main")) {
-      d.axi
-    } else {
-      val buf = Module(new AxiBuffer(d.axi.params))
-      buf.reset := d.reset
-      d.axi <> buf.io.out
-      buf.suggestName(s"s_axi_${d.axi.params.attr}_buf")
-      buf.io.in
-    }
-  })
-
-  require(ring.icnCcs.get.nonEmpty)
-  private val ccnIcnSeq = ring.icnCcs.get
-  private val ccnSocketSeq = ccnIcnSeq.map(icn => placeSocket("cc", icn, Some(icn.node.domainId)))
 
   require(ring.icnHfs.get.nonEmpty)
   private val hfIcnSeq = ring.icnHfs.get.sortBy(_.node.hfpId).groupBy(_.node.bankId).toSeq
@@ -142,6 +69,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   private val hfDef = Definition(new HomeWrapper(hfIcnSeq.head._2.map(_.node), nrHfFrnd)) // TODO: There's a risk here.
   private val hfDevSeq = Seq.tabulate(hfIcnSeq.size)(_ => Instance(hfDef))
   for(i <- hfIcnSeq.indices) {
+    val devName = hfIcnSeq(i)._2.head.node.deviceName
     val bankId = hfIcnSeq(i)._1
     val icnSeq = hfIcnSeq(i)._2
     for(j <- icnSeq.indices) {
@@ -155,11 +83,81 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     }
     hfDevSeq(i).io.ci := ring.io_ci
     hfDevSeq(i).io.bank := bankId.U
-    hfDevSeq(i).reset := placeResetGen(s"hnf_$bankId", hfIcnSeq(i)._2.head)
+    hfDevSeq(i).reset := placeResetGen(devName, hfIcnSeq(i)._2.head)
     hfDevSeq(i).clock := clock
     hfDevSeq(i).io.dfx := dft
-    hfDevSeq(i).suggestName(s"hnf_$bankId")
+    hfDevSeq(i).suggestName(devName)
   }
+
+  private val memDatIcns = ring.icnSns.get
+  private val memDevSeq = memDatIcns.map({ icn =>
+    val nidStr = icn.node.nodeId.toHexString
+    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
+    val bridge = Module(new AxiBridge(icn.node.copy(attr = attrStr)))
+    bridge.reset := placeResetGen(icn.node.deviceName, icn)
+    bridge.icn <> icn
+    bridge
+  })
+  private val memAxiPorts = memDevSeq.map(d => {
+    d.suggestName(d.icn.node.deviceName)
+    val buf = Module(new AxiBuffer(d.axi.params))
+    buf.reset := d.reset
+    buf.io.in <> d.axi
+    buf.suggestName(d.icn.node.deviceName + "_buf")
+    buf.io.out
+  })
+
+  private val cfgIcnSeq = ring.icnHis.get
+  require(cfgIcnSeq.nonEmpty)
+  require(cfgIcnSeq.count(_.node.defaultHni) == 1)
+  private val cfgDevSeq = cfgIcnSeq.map({ icn =>
+    val nidStr = icn.node.nodeId.toHexString
+    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
+    val cfg = Module(new AxiLiteBridge(icn.node.copy(attr = attrStr), 64, 3))
+    cfg.icn <> icn
+    cfg.reset := placeResetGen(icn.node.deviceName, icn)
+    cfg.nodeId := icn.node.nodeId.U
+    cfg
+  })
+  private val cfgAxiPorts = cfgDevSeq.map(d => {
+    d.suggestName(d.icn.node.deviceName)
+    if(d.axi.params.attr.contains("main")) {
+      d.axi
+    } else {
+      val buf = Module(new AxiBuffer(d.axi.params))
+      buf.reset := d.reset
+      buf.io.in <> d.axi
+      buf.suggestName(d.icn.node.deviceName + "_buf")
+      buf.io.out
+    }
+  })
+
+  private val dmaIcnSeq = ring.icnRis.get
+  require(dmaIcnSeq.nonEmpty)
+  private val dmaDevSeq = dmaIcnSeq.zipWithIndex.map({ case (icn, idx) =>
+    val nidStr = icn.node.nodeId.toHexString
+    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
+    val dma = Module(new Axi2Chi(icn.node.copy(attr = attrStr)))
+    dma.icn <> icn
+    dma.reset := placeResetGen(icn.node.deviceName, icn)
+    dma
+  })
+  private val dmaAxiPorts = dmaDevSeq.map(d => {
+    d.suggestName(d.icn.node.deviceName)
+    if(d.axi.params.attr.contains("main")) {
+      d.axi
+    } else {
+      val buf = Module(new AxiBuffer(d.axi.params))
+      buf.reset := d.reset
+      d.axi <> buf.io.out
+      buf.suggestName(d.icn.node.deviceName + "_buf")
+      buf.io.in
+    }
+  })
+
+  require(ring.icnCcs.get.nonEmpty)
+  private val ccnIcnSeq = ring.icnCcs.get
+  private val ccnSocketSeq = ccnIcnSeq.map(icn => placeSocket("cc", icn, Some(icn.node.domainId)))
 
   require(ring.icnMns.get.nonEmpty)
   private val mnIcn = ring.icnMns.get.head
@@ -169,6 +167,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   mnDev.io.icn.resetState.get := mnIcn.resetState.get
   mnDev.clock := clock
   mnDev.reset := reset
+  mnDev.suggestName(mnIcn.node.deviceName)
 
   val io = IO(new Bundle {
     val ci = Input(UInt(ciIdBits.W))
@@ -209,6 +208,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   } else {
     None
   }
+  ZhujiangGlobal.addRing(desiredName, this)
 }
 
 trait NocIOHelper {

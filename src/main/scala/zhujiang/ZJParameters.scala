@@ -18,6 +18,31 @@ case object ZJParametersKey extends Field[ZJParameters]
 
 object ZhujiangGlobal {
   private val islandPool = mutable.Map[String, Seq[Node]]()
+  private val islandPtrMap = mutable.Map[String, RawModule]()
+
+  def addRing(tag:String, island:RawModule):Unit = {
+    if(!islandPtrMap.contains(tag)) {
+      islandPtrMap.addOne(tag, island)
+    }
+  }
+
+  private def decorate(key:String, body:Seq[String]): Seq[String] = {
+    s"$key = {\n" +: body.map(b => s"  $b") :+ "},\n"
+  }
+
+  def getRingDesc(name:String):Seq[String] = {
+    val path = islandPtrMap(name).pathName
+    val snf = islandPool(name).filter(_.nodeType == NodeType.S)
+    val rni = islandPool(name).filter(_.nodeType == NodeType.RI)
+    val hnf = islandPool(name).filter(_.nodeType == NodeType.HF).groupBy(_.bankId).toSeq
+    val snfStr = snf.map(n => s"{\"$path.${n.deviceName}\", {0x${n.nodeId.toHexString}}},\n")
+    val rniStr = rni.map(n => s"{\"$path.${n.deviceName}\", {0x${n.nodeId.toHexString}}},\n")
+    val hnfStrSeq = hnf.map({ case(_, ns) =>
+      val idStr = ns.map(n => s"0x${n.nodeId.toHexString}, ").reduce(_ + _)
+      s"{\"$path.${ns.head.deviceName}\", {$idStr}},\n"
+    })
+    decorate("snf", snfStr) ++ decorate("rni", rniStr) ++ decorate("hnf", hnfStrSeq)
+  }
 
   def getIsland(nidBits: Int, aidBits: Int, lns: Seq[NodeParam], csb: Int, lanAddrBits:Int, tag: String): Seq[Node] = {
     if(!islandPool.contains(tag)) islandPool.addOne(tag -> getRing(lns, csb, nidBits, aidBits, lanAddrBits))

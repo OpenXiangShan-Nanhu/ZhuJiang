@@ -85,6 +85,21 @@ case class Node(
     s"ring_stop_${nstr}_id_0x${nodeId.toHexString}"
   }
 
+  lazy val deviceName:String = {
+    val nidStr = s"0x${nodeId.toHexString}"
+    val nstr = nodeType match {
+      case NodeType.CC => s"ccn_${domainId}_$nidStr"
+      case NodeType.RF => s"core_${domainId}_$nidStr"
+      case NodeType.RI => s"axi_to_chi_$nidStr"
+      case NodeType.HF => s"hnf_$bankId"
+      case NodeType.HI => s"chi_to_axi_lite_$nidStr"
+      case NodeType.M =>  s"mnDev"
+      case NodeType.S =>  s"chi_to_axi_$nidStr"
+      case _ =>           s"pip_${nodeId.toHexString}"
+    }
+    nstr
+  }
+
   private def icnStrGen(pfx: String, body: String) = s"$pfx${body}_id_${nodeId.toHexString}"
   private def routerStrGen(body: String) = s"Router${body}_0x${nodeId.toHexString}"
   lazy val (routerStr, icnStr, nodeStr): (String, String, String) = nodeType match {
