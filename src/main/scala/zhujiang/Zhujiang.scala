@@ -188,7 +188,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   ring.io_ci := io.ci
   io.intr.foreach(_ := mnDev.io.intr.get)
 
-  private val mbistPl = MbistPipeline.PlaceMbistPipeline(Int.MaxValue, "MbistPipelineSoCMisc", hasMbist)
+  private val mbistPl = MbistPipeline.PlaceMbistPipeline(Int.MaxValue, "MbistPipelineNoCMisc", hasMbist)
   private val mbistIntfHome = if (hasMbist) {
     val brc = SramHelper.genBroadCastBundleTop()
     brc := io.dft.func
@@ -196,11 +196,11 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     val intf = Some(Module(new MbistInterface(
       params = Seq(params),
       ids = Seq(mbistPl.get.childrenIds),
-      name = s"MbistIntfSoCMisc",
+      name = s"MbistIntfNoCMisc",
       pipelineNum = 1
     )))
     intf.get.toPipeline.head <> mbistPl.get.mbist
-    mbistPl.get.registerCSV(intf.get.info, "MbistPipelineSoCMisc")
+    mbistPl.get.registerCSV(intf.get.info, "MbistNoCMisc")
     intf.get.mbist := DontCare
     dontTouch(intf.get.mbist)
     //TODO: add mbist controller connections here
