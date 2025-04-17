@@ -102,5 +102,5 @@ object Write_LAN {
 
 
   // writeNoSnpPtl ++ writeUniquePtl ++ writeBackFull ++ writeCleanFull ++ writeEvictOrEvict
-  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(writeNoSnpPtl_ewa, writeNoSnpPtl_noEwa, writeEvictOrEvict, writeBackFull)
+  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(writeNoSnpPtl_ewa, writeNoSnpPtl_noEwa, writeUniquePtl, writeEvictOrEvict, writeBackFull)
 }
