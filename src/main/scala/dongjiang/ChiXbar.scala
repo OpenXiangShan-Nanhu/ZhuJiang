@@ -123,6 +123,12 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     io.txDat.outVec.foreach(_.bits := io.txDat.in.bits)
   }
 
+  // clear NocType in SrcID
+  io.txReq.outVec.foreach(_.bits.SrcID := 0.U)
+  io.txSnp.outVec.foreach(_.bits.SrcID := 0.U)
+  io.txRsp.outVec.foreach(_.bits.SrcID := 0.U)
+  io.txDat.outVec.foreach(_.bits.SrcID := 0.U)
+
   // Set CBusy
   io.txRsp.outVec.foreach(_.bits.CBusy := io.cBusy)
   io.txDat.outVec.foreach(_.bits.CBusy := io.cBusy)
