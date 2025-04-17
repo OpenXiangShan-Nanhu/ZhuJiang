@@ -9,7 +9,7 @@ import zhujiang.chi._
 import zhujiang.axi._
 import xs.utils.sram._
 import xijiang._
-import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
+import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, UIntToMask}
 
 
 class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
@@ -44,6 +44,7 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
  */
   //AxiWr to ChiWr entrys
   private val chiEntrys = Reg(Vec(rni.chiEntrySize, new CHIWEntry))
+  private val chiEntriesNext = WireInit(chiEntrys)
   //Pointer
   private val headPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val tailPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
@@ -76,6 +77,11 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   private val txDatPtrAdd  = io.rdDB.fire & ((txDatBeat === 1.U) | (txDatBeat === 0.U) & !chiEntrys(txDatPtr.value).double)
   private val rxDatBeatAdd = (chiEntrys(rxDatPtr.value).double & (rxDatBeat === 0.U) || rxDatBeat === 1.U) & io.wrDB.fire
   private val txDatBeatAdd = (chiEntrys(txDatPtr.value).double & (txDatBeat === 0.U) || txDatBeat === 1.U) & io.rdDB.fire
+
+  private val headPtrMask = UIntToMask(headPtr.value, rni.chiEntrySize)
+  private val tailPtrMask = UIntToMask(tailPtr.value, rni.chiEntrySize)
+  private val headXorTail = headPtrMask ^ tailPtrMask
+  private val validVec   = Mux(headPtr.flag ^ tailPtr.flag, ~headXorTail, headXorTail)
   
 /* 
  * Pointer logic
@@ -96,11 +102,15 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
 /* 
  * Assign logic
  */
-  chiEntrys.zipWithIndex.foreach{
+  for(i <- chiEntriesNext.indices) {
+    when(io.axiAw.fire & (headPtr.value === i.U)) {
+      chiEntrys(i) := chiEntrys(i).awMesInit(io.axiAw.bits)
+    }.elsewhen(validVec(i)) {
+      chiEntrys(i) := chiEntriesNext(i)
+    }
+  }
+  chiEntriesNext.zipWithIndex.foreach{
     case(e, i) =>
-      when(io.axiAw.fire & (headPtr.value === i.U)){
-        e.awMesInit(io.axiAw.bits)
-      }
       when(io.reqDB.fire & reqDBPtr.value === i.U){
         e.dbSite1  := io.respDB.bits.buf(0)
         e.dbSite2  := io.respDB.bits.buf(1)
