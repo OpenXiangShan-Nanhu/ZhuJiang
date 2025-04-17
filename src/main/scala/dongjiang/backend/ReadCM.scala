@@ -153,7 +153,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
       val allocHit    = io.alloc.fire   & i.U === cmId_rec
       val reqDBHit    = io.reqDB.fire   & i.U === cmId_reqDB
       val sendReqHit  = io.txReq.fire   & i.U === cmId_sReq
-      val recDataHit  = io.rxDat.fire   & msg.task.llcTxnID.get === io.rxDat.bits.TxnID & io.rxDat.bits.Opcode === CompData
+      val recDataHit  = io.rxDat.fire   & cm.isValid & msg.task.llcTxnID.get === io.rxDat.bits.TxnID & io.rxDat.bits.Opcode === CompData
       val sendAckHit  = io.txRsp.fire   & i.U === cmId_sAck
       val respCmtHit  = io.respCmt.fire & i.U === cmId_resp
 
