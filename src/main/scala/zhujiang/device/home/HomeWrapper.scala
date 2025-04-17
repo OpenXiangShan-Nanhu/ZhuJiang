@@ -8,7 +8,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.router.base.DeviceIcnBundle
 import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
-import xs.utils.debug.{HardwareAssertion, HardwareAssertionKey}
+import xs.utils.debug.{HAssert, HardwareAssertion, HardwareAssertionKey}
 import xs.utils.mbist.{MbistInterface, MbistPipeline}
 import xs.utils.sram.SramHelper
 import zhujiang.chi.FlitHelper.connIcn
@@ -36,13 +36,16 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
   private val ckCtrl = RegInit(true.B)
   private val ckenCnt = RegInit(zjParams.hnxCgThreshold.U(log2Ceil(zjParams.hnxCgThreshold + 1).W))
   private val hnx = Module(new DongJiang(node))
-  private val lanPipes = Seq.tabulate(nodes.length, zjParams.hnxPipelineDepth + 2) { case(i, j) =>
+  private val lanPipes = Seq.tabulate(nodes.length, zjParams.hnxPipelineDepth + 1) { case(i, j) =>
     val pipe = Module(new ChiBuffer(nodes(i)))
     pipe.suggestName(s"lan_${i}_pipe_$j")
   }
-  private val inbound = lanPipes.map({ ps =>
-    val icn = ps.head.io.icn
-    Cat(icn.node.ejects.map(chn => icn.tx.getBundle(chn).get.valid)).orR
+  private val inbound = io.lans.map({ lan =>
+    val rxvs = lan.rx.elements.values.map {
+      case chn:DecoupledIO[Data] => chn.valid
+      case _ => false.B
+    }
+    RegNext(Cat(rxvs.toSeq).orR)
   }).reduce(_ | _)
 
   cg.io.CK := clock
@@ -58,7 +61,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
   when(inbound) {
     ckCtrl := true.B
   }.elsewhen(ckCtrl) {
-    ckCtrl := Mux(ckenCnt.orR, true.B, RegNext(hnx.io.working, false.B))
+    ckCtrl := Mux(ckenCnt.orR, true.B, RegNext(hnx.io.working))
   }
   when(inbound) {
     ckenCnt := zjParams.hnxCgThreshold.U
@@ -94,7 +97,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
       val addr = txBd.bits.asTypeOf(new HReqFlit).Addr.asTypeOf(new ReqAddrBundle)
       val memSelOH = mems.map(m => m.addrCheck(addr, io.ci))
       val memIds = mems.map(_.nodeId.U(niw.W))
-      when(txBd.valid) { assert(PopCount(memSelOH) === 1.U, "addr: 0x%x", addr.asUInt) }
+      when(txBd.valid) { HAssert(PopCount(memSelOH) === 1.U, cf"ERQ addr not match! @ 0x${addr.asUInt}%x") }
       Mux1H(memSelOH, memIds)
     } else {
       txBd.bits.asTypeOf(new RingFlit(txBd.bits.getWidth)).TgtID
@@ -129,14 +132,14 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
     }
     txBd.ready := Mux1H(friendsHitVec, txBdSeq.map(_.ready))
     when(txBd.valid) {
-      assert(PopCount(friendsHitVec) === 1.U)
+      HAssert(PopCount(friendsHitVec) === 1.U, cf"$chn port friends not match!")
     }
   }
 
   hnx.io.lan.tx.debug.foreach(_ := DontCare)
 
   private val mbistPl = MbistPipeline.PlaceMbistPipeline(Int.MaxValue, "Home", hasMbist)
-  private val homeMbistIntf = if (hasMbist) {
+  private val mbistIntfHome = if (hasMbist) {
     val brc = SramHelper.genBroadCastBundleTop()
     brc := io.dfx.func
     val params = mbistPl.get.nodeParams

@@ -174,7 +174,7 @@ case class ZJParameters(
   cacheWays: Int = 16,
   snoopFilterWays: Int = 16,
   hnxOutstanding: Int = 64 * 4,
-  hnxPipelineDepth: Int = 1,
+  hnxPipelineDepth: Int = 0,
   splitFlit:Boolean = true,
   r2rPos: Seq[Int] = Seq(),
   nodeParams: Seq[NodeParam] = Seq(),
