@@ -9,7 +9,7 @@ import zhujiang.chi._
 import zhujiang.axi._
 import xs.utils.sram._
 import xijiang._
-import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, UIntToMask}
+import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
 import dongjiang.utils.StepRREncoder
 
 class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
@@ -43,7 +43,6 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
  * Reg/Wire Define
  */
   private val chiEntrys   = Reg(Vec(rni.chiEntrySize, new CHIREntry(dmt = rni.readDMT)))
-  private val chiEntriesNext = WireInit(chiEntrys)
   // Pointer
   private val headPtr     = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val tailPtr     = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
@@ -63,10 +62,7 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   private val selIdx     = WireInit(0.U(log2Ceil(rni.chiEntrySize).W))
   private val rdDBQueue  = Module(new Queue(gen = new RdDBEntry, entries = 2, flow = false, pipe = true))
   // Vec Define
-  private val headPtrMask = UIntToMask(headPtr.value, rni.chiEntrySize)
-  private val tailPtrMask = UIntToMask(tailPtr.value, rni.chiEntrySize)
-  private val headXorTail = headPtrMask ^ tailPtrMask
-  private val validVec   = Mux(headPtr.flag ^ tailPtr.flag, ~headXorTail, headXorTail)
+  private val validVec   = WireInit(VecInit.fill(rni.chiEntrySize){false.B})
   private val blockVec   = WireInit(VecInit.fill(rni.chiEntrySize){false.B})
   private val sendDBVec  = WireInit(VecInit.fill(rni.chiEntrySize){false.B})
 
@@ -95,28 +91,30 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   }.elsewhen(io.rdDB.fire & io.rdDB.bits.last){
     txDatPtr := 0.U
   }
+  for(idx <- validVec.indices){
+    when(headPtr.flag === tailPtr.flag){
+      validVec(idx) := Mux((tailPtr.value <= idx.U) & (headPtr.value > idx.U), true.B, false.B)
+    }.otherwise {
+      validVec(idx) := Mux((idx.U < headPtr.value) || (idx.U >= tailPtr.value), true.B, false.B)
+    }
+  }
   private val sameVec    = chiEntrys.zipWithIndex.map{ case(c, i) => (c.arId === io.axiAr.bits.user) & !c.sendComp}
   private val zeroNid    = chiEntrys.map(c => c.nid === 0.U & !c.sendComp & c.rcvDatComp)
 
 
-  blockVec       := validVec.asBools.zip(sameVec).map{case(i, j) => i & j}
-  sendDBVec      := validVec.asBools.zip(zeroNid).map{case(i, j) => i & j}
+  blockVec       := validVec.zip(sameVec).map{case(i, j) => i & j}
+  sendDBVec      := validVec.zip(zeroNid).map{case(i, j) => i & j}
   selIdx         := StepRREncoder(sendDBVec, rdDBQueue.io.enq.ready)
 
 /* 
  * CHI Entrys Assign Logic
  */
-  for(i <- chiEntriesNext.indices) {
-    when(headPtr.value === i.U & io.axiAr.fire) {
-      chiEntrys(i) := chiEntrys(i).ARMesInit(io.axiAr.bits)
-      chiEntrys(i).nid := PopCount(blockVec) - (rdDBQueue.io.enq.fire & (rdDBQueue.io.enq.bits.arID === io.axiAr.bits.user)).asUInt
-    }.elsewhen(validVec(i)) {
-      chiEntrys(i) := chiEntriesNext(i)
-    }
-  }
-  chiEntriesNext.zipWithIndex.foreach{
+  chiEntrys.zipWithIndex.foreach{
     case(e, i) =>
-      when(reqDBPtr.value === i.U & io.reqDB.fire) {
+      when(headPtr.value === i.U & io.axiAr.fire) {
+        e.ARMesInit(io.axiAr.bits)
+        e.nid := PopCount(blockVec) - (rdDBQueue.io.enq.fire & (rdDBQueue.io.enq.bits.arID === io.axiAr.bits.user)).asUInt
+      }.elsewhen(reqDBPtr.value === i.U & io.reqDB.fire) {
         e.dbSite1  := io.respDB.bits.buf(0)
         e.dbSite2  := io.respDB.bits.buf(1)
       }.elsewhen(!e.double & !e.fromDCT & (e.haveWrDB1 =/= e.haveWrDB2) | (e.fromDCT | e.double) & e.haveWrDB1 & e.haveWrDB2) {
