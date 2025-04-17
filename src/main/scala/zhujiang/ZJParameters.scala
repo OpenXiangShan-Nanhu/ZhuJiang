@@ -174,6 +174,7 @@ case class ZJParameters(
   cacheWays: Int = 16,
   snoopFilterWays: Int = 16,
   hnxOutstanding: Int = 64 * 4,
+  hnxDirSRAMBank: Int = 2,
   hnxPipelineDepth: Int = 0,
   splitFlit:Boolean = true,
   r2rPos: Seq[Int] = Seq(),
@@ -213,8 +214,10 @@ case class ZJParameters(
     sfSizeInB = clusterCacheSizeInB * 2 * cores / bank,
     llcWays = cacheWays,
     sfWays = snoopFilterWays,
-    nrDirBank = 2,
-    nrPoS = hnxOutstanding / bank
+    nrDSBank = hnxDirSRAMBank * 2,
+    nrDirBank = hnxDirSRAMBank,
+    nrPoS = hnxOutstanding / bank,
+    dataBufSizeInByte = 64 * hnxOutstanding / bank,
   ))
 }
 

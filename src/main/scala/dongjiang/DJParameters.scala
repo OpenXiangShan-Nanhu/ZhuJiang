@@ -52,12 +52,12 @@ case class DJParam(
   lazy val nrDataBuf = dataBufSizeInByte / BeatByte
   lazy val dsSets    = llcSets * llcWays
 
-  require(llcSizeInB  >= CacheLine * llcWays, s"illegal llc size: ${llcSizeInB}B")
-  require(sfSizeInB >= CacheLine * llcWays, s"illegal llc size: ${sfSizeInB}B")
-  require(posSets / nrDirBank > 1, s"illegal pos size: ${nrPoS}")
-  require(llcSets >= nrDirBank)
-  require(sfSets >= nrDirBank)
-  require(dsSets >= nrDSBank)
+  require(llcSizeInB >= CacheLine * llcWays, s"illegal llc size: ${llcSizeInB}B")
+  require(sfSizeInB  >= CacheLine * llcWays, s"illegal llc size: ${sfSizeInB}B")
+  require(posSets > nrDirBank, s"illegal pos size: posSets($posSets) = nrPoS($nrPoS) / posWays($posWays) > nrDirBank = $nrDirBank")
+  require(llcSets > nrDirBank, s"illegal llc sets: llcSets($llcSets) = llcSizeInB($llcSizeInB) / CacheLine($CacheLine) / llcWays($llcWays) > nrDirBank = $nrDirBank")
+  require(sfSets  > nrDirBank, s"illegal sf sets : sfSets($sfSets)   = sfSizeInB($sfSizeInB)   / CacheLine($CacheLine) / llcWays($llcWays) > nrDirBank = $nrDirBank")
+  require(dsSets  > nrDSBank,  s"illegal ds sets : dsSets($dsSets)   = llcSets($llcSets) * llcWays($llcWays) > nrDirBank = $nrDirBank")
   require(nrReqTaskBuf > 0)
   require(nrSnpTaskBuf >= 0)
   require(isPow2(dataBufSizeInByte))
@@ -185,6 +185,7 @@ trait HasDJParam extends HasParseZJParam {
   // llcSet(per dirBank)
   lazy val llcSet_ua_hi     = dirBankBits + llcSetBits - 1
   lazy val llcSet_ua_lo     = dirBankBits
+  require(llcSet_ua_hi >= llcSet_ua_lo, s"$llcSet_ua_hi = $dirBankBits + $llcSetBits - 1 >= $dirBankBits")
   // sfTag(per dirBank)
   lazy val sfTag_ua_hi      = useAddrBits - 1
   lazy val sfTag_ua_lo      = useAddrBits - sfTagBits

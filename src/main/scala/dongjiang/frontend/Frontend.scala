@@ -83,7 +83,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.reqDB_s1               <> block.io.reqDB_s1
   io.fastData_s3            <> decode.io.fastData_s3
   io.readDir_s1             <> block.io.readDir_s1
-  io.fastResp               <> FastQueue(block.io.fastResp_s1, djparam.nrDirBank)
+  io.fastResp               <> FastQueue(block.io.fastResp_s1, djparam.nrDirBank.max(2))
   io.posBusy                := posTable.io.busy
   io.cmtAlloc_s3            := issue.io.cmtAlloc_s3
   io.cmAllocVec_s4          <> issue.io.cmAllocVec_s4

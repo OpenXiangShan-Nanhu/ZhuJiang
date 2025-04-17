@@ -98,7 +98,7 @@ class Backend(implicit p: Parameters) extends DJModule {
    */
   io.txReq        <> fastRRArb(Seq(readCM.io.txReq, datalessCM.io.txReq, wriOrAtmCM.io.txReq))
   io.txSnp        <> snoopCM.io.txSnp
-  io.txRsp        <> fastRRArb(cmtCMs.map(_.io.txRsp) ++ Seq(readCM.io.txRsp, datalessCM.io.txRsp, receiveCM.io.txRsp, FastQueue(io.fastResp, fastRespQSzie)))
+  io.txRsp        <> fastRRArb(cmtCMs.map(_.io.txRsp) ++ Seq(readCM.io.txRsp, datalessCM.io.txRsp, receiveCM.io.txRsp, FastQueue(io.fastResp, fastRespQSzie.max(2))))
   io.rxRsp.ready  := true.B
 
   /*

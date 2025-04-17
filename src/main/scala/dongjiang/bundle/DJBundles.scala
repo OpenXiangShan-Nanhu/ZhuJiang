@@ -47,9 +47,13 @@ trait HasAddr extends DJBundle { this: DJBundle =>
       require(bank.getWidth    == bankBits,    s"bankBits:    ${bank.getWidth} =/= ${bankBits}")
       require(tag.getWidth     == tagBits,     s"tagBits:     ${tag.getWidth} =/= ${tagBits}")
       require(set.getWidth     == setBits,     s"setBits:     ${set.getWidth} =/= ${setBits}")
-      require(dirBank.getWidth == dirBankBits, s"dirBankBits: ${dirBank.getWidth} =/= ${dirBankBits}")
       require(offset.getWidth  == offsetBits,  s"offsetBits:  ${offset.getWidth} =/= ${offsetBits}")
-      val useAddr_ = Cat(tag, set, dirBank)
+      val useAddr_ = if(djparam.nrDirBank > 1) {
+        require(dirBank.getWidth == dirBankBits, s"dirBankBits: ${dirBank.getWidth} =/= ${dirBankBits}")
+        Cat(tag, set, dirBank)
+      } else {
+        Cat(tag, set)
+      }
       val addr_ = Cat(useAddr_(useAddrBits-1, bankId_lo-offsetBits), bank, useAddr_(bankId_lo-offsetBits-1, 0), offset)
       require(addr_.getWidth   == addrBits)
       addr := addr_
