@@ -6,6 +6,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
 import xs.utils.debug.HardwareAssertionKey
+import xs.utils.mbist.MbistPipeline
 import xs.utils.queue.FastQueue
 import xs.utils.sram.{SinglePortSramTemplate, SpSramReq}
 import zhujiang.axi.{AxiBundle, AxiLiteParams, RFlit}
@@ -139,4 +140,5 @@ class MiscDevice(node: Node)(implicit p:Parameters) extends ZJModule {
     io.axi.get <> hwaDev.get.io.axi
     io.intr.get := hwaDev.get.io.intr
   }
+  MbistPipeline.PlaceMbistPipeline(1, "MbistPipelineMn", hasMbist)
 }

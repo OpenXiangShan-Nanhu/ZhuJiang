@@ -12,6 +12,7 @@ import zhujiang.chi._
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 import zhujiang.chi.FlitHelper.connIcn
 import dongjiang.utils.fastArb
+import xs.utils.mbist.MbistPipeline
 
 class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val rni = zjParams.dmaParams
@@ -71,4 +72,5 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   connIcn(chiRdMaster.io.chiDat  , icn.rx.data.get)
   connIcn(chiRdMaster.io.chiRxRsp, icn.rx.resp.get)
   connIcn(chiWrMaster.io.chiRxRsp, icn.rx.resp.get)
+  MbistPipeline.PlaceMbistPipeline(1, "MbistPipelineRni", hasMbist)
 }

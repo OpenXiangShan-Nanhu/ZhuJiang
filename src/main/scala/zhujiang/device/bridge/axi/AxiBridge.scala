@@ -5,6 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
+import xs.utils.mbist.MbistPipeline
 import xs.utils.perf.XSPerfAccumulate
 import xs.utils.{PickOneLow, ResetRRArbiter}
 import zhujiang.ZJModule
@@ -130,4 +131,5 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule {
     ("total_mem_req_cnt", icn.rx.req.get.fire),
     ("total_req_retention_cnt", cms.map(_.io.info.valid).reduce(_||_))
   ))
+  MbistPipeline.PlaceMbistPipeline(1, "MbistPipelineSn", hasMbist)
 }
