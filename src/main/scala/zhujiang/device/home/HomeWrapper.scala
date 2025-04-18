@@ -138,27 +138,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
 
   hnx.io.lan.tx.debug.foreach(_ := DontCare)
 
-  private val mbistPl = MbistPipeline.PlaceMbistPipeline(Int.MaxValue, "Home", hasMbist)
-  private val mbistIntfHome = if (hasMbist) {
-    val brc = SramHelper.genBroadCastBundleTop()
-    brc := io.dfx.func
-    val params = mbistPl.get.nodeParams
-    val intf = Some(Module(new MbistInterface(
-      params = Seq(params),
-      ids = Seq(mbistPl.get.childrenIds),
-      name = s"MbistIntfHome",
-      pipelineNum = 1
-    )))
-    intf.get.toPipeline.head <> mbistPl.get.mbist
-    mbistPl.get.registerCSV(intf.get.info, "MbistHome")
-    intf.get.mbist := DontCare
-    dontTouch(intf.get.mbist)
-    //TODO: add mbist controller connections here
-    intf
-  } else {
-    None
-  }
-
+  MbistInterface("NocHome", io.dfx.func, hasMbist)
   private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, moduleTop = true).map(_.head)
   HardwareAssertion.release(assertionNode, "hwa", "home")
   assertionNode.foreach(_.hassert.bus.get.ready := true.B)

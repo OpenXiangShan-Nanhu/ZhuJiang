@@ -162,26 +162,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   ring.io_ci := io.ci
   io.intr.foreach(_ := mnDev.io.intr.get)
 
-  private val mbistPl = MbistPipeline.PlaceMbistPipeline(Int.MaxValue, "MbistPipelineNocMisc", hasMbist)
-  private val mbistIntfNocMisc = if (hasMbist) {
-    val brc = SramHelper.genBroadCastBundleTop()
-    brc := io.dft.func
-    val params = mbistPl.get.nodeParams
-    val intf = Some(Module(new MbistInterface(
-      params = Seq(params),
-      ids = Seq(mbistPl.get.childrenIds),
-      name = s"MbistIntfNocMisc",
-      pipelineNum = 1
-    )))
-    intf.get.toPipeline.head <> mbistPl.get.mbist
-    mbistPl.get.registerCSV(intf.get.info, "MbistNocMisc")
-    intf.get.mbist := DontCare
-    dontTouch(intf.get.mbist)
-    //TODO: add mbist controller connections here
-    intf
-  } else {
-    None
-  }
+  MbistInterface("NocMisc", io.dft.func, hasMbist)
   ZhujiangGlobal.addRing(desiredName, this)
 }
 
