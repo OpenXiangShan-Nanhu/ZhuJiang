@@ -98,10 +98,8 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     bridge.icn <> icn
     bridge
   })
-  private val memAxiPorts = memDevSeq.map(d => {
-    d.suggestName(d.icn.node.deviceName)
-    d.axi
-  })
+  memDevSeq.foreach(d => d.suggestName(d.icn.node.deviceName))
+  private val memAxiPorts = memDevSeq.map(_.axi)
 
   private val cfgIcnSeq = ring.icnHis.get
   require(cfgIcnSeq.nonEmpty)
@@ -115,10 +113,8 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     cfg.nodeId := icn.node.nodeId.U
     cfg
   })
-  private val cfgAxiPorts = cfgDevSeq.map(d => {
-    d.suggestName(d.icn.node.deviceName)
-    d.axi
-  })
+  cfgDevSeq.foreach(d => d.suggestName(d.icn.node.deviceName))
+  private val cfgAxiPorts = cfgDevSeq.map(_.axi)
 
   private val dmaIcnSeq = ring.icnRis.get
   require(dmaIcnSeq.nonEmpty)
@@ -130,10 +126,8 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     dma.reset := placeResetGen(icn.node.deviceName, icn)
     dma
   })
-  private val dmaAxiPorts = dmaDevSeq.map(d => {
-    d.suggestName(d.icn.node.deviceName)
-    d.axi
-  })
+  dmaDevSeq.foreach(d => d.suggestName(d.icn.node.deviceName))
+  private val dmaAxiPorts = dmaDevSeq.map(_.axi)
 
   require(ring.icnCcs.get.nonEmpty)
   private val ccnIcnSeq = ring.icnCcs.get
