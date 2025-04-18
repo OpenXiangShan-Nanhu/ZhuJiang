@@ -10,18 +10,32 @@ class StepRREncoder(size: Int) extends Module {
     val enable  = Input(Bool())
     val outIdx  = Output(UInt(log2Ceil(size).W))
   })
-  require(isPow2(size))
 
   val indexReg  = RegInit(0.U(log2Ceil(size).W))
-  val indexOut  = WireInit(0.U(log2Ceil(size).W))
+  val indexOut  = Wire(UInt(log2Ceil(size).W))
+
+  def indexInc: UInt = {
+    if(isPow2(size)) {
+      indexReg + 1.U
+    } else {
+      val newIndex = Wire(UInt(log2Ceil(size).W))
+      when(indexReg +& 1.U === size.U) {
+        newIndex := 0.U
+      }.otherwise {
+        newIndex := indexReg + 1.U
+      }
+      newIndex
+    }
+  }
 
   when(io.inVec(indexReg)) {
-    indexReg    := Mux(io.enable, indexReg + 1.U, indexReg)
+    indexReg    := Mux(io.enable, indexInc, indexReg)
     indexOut    := indexReg
   }.otherwise {
-    indexReg    := Mux(io.inVec.reduce(_ | _) & io.enable, Mux(indexOut > indexReg, indexOut, indexReg + 1.U), indexReg)
+    indexReg    := Mux(io.inVec.reduce(_ | _) & io.enable, Mux(indexOut > indexReg, indexOut, indexInc), indexReg)
     indexOut    := PriorityEncoder(io.inVec)
   }
+  assert(indexReg < size.U)
 
   io.outIdx     := indexOut
 }
