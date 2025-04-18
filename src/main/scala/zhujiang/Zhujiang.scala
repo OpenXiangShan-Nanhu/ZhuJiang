@@ -163,7 +163,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   io.intr.foreach(_ := mnDev.io.intr.get)
 
   private val mbistPl = MbistPipeline.PlaceMbistPipeline(Int.MaxValue, "MbistPipelineNocMisc", hasMbist)
-  private val mbistIntfHome = if (hasMbist) {
+  private val mbistIntfNocMisc = if (hasMbist) {
     val brc = SramHelper.genBroadCastBundleTop()
     brc := io.dft.func
     val params = mbistPl.get.nodeParams
