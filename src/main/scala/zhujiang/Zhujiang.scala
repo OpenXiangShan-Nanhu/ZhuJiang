@@ -100,11 +100,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   })
   private val memAxiPorts = memDevSeq.map(d => {
     d.suggestName(d.icn.node.deviceName)
-    val buf = Module(new AxiBuffer(d.axi.params))
-    buf.reset := d.reset
-    buf.io.in <> d.axi
-    buf.suggestName(d.icn.node.deviceName + "_buf")
-    buf.io.out
+    d.axi
   })
 
   private val cfgIcnSeq = ring.icnHis.get
@@ -121,15 +117,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   })
   private val cfgAxiPorts = cfgDevSeq.map(d => {
     d.suggestName(d.icn.node.deviceName)
-    if(d.axi.params.attr.contains("main")) {
-      d.axi
-    } else {
-      val buf = Module(new AxiBuffer(d.axi.params))
-      buf.reset := d.reset
-      buf.io.in <> d.axi
-      buf.suggestName(d.icn.node.deviceName + "_buf")
-      buf.io.out
-    }
+    d.axi
   })
 
   private val dmaIcnSeq = ring.icnRis.get
@@ -144,15 +132,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   })
   private val dmaAxiPorts = dmaDevSeq.map(d => {
     d.suggestName(d.icn.node.deviceName)
-    if(d.axi.params.attr.contains("main")) {
-      d.axi
-    } else {
-      val buf = Module(new AxiBuffer(d.axi.params))
-      buf.reset := d.reset
-      d.axi <> buf.io.out
-      buf.suggestName(d.icn.node.deviceName + "_buf")
-      buf.io.in
-    }
+    d.axi
   })
 
   require(ring.icnCcs.get.nonEmpty)
