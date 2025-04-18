@@ -11,9 +11,10 @@ class ArbiterWithReset[T <: Data](gen:T, size:Int, rr:Boolean) extends Module {
   })
 
   if(rr) {
-    val arb = Module(new ResetRRArbiter(gen, size))
-    arb.io.in.zip(io.in).foreach { case (a, b) => a <> b }
-    io.out <> arb.io.out
+    val selId = StepRREncoder(io.in.map(_.valid), io.out.fire)
+    io.out.valid  := io.in.map(_.valid).reduce(_ | _)
+    io.out.bits   := io.in(selId).bits
+    io.in.zipWithIndex.foreach { case(in, i) => in.ready := selId === i.U }
   } else {
     val arb = Module(new Arbiter(gen, size))
     arb.io.in.zip(io.in).foreach { case (a, b) => a <> b }
