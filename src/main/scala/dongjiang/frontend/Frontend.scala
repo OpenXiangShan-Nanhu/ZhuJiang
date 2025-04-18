@@ -54,8 +54,8 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val req2Task    = Module(new ReqToChiTask())
   val snp2Task    = Module(new SnpToChiTask())
   // S0
-  val reqTaskBuf  = Module(new TaskBuffer(sort = true, nrReqTaskBuf))
-  val snpTaskBuf  = Module(new TaskBuffer(sort = false, nrSnpTaskBuf))
+  val reqTaskBuf  = Module(new TaskBuffer(nrReqTaskBuf, sort = true))
+  val snpTaskBuf  = Module(new TaskBuffer(nrSnpTaskBuf, sort = false))
   // S1
   val posTable    = Module(new PoS(dirBank))
   val block       = Module(new Block(dirBank))
