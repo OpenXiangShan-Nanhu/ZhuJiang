@@ -225,22 +225,25 @@ trait NocIOHelper {
   lazy val ccnIO: Seq[SocketIcnSideBundle] = ccnDrv.map(drv => IO(new SocketIcnSideBundle(drv.node)(p)))
   lazy val hwaIO: Option[ExtAxiBundle] = hwaDrv.map(drv => IO(Flipped(new ExtAxiBundle(drv.params))))
 
-  def runIOAutomation(): Unit = {
+  def runIOAutomation(bufChain:Int = 0): Unit = {
     ddrIO.zip(ddrDrv).zipWithIndex.foreach({ case ((a, b), i) =>
-      a.suggestName(s"m_axi_mem_${b.params.attr}")
-      a <> b
+      val portName = s"m_axi_mem_${b.params.attr}"
+      a.suggestName(portName)
+      a <> AxiBuffer.chain(b, bufChain, Some(portName))
       dontTouch(a)
       dontTouch(b)
     })
     cfgIO.zip(cfgDrv).zipWithIndex.foreach({ case ((a, b), i) =>
-      a.suggestName(s"m_axi_cfg_${b.params.attr}")
-      a <> b
+      val portName = s"m_axi_cfg_${b.params.attr}"
+      a.suggestName(portName)
+      a <> AxiBuffer.chain(b, bufChain, Some(portName))
       dontTouch(a)
       dontTouch(b)
     })
     dmaIO.zip(dmaDrv).zipWithIndex.foreach({ case ((a, b), i) =>
-      a.suggestName(s"s_axi_${b.params.attr}")
-      a <> b
+      val portName = s"s_axi_${b.params.attr}"
+      a.suggestName(portName)
+      b <> AxiBuffer.chain(a, bufChain, Some(portName))
       dontTouch(a)
       dontTouch(b)
     })
@@ -250,8 +253,9 @@ trait NocIOHelper {
       dontTouch(a)
     })
     hwaIO.zip(hwaDrv).foreach({ case (a, b) =>
-      a.suggestName(s"s_axi_hwa")
-      a <> b
+      val portName = s"s_axi_hwa"
+      a.suggestName(portName)
+      b <> AxiBuffer.chain(a, bufChain, Some(portName))
       dontTouch(a)
       dontTouch(b)
     })
