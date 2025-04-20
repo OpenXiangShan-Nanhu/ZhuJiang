@@ -31,23 +31,39 @@ object Write_LAN {
   ))
 
   // WriteUniquePtl With Allocate
-  def writeUniquePtl: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(WriteUniquePtl) | allocate | ewa | isOWO, Seq(
-    // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp)))),
+  def writeUniquePtl_alloc: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(WriteUniquePtl) | allocate | ewa | isOWO, Seq(
+    // I I I  -> I I UD
+    (sfMiss | llcIs(I))   -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp) | wriLLC(UD)))),
     // I I SC -> I I UD
     (sfMiss | llcIs(SC))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp) | wriLLC(UD)))),
     // I I UC -> I I UD
     (sfMiss | llcIs(UC))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp)  | wriLLC(UD)))),
     // I I UD -> I I UD
     (sfMiss | llcIs(UD))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp)  | wriLLC(UD)))),
-    // I V I  -> I V I
-    // TODO: Create alr.snp
-    // TODO: Send Snp and DBIDResp at the same time
-    // TODO: Separate the mask in DataBuffer
+    // I V I
+    // TODO: reqs twice because dataVec = 2
+    // TODO: dataBuffer auto merge data
+    (srcMiss | othHit | llcIs(I)) -> (tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
+      (datIs(SnpRespData) | respIs(I_PD)) -> (receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> (cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)))), // I I UD
+      (datIs(SnpRespData) | respIs(I))    -> (receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> (cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)))), // I I UD
+      (rspIs(SnpResp)     | respIs(I))    -> (receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> (cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)))), // I I UD
+    ))
   ))
 
   // WriteUnique Without Allocate
   // TODO: receive can send dataTask
+  def writeUniquePtl_noAlloc: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(WriteUniquePtl) | ewa | isOWO, Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I))   -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)))),
+    // I I SC -> I I UD
+    (sfMiss | llcIs(SC))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    // I I UC -> I I UD
+    (sfMiss | llcIs(UC))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    // I I UD -> I I UD
+    (sfMiss | llcIs(UD))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    // I V I
+    // TODO: decode 3 times
+  ))
 
 
   // WriteBackFull
@@ -102,5 +118,5 @@ object Write_LAN {
 
 
   // writeNoSnpPtl ++ writeUniquePtl ++ writeBackFull ++ writeCleanFull ++ writeEvictOrEvict
-  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(writeNoSnpPtl_ewa, writeNoSnpPtl_noEwa, writeUniquePtl, writeEvictOrEvict, writeBackFull)
+  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(writeNoSnpPtl_ewa, writeNoSnpPtl_noEwa, writeUniquePtl_alloc, writeUniquePtl_noAlloc, writeEvictOrEvict, writeBackFull)
 }

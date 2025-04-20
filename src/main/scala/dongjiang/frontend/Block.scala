@@ -74,7 +74,11 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   block_s1.rsvd     := needRsvdReg_s1
   block_s1.pos      := io.posBlock_s1
   block_s1.dir      := !io.readDir_s1.ready & taskReg_s1.chi.memAttr.cacheable
-  block_s1.resp     := !io.fastResp_s1.ready & needRespReadReg_s1
+  block_s1.resp     := PriorityMux(Seq(
+    needRespReadReg_s1 ->  !io.fastResp_s1.ready,
+    needRespDBIDReg_s1 -> (!io.fastResp_s1.ready | !io.reqDB_s1.ready),
+    true.B             ->  false.B
+  ))
   io.retry_s1       := validReg_s1 & block_s1.all
 
   /*
@@ -102,13 +106,15 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // needRespReg_s1 is associated with dbid2Rn of Commit.
   needRespReadReg_s1          := io.chiTask_s0.bits.chi.isRead & io.chiTask_s0.bits.chi.isEO
   needRespDBIDReg_s1          := io.chiTask_s0.bits.chi.needSendDBID()
+  val shouldRespRead_s1       = needRespReadReg_s1
+  val shouldRespDBID_s1       = needRespDBIDReg_s1 & io.reqDB_s1.ready
   // Send Req To Data
-  io.reqDB_s1.valid                 := validReg_s1 & needRespDBIDReg_s1 & !block_s1.all
+  io.reqDB_s1.valid                 := validReg_s1 & needRespDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
   io.reqDB_s1.bits.dataVec          := taskReg_s1.chi.dataVec
   io.reqDB_s1.bits.llcTxnID.pos     := io.posIdx_s1
   io.reqDB_s1.bits.llcTxnID.dirBank := dirBank.U
   // Send Fast Resp To CHI
-  io.fastResp_s1.valid        := validReg_s1 & (needRespReadReg_s1 | (needRespDBIDReg_s1 & io.reqDB_s1.ready)) & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
+  io.fastResp_s1.valid        := validReg_s1 & (shouldRespRead_s1 | shouldRespDBID_s1) & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
   io.fastResp_s1.bits         := DontCare
   io.fastResp_s1.bits.SrcID   := taskReg_s1.chi.getNoC(io.config.ci)
   io.fastResp_s1.bits.TgtID   := taskReg_s1.chi.nodeId
