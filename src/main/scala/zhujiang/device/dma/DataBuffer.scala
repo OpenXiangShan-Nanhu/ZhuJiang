@@ -110,7 +110,7 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   rFlitBdl.id := readRamStage2Pipe.io.deq.bits.id
   rFlitBdl.data := readRamStage2Pipe.io.deq.bits.data
   rFlitBdl.resp := readRamStage2Pipe.io.deq.bits.resp
-  rFlitBdl.last := readRamStage2Pipe.io.deq.bits.last && readRamStage2Pipe.io.deq.ready
+  rFlitBdl.last := readRamStage2Pipe.io.deq.bits.last
   rFlitBdl.user := 0.U
 
   io.readDataReq.ready := readRamStage1Pipe.io.enq.ready
