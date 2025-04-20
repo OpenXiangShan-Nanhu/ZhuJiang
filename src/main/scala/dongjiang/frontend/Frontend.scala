@@ -20,7 +20,8 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // Configuration
-    val config = new DJConfigIO()
+    val config        = new DJConfigIO()
+    val dirBank       = Input(UInt(dirBankBits.W))
     // CHI REQ/SNP
     val rxReq         = Flipped(Decoupled(new ReqFlit(false)))
     val rxSnp         = Flipped(Decoupled(new SnoopFlit()))
@@ -44,7 +45,9 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
     val fastResp      = Decoupled(new RespFlit())
     // PoS Busy Signal
-    val posBusy       = Output(UInt(2.W))
+    val alrUsePoS     = Output(UInt(log2Ceil(nrPoS + 1).W))
+    // Multiple cores are actively making requests
+    val multicore     = Bool()
   })
 
 
@@ -57,7 +60,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val reqTaskBuf  = Module(new TaskBuffer(nrReqTaskBuf, sort = true))
   val snpTaskBuf  = Module(new TaskBuffer(nrSnpTaskBuf, sort = false))
   // S1
-  val posTable    = Module(new PoS(dirBank))
+  val posTable    = Module(new PosTable())
   val block       = Module(new Block(dirBank))
   // S2: Wait Directory Response
   val bufReg_s2   = RegInit(0.U.asTypeOf(block.io.task_s1.bits))
@@ -77,6 +80,8 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   block.io.config           := io.config
   decode.io.config          := io.config
   issue.io.config           := io.config
+  // dirBank
+  posTable.io.dirBank       := io.dirBank
 
   // io
   io.getAddrVec.zip(posTable.io.getAddrVec).foreach { case(a, b) => a <> b }
@@ -84,9 +89,10 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.fastData_s3            <> decode.io.fastData_s3
   io.readDir_s1             <> block.io.readDir_s1
   io.fastResp               <> FastQueue(block.io.fastResp_s1, djparam.nrDirBank.max(2))
-  io.posBusy                := posTable.io.busy
+  io.alrUsePoS              := posTable.io.alrUsePoS
   io.cmtAlloc_s3            := issue.io.cmtAlloc_s3
   io.cmAllocVec_s4          <> issue.io.cmAllocVec_s4
+  io.multicore              := reqTaskBuf.io.multicore
 
   // req2Task
   req2Task.io.rxReq         <> io.rxReq

@@ -64,8 +64,6 @@ class Backend(implicit p: Parameters) extends DJModule {
     val reqDB           = Decoupled(new PackLLCTxnID with HasDataVec)
     val dataTask        = Decoupled(new DataTask())
     val dataResp        = Flipped(Valid(new PackLLCTxnID()))
-    // Multicore Req running in LAN
-    val multicore       = Bool() // TODO
   })
 
   /*
@@ -89,9 +87,6 @@ class Backend(implicit p: Parameters) extends DJModule {
   datalessCM.io.config  := io.config
   wriOrAtmCM.io.config  := io.config
   receiveCM.io.config   := io.config
-
-  // TODO
-  io.multicore:= DontCare
 
   /*
    * Connect CHI IO

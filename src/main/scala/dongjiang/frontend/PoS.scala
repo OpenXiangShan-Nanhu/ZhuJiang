@@ -9,17 +9,236 @@ import dongjiang.backend.GetAddr
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
+import chisel3.experimental.BundleLiterals._
+
+// ----------------------------------------------------------------------------------------------------- //
+// ------------------------------------------- PoS Bundle ---------------------------------------------- //
+// ----------------------------------------------------------------------------------------------------- //
+class PosWay(implicit p: Parameters) extends DJBundle {
+  val way = UInt(posWayBits.W)
+}
 
 trait HasNest extends DJBundle { this: DJBundle =>
   val canNest = new Bool()
 }
 
-class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
+// ----------------------------------------------------------------------------------------------------- //
+// --------------------------------------------- PoS Set ----------------------------------------------- //
+// ----------------------------------------------------------------------------------------------------- //
+class PosSet(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
   val io = IO(new Bundle {
     val config      = new DJConfigIO()
+    val dirBank     = Input(UInt(dirBankBits.W))
+    val posSet      = Input(UInt(posSetBits.W))
+    // req and ack
+    val req_s0      = Flipped(Valid(new Addr with HasChiChannel))
+    val sleep_s1    = Output(Bool())
+    val block_s1    = Output(Bool())
+    val posWay_s1   = Valid(UInt(posWayBits.W))
+    // retry from block
+    val retry_s1    = Input(Bool())
+    // update PoS
+    val updNest     = Flipped(Valid(new PosWay with HasNest))
+    val updTag      = Flipped(Valid(new PosWay with HasAddr))
+    val clean       = Flipped(Valid(new PosWay with HasChiChannel))
+    val lockSet     = Flipped(Valid(new PosWay))
+    val unlockSet   = Flipped(Valid(new PosWay))
+    // wakeup TaskBuf Entry
+    val wakeup      = Valid(new Addr)
+    // PoS State Signal
+    val stateVec    = Output(Vec(posWays, Valid(new Addr)))
+  })
+  dontTouch(io.stateVec)
+
+  /*
+   * Reg and Wire declaration
+   */
+  // PoS Set Vec
+  val posSetVecReg  = RegInit(VecInit(Seq.tabulate(posWays) { i => new DJBundle with HasNest {
+    val req         = Bool()
+    val snp         = Bool()
+    val tag         = UInt(posTagBits.W)
+    val lockDirSet  = Bool()
+    // def
+    def one  : Bool = req ^ snp
+    def valid: Bool = req | snp
+    def get  : Addr = { val a = Wire(new Addr()); a.Addr.catPoS(io.config.bankId, tag, io.posSet, io.dirBank); a }
+  }.Lit(_.req -> false.B, _.snp -> false.B, _.canNest -> false.B, _.lockDirSet -> false.B) }))
+
+  // Save Req
+  val reqReg_s1     = RegInit(Valid(new DJBundle with HasChiChannel {
+    val tag         = UInt(posTagBits.W)
+    val way         = UInt(posWayBits.W)
+  }).Lit(_.valid -> false.B))
+
+  /*
+   * Receive req from taskBuf
+   *
+   * 1. req is CHIREQ :
+   *  a. no block
+   *  b. block by addr
+   *
+   * 2. req is CHISNP :
+   *  a. no block
+   *  a. can nest  : nest someone
+   *  b. cant nest : block by addr
+   */
+
+  // get base message
+  val reqTag_s0       = io.req_s0.bits.Addr.posTag
+  val reqDirSet_s0    = io.req_s0.bits.Addr.dirSet
+  // match directory set
+  val matDirSetVec_s0 = Wire(Vec(posWays, Bool()))
+  matDirSetVec_s0     := posSetVecReg.map(way => way.valid & way.lockDirSet & way.get.Addr.dirSet === reqDirSet_s0)
+  val hasMatLock      = matDirSetVec_s0.reduce(_ | _)
+  // match pos tag
+  val matTagVec_s0    = Wire(Vec(posWays, Bool()))
+  matTagVec_s0        := posSetVecReg.map(way => way.valid & way.tag === reqTag_s0)
+  val matTagWay_s0    = PriorityEncoder(matTagVec_s0)
+  val hasMatTag       = matTagVec_s0.reduce(_ | _)
+  dontTouch(matDirSetVec_s0)
+  dontTouch(matTagVec_s0)
+  HardwareAssertion(PopCount(matTagVec_s0) <= 1.U)
+
+  // get free way
+  val freeVec_s0      = posSetVecReg.map(!_.valid)
+  val hasFree_s0      = freeVec_s0.reduce(_ | _)
+  val freeWay_s0      = PriorityEncoder(freeVec_s0)
+
+  // judge block req
+  val blockReq_s0     = hasMatLock | Mux(hasMatTag, false.B, !hasFree_s0)
+
+  // judge block snp
+  val canNest_s0      = Mux(hasMatTag, posSetVecReg(matTagWay_s0).canNest, false.B)
+  val blockSnp_s0     = hasMatLock | Mux(hasMatTag, !canNest_s0, !hasFree_s0)
+
+  // judge block
+  val block_s0        = Mux(io.req_s0.bits.isSnp, blockSnp_s0, blockReq_s0)
+
+  /*
+   * Store req from taskBuf
+   */
+  reqReg_s1.valid         := io.req_s0.valid & !block_s0
+  reqReg_s1.bits.tag      := reqTag_s0
+  reqReg_s1.bits.channel  := io.req_s0.bits.channel
+  reqReg_s1.bits.way      := Mux(canNest_s0, matTagWay_s0, freeWay_s0)
+  HardwareAssertion.withEn(reqTag_s0 =/= reqReg_s1.bits.tag, reqReg_s1.valid)
+
+  /*
+   * Retrun ack to taskBuf and block
+   */
+  io.sleep_s1         := RegNext(io.req_s0.valid & hasMatTag)
+  io.block_s1         := RegNext(io.req_s0.valid & block_s0)
+  io.posWay_s1.valid  := RegNext(io.req_s0.valid)
+  io.posWay_s1.bits   := reqReg_s1.bits.way
+
+  /*
+   * Modify pos tag
+   */
+  posSetVecReg.map(_.tag).zipWithIndex.foreach { case(tag, i) =>
+    val updHit  = io.updTag.valid & io.updTag.bits.way === i.U
+    val reqHit  = reqReg_s1.valid & reqReg_s1.bits.way === i.U & !io.retry_s1
+    when(updHit) {
+      tag := io.updTag.bits.Addr.posTag
+    }.elsewhen(reqHit) {
+      tag := reqReg_s1.bits.tag
+    }
+    HardwareAssertion(!(updHit & reqHit))
+  }
+
+  /*
+   * Modify pos ctrl signals
+   */
+  posSetVecReg.zipWithIndex.foreach { case (ctrl, i) =>
+    // receive clean
+    val cleanHit    = io.clean.valid & io.clean.bits.way === i.U
+    val cleanSnp    = io.clean.bits.isSnp
+
+    // store req
+    val reqHit      = reqReg_s1.valid & reqReg_s1.bits.way === i.U & !io.retry_s1
+    val reqIsSnp    = reqReg_s1.bits.isSnp
+
+    // modify valid
+    when(cleanHit) {
+      ctrl.req      := Mux(!cleanSnp, false.B, ctrl.req)
+      ctrl.snp      := Mux( cleanSnp, false.B, ctrl.snp)
+      // HAssert
+      HAssert.withEn(!ctrl.snp & ctrl.req, !cleanSnp, cf"PoS Way[$i]")
+      HAssert.withEn(ctrl.snp, cleanSnp, cf"PoS Way[$i]")
+    }.elsewhen(reqHit) {
+      ctrl.req      := Mux(!reqIsSnp, true.B,  ctrl.req)
+      ctrl.snp      := Mux( reqIsSnp, true.B,  ctrl.snp)
+      // HAssert
+      HAssert.withEn(!ctrl.snp & !ctrl.req, !reqIsSnp, cf"PoS Way[$i]")
+      HAssert.withEn(!ctrl.snp, reqIsSnp, cf"PoS Way[$i]")
+    }
+
+    // modify lockDirSet
+    val lockHit     = io.lockSet.valid   & io.lockSet.bits.way   === i.U
+    val unlockHit   = io.unlockSet.valid & io.unlockSet.bits.way === i.U
+    ctrl.lockDirSet := Mux(lockHit, true.B, Mux(unlockHit, false.B, ctrl.lockDirSet))
+    // HAssert
+    HAssert.withEn(!ctrl.lockDirSet, lockHit, cf"PoS Way[$i]")
+    HAssert.withEn( ctrl.lockDirSet, unlockHit, cf"PoS Way[$i]")
+
+    // modify canNest
+    val updNestHit  = io.updNest.valid & io.updNest.bits.way === i.U
+    ctrl.canNest    := Mux(reqHit, false.B, Mux(updNestHit, io.updNest.bits.canNest, ctrl.canNest))
+    HAssert.withEn(!ctrl.canNest, updNestHit &  io.updNest.bits.canNest, cf"PoS Way[$i]")
+    HAssert.withEn( ctrl.canNest, updNestHit & !io.updNest.bits.canNest, cf"PoS Way[$i]")
+
+    // assert
+    HardwareAssertion(PopCount(Seq(cleanHit, reqHit)) <= 1.U, cf"PoS Way[$i]")
+    HardwareAssertion.checkTimeout(!ctrl.valid, TIMEOUT_POS, cf"TIMEOUT: PoS Way[$i]")
+  }
+
+  /*
+   * Wakeup someone by addr
+   */
+  val cleanWay        = posSetVecReg(io.clean.bits.way)
+  io.wakeup.valid     := io.clean.valid & cleanWay.one
+  io.wakeup.bits.addr := cleanWay.get.addr
+
+  /*
+   * Output state
+   */
+  io.stateVec.zip(posSetVecReg).foreach { case(a, b) =>
+    a.valid     := b.valid
+    a.bits.addr := b.get.addr
+  }
+}
+
+
+// ----------------------------------------------------------------------------------------------------- //
+// -------------------------------------------- PoS Table ---------------------------------------------- //
+// ----------------------------------------------------------------------------------------------------- //
+/*
+ * PoS Table Structure:
+ *        -----------------------------
+ *        | Way0 | Way1 | Way2 | Way3 |
+ *        |----------------------------
+ * Set0:  |  0_0 |  0_1 |  0_2 |  0_3 |
+ * Set1:  |  1_0 |  1_1 |  1_2 |  1_3 |
+ * Set2:  |  2_0 |  2_1 |  2_2 |  2_3 |
+ * Set3:  |  3_0 |  3_1 |  3_2 |  3_3 |
+ *        -----------------------------
+ *
+ * PoS Entry Fields:
+ *  1. req: Indicates that there is currently a CHI REQ running in the system.
+ *  2. snp: Indicates that there is currently a CHI SNP running in the system.
+ *  3. tag: Part of the request address
+ *  4. lockDirSet: Lock the directory set corresponding to the address in replace
+ */
+class PosTable(implicit p: Parameters) extends DJModule {
+  /*
+   * IO declaration
+   */
+  val io = IO(new Bundle {
+    val config      = new DJConfigIO()
+    val dirBank     = Input(UInt(dirBankBits.W))
     // req and ack
     val req_s0      = Flipped(Valid(new Addr with HasChiChannel))
     val sleep_s1    = Output(Bool())
@@ -27,8 +246,6 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val posIdx_s1   = Output(new PosIndex())
     // retry from block
     val retry_s1    = Input(Bool())
-    // Get Full Addr In PoS
-    val getAddrVec  = Vec(nrTaskCM + 1, Flipped(new GetAddr(true)))
     // update PoS
     val updNest     = Flipped(Valid(new PackPosIndex with HasNest))
     val updTag      = Flipped(Valid(new PackPosIndex with HasAddr))
@@ -37,166 +254,84 @@ class PoS(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val unlockSet   = Flipped(Valid(new PackPosIndex))
     // wakeup TaskBuf Entry
     val wakeup      = Valid(new Addr)
+    // Get Full Addr In PoS
+    val getAddrVec  = Vec(nrTaskCM + 1, Flipped(new GetAddr(true)))
     // PoS Busy Signal
-    val busy        = Output(UInt(2.W))
+    val alrUsePoS   = Output(UInt(log2Ceil(nrPoS + 1).W))
   })
+  io <> DontCare
 
   /*
-   * Reg and Wire declaration
+   * Module and Reg declaration
    */
-  val tagTable    = Reg(Vec(posSets, Vec(posWays, UInt(posTagBits.W))))
-  val ctrlTable   = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { 0.U.asTypeOf(new DJBundle with HasNest {
-    val validVec  = UInt(2.W)
-    def hasReq    = validVec(0)
-    def hasSnp    = validVec(1)
-    def valid     = validVec.orR
-  }) }) }))
-  val lockRegVec  = RegInit(VecInit(Seq.fill(posSets) { 0.U(posWayBits.W) })) // TODO: This width is too large
-  val reqReg_s1   = Reg(Valid(new DJBundle with HasPackPosIndex {
-    val tag       = UInt(posTagBits.W)
-    val isSnp     = Bool()
-  }))
+  val posTable      = Seq.fill(posSets) { Module(new PosSet()) }
+  posTable.foreach(_.io <> DontCare)
 
   /*
-   * Get Full Addr In PoS
+   * Connect IO -> PoS
    */
-  val tagVec = io.getAddrVec.map(g => tagTable(g.pos.set)(g.pos.way))
-  io.getAddrVec.zip(tagVec).foreach { case(g, t) => g.result.Addr.catPoS(io.config.bankId, t, g.pos.set, dirBank.U) }
+  posTable.zipWithIndex.foreach { case(set, i) =>
+    // base
+    set.io.config       := io.config
+    set.io.dirBank      := io.dirBank
+    set.io.posSet       := i.U
 
-  /*
-   * Receive req from taskBuf
-   *
-   * 1. req is CHIREQ: block by addr
-   * 2. req is CHISNP:
-   *  a. block by addr
-   *  b. nest someone
-   */
-  // get block message
-  val reqSet      = io.req_s0.bits.Addr.posSet
-  val ctrlSet     = ctrlTable(reqSet)
-  val addrSet     = tagTable(reqSet)
-  val posValidVec = ctrlSet.map(_.valid)
-  val tagMatchVec = addrSet.map(_ === io.req_s0.bits.Addr.posTag)
-  val matchVec    = posValidVec.zip(tagMatchVec).map { case(a, b) => a & b }
-  // judge nest
-  val nestVec     = matchVec.zip(ctrlSet.map(_.canNest)).map { case(a, b) => a & b }
-  val nestWay     = PriorityEncoder(nestVec)
-  HardwareAssertion.withEn(!ctrlSet(nestWay).hasSnp, io.req_s0.valid & io.req_s0.bits.isSnp)
-  // get free way
-  val freeWayVec  = ctrlSet.map(!_.valid)
-  val hasFreeWay  = freeWayVec.reduce(_ | _)
-  val freeWay     = PriorityEncoder(freeWayVec)
-  // judge block
-  val lockBySet   = lockRegVec(reqSet) =/= 0.U
-  val hasMatch    = matchVec.reduce(_ | _)
-  val snpNest     = nestVec.reduce(_ | _) & io.req_s0.bits.isSnp
-  val receive     = Mux(hasMatch, snpNest, hasFreeWay) & !lockBySet
+    // req
+    set.io.req_s0.valid := io.req_s0.valid & io.req_s0.bits.Addr.posSet === i.U
+    set.io.req_s0.bits  := io.req_s0.bits
 
-  /*
-   * Store req from taskBuf
-   */
-  reqReg_s1.valid        := io.req_s0.valid & receive
-  reqReg_s1.bits.tag     := io.req_s0.bits.Addr.posTag
-  reqReg_s1.bits.isSnp   := io.req_s0.bits.isSnp
-  reqReg_s1.bits.pos.set := reqSet
-  reqReg_s1.bits.pos.way := Mux(snpNest, nestWay, freeWay)
+    // retry from block
+    set.io.retry_s1     := io.retry_s1
 
-  /*
-   * Retrun ack to taskBuf and block
-   */
-  io.sleep_s1   := RegNext(io.req_s0.valid & !receive & hasMatch)
-  io.block_s1   := RegNext(io.req_s0.valid & !receive)
-  io.posIdx_s1  := reqReg_s1.bits.pos
+    // update PoS valid and way
+    val updSeq          = Seq(set.io.updNest, set.io.updTag, set.io.clean, set.io.lockSet, set.io.unlockSet)
+    val ioUpdSeq        = Seq(io.updNest, io.updTag, io.clean, io.lockSet, io.unlockSet)
+    updSeq.zip(ioUpdSeq).foreach { case(upd, ioUpd) =>
+      upd.valid         := ioUpd.valid & ioUpd.bits.pos.set === i.U
+      upd.bits.way      := ioUpd.bits.pos.way
+    }
 
-  /*
-   * Lock Set
-   */
-  lockRegVec.zipWithIndex.foreach { case(lock, i) =>
-    val lockHit   = io.lockSet.valid & io.lockSet.bits.pos.set === i.U
-    val unlockHit = io.unlockSet.valid & io.unlockSet.bits.pos.set === i.U
-    lock := lock + lockHit - unlockHit
-    HardwareAssertion(lock +& lockHit - unlockHit >= 0.U)
-    HardwareAssertion(lock +& lockHit - unlockHit < posWays.U)
+    // update PoS other
+    set.io.updNest.bits.canNest := io.updNest.bits.canNest
+    set.io.updTag.bits.addr     := io.updTag.bits.addr
+    set.io.clean.bits.channel   := io.clean.bits.channel
   }
 
   /*
-   * Modify pos tag
+   * Connect IO <- PoS
    */
-  tagTable.zipWithIndex.foreach {
-    case(tagSet, i) =>
-      tagSet.zipWithIndex.foreach {
-        case(tag, j) =>
-          val updHit  = io.updTag.valid & io.updTag.bits.pos.idxMatch(i, j)
-          val reqHit  = reqReg_s1.valid & reqReg_s1.bits.pos.idxMatch(i , j) & !io.retry_s1
-          when(updHit) {
-            tag := io.updTag.bits.Addr.posTag
-          }.elsewhen(reqHit) {
-            tag := reqReg_s1.bits.tag
-          }
-          HardwareAssertion(!(updHit & reqHit))
-      }
+  val posTableIo      = posTable.map(_.io)
+  val setVec_s1       = posTableIo.map(_.posWay_s1.valid)
+  val wakeupVec_s1    = posTableIo.map(_.wakeup.valid)
+  // ack
+  io.sleep_s1         := posTableIo.map(_.sleep_s1).reduce(_ | _)
+  io.block_s1         := posTableIo.map(_.block_s1).reduce(_ | _)
+  io.posIdx_s1.set    := PriorityEncoder(setVec_s1)
+  io.posIdx_s1.way    := PriorityMux(setVec_s1, posTableIo.map(_.posWay_s1.bits))
+  // wakeup
+  io.wakeup.valid     := wakeupVec_s1.reduce(_ | _)
+  io.wakeup.bits.addr := PriorityMux(wakeupVec_s1, posTableIo.map(_.wakeup.bits.addr))
+  // HAssert
+  HAssert(PopCount(setVec_s1) <= 1.U)
+  HAssert(PopCount(wakeupVec_s1) <= 1.U)
+
+  /*
+   * already use PoS num
+   */
+  io.alrUsePoS := PopCount(posTableIo.flatMap(_.stateVec.map(_.valid)))
+
+  /*
+   * Get Addr
+   */
+  val addrVec2 = Wire(Vec(posSets, Vec(posWays, UInt(addrBits.W))))
+  addrVec2.zip(posTableIo.map(_.stateVec.map(_.bits.addr))).foreach { case(a, b) => a := b }
+  io.getAddrVec.foreach { get =>
+    get.result.addr := addrVec2(get.pos.set)(get.pos.way)
   }
-
-  /*
-   * Modify pos ctrl
-   */
-  ctrlTable.zipWithIndex.foreach {
-    case (ctrlSet, i) =>
-      ctrlSet.zipWithIndex.foreach {
-        case (ctrl, j) =>
-          // receive clean
-          val cleanHit    = io.clean.valid & io.clean.bits.pos.idxMatch(i, j)
-          val cleanSnp    = io.clean.bits.isSnp
-          // store req
-          val reqHit      = reqReg_s1.valid & reqReg_s1.bits.pos.idxMatch(i, j) & !io.retry_s1
-          val reqIsSnp    = reqReg_s1.bits.isSnp
-          // modify validVec
-          val validVecNxt = Wire(UInt(2.W))
-          ctrl.validVec   := validVecNxt
-          when(cleanHit) {
-            validVecNxt   := ctrl.validVec & Mux(cleanSnp, "b01".U, "b10".U)
-          }.elsewhen(reqHit) {
-            validVecNxt   := ctrl.validVec | Mux(reqIsSnp, "b10".U, "b01".U)
-          }.otherwise {
-            validVecNxt   := ctrl.validVec
-          }
-          // modify canNest
-          val updNestHit  = io.updNest.valid & io.updNest.bits.pos.idxMatch(i, j)
-          ctrl.canNest    := Mux(reqHit, false.B, Mux(updNestHit, io.updNest.bits.canNest, ctrl.canNest))
-          // assert
-          HardwareAssertion.withEn(PopCount(ctrl.validVec ^ validVecNxt) === 1.U, cleanHit | reqHit,
-                                                                    desc = cf"PoS Index[${i}][${j}]")
-          HardwareAssertion(PopCount(Seq(cleanHit, reqHit)) <= 1.U, desc = cf"PoS Index[${i}][${j}]")
-          HardwareAssertion.checkTimeout(!ctrl.valid, TIMEOUT_POS, cf"TIMEOUT: PoS Index[${i}][${j}]")
-      }
-  }
-
-
-  /*
-   * wakeup someone by addr
-   */
-  // get wakeup addr
-  val cleanWay = io.clean.bits.pos.way
-  val cleanSet = io.clean.bits.pos.set
-  val cleanTag = tagTable(cleanSet)(cleanWay)
-  io.wakeup.bits.Addr.catPoS(io.config.bankId, cleanTag, cleanSet, dirBank.U(dirBankBits.W))
-  // get wakeup valid
-  io.wakeup.valid := io.clean.valid & ctrlTable(cleanSet)(cleanWay).validVec.xorR
-
-  /*
-   * PoS Busy Signal
-   */
-  val useNum  = PopCount(ctrlTable.flatten.map(_.valid))
-  val posBusy = PriorityMux(Seq(
-    (useNum < (nrPoS*0.5 ).toInt.U) -> "b00".U,
-    (useNum < (nrPoS*0.75).toInt.U) -> "b01".U,
-    (useNum < (nrPoS*0.9 ).toInt.U) -> "b10".U,
-    true.B                          -> "b11".U,
-  ))
-  io.busy := RegNext(posBusy)
+  dontTouch(addrVec2)
 
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue-2)
+  HardwareAssertion.placePipe(Int.MaxValue - 2)
 }

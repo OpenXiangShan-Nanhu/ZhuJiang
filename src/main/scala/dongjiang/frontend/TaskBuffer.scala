@@ -55,6 +55,8 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
       val valid     = Bool()
       val release   = Bool()
     })) else None
+    // multiple cores are actively making requests
+    val multicore   = Bool()
   })
 
   /*
@@ -62,6 +64,11 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
    */
   val taskReg = RegInit((new TaskState with HasPackChi with HasAddr).Lit(_.state -> FREE))
   val nidReg  = if(sort) Some(Reg(UInt(nidBits.W))) else None
+
+  /*
+   * Multiple cores are actively making requests
+   */
+  io.multicore := taskReg.isSleep
 
   /*
    * Hit Message
@@ -155,6 +162,8 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
     val retry_s1    = Input(Bool()) // Reject Task by Block or PoS Full
     val sleep_s1    = Input(Bool()) // Reject Task by PoS Match
     val wakeup      = Flipped(Valid(new Addr)) // PoS wakeup someone
+    // multiple cores are actively making requests
+    val multicore   = Bool()
   })
 
 
@@ -201,6 +210,11 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
     }
     HardwareAssertion(PopCount(entries.map(e => e.io.state.get.release)) <= 1.U)
   }
+
+  /*
+   * Multiple cores are actively making requests
+   */
+  io.multicore := entries.map(_.io.multicore).reduce(_ | _)
 
   /*
    * HardwareAssertion placePipe

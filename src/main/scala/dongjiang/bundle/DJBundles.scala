@@ -37,6 +37,7 @@ trait HasAddr extends DJBundle { this: DJBundle =>
     def sfSet     = getSfSet(addr)
     def posTag    = getPosTag(addr)
     def posSet    = getPosSet(addr)
+    def dirSet    = if(sfSets > llcSets) sfSet else llcSet
 
     def getDataId = Mux(offset(offsetBits-1), "b10".U, "b00".U)
 

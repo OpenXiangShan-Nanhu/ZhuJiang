@@ -126,8 +126,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
 
 
   /*
-   * Connect Config
+   * Connect DirBank and Config
    */
+  frontends.zipWithIndex.foreach { case(a, b) => a.io.dirBank := b.U }
   frontends.foreach(_.io.config := io.config)
   directory.io.config := io.config
   backend.io.config := io.config
@@ -174,8 +175,15 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   chiXbar.io.txDat.outVec.zip(icnVec.map(_.tx.data.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // Set CBusy in CHIXbar
-  // TODO: Need to argue reasonableness
-  chiXbar.io.cBusy := Cat(backend.io.multicore, frontends.map(_.io.posBusy).reduce(_ | _))
+  val multicore = frontends.map(_.io.multicore).reduce(_ |  _); dontTouch(multicore)
+  val alrUsePos = frontends.map(_.io.alrUsePoS).reduce(_ +& _); dontTouch(alrUsePos)
+  val posBusy   = PriorityMux(Seq(
+    (alrUsePos < (djparam.nrPoS * 0.5 ).toInt.U)  -> "b00".U,
+    (alrUsePos < (djparam.nrPoS * 0.75).toInt.U)  -> "b01".U,
+    (alrUsePos < (djparam.nrPoS * 0.9 ).toInt.U)  -> "b10".U,
+    true.B -> "b11".U,
+  ))
+  chiXbar.io.cBusy := RegNext(Cat(multicore, posBusy))
 
 
   /*
