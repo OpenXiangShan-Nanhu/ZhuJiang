@@ -5,7 +5,6 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.GetAddr
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
@@ -255,20 +254,18 @@ class PosTable(implicit p: Parameters) extends DJModule {
     // wakeup TaskBuf Entry
     val wakeup      = Valid(new Addr)
     // Get Full Addr In PoS
-    val getAddrVec  = Vec(nrTaskCM + 1, Flipped(new GetAddr(true)))
+    val getAddrVec  = Vec(nrGetAddr, Flipped(new GetAddr(true)))
     // PoS Busy Signal
     val alrUsePoS   = Output(UInt(log2Ceil(nrPoS + 1).W))
   })
-  io <> DontCare
 
   /*
    * Module and Reg declaration
    */
   val posTable      = Seq.fill(posSets) { Module(new PosSet()) }
-  posTable.foreach(_.io <> DontCare)
 
   /*
-   * Connect IO -> PoS
+   * Connect PoS <- IO
    */
   posTable.zipWithIndex.foreach { case(set, i) =>
     // base

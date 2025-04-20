@@ -51,8 +51,6 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config        = new DJConfigIO()
-    // Get Full Addr In PoS
-    val getAddr       = new GetAddr()
     // Commit Task In
     val alloc         = Flipped(Decoupled(new CMTask))
     // CHI
@@ -74,7 +72,6 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
    */
   val cmRegVec  = RegInit(VecInit(Seq.fill(nrReadCM) { 0.U.asTypeOf(new CMState) }))
   val msgRegVec = Reg(Vec(nrReadCM, new CMTask()))
-  val dsRegVec  = Reg(Vec(nrReadCM, new DsIdx()))
 
   /*
    * [Free] Receive Task IO
@@ -92,23 +89,17 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   val task_sReq   = msgRegVec(cmId_sReq)
   // valid
   io.txReq.valid  := cmVec_sReq.reduce(_ | _)
-  // get addr
-  io.getAddr.llcTxnID   := task_sReq.llcTxnID
-  val replOp            = Mux(io.getAddr.result.Addr.isToLAN(io.config.ci), WriteNoSnpFull, Mux(task_sReq.cbResp(2), WriteBackFull, WriteEvictOrEvict)) // TODO: adapt to WriteEvictOrEvict in WOA
+  // TODO: toBBN WriteBackFull / WriteEvictOrEvict
+  val replOp            = WriteNoSnpFull
   // bits
   io.txReq.bits         := DontCare
   io.txReq.bits.MemAttr := task_sReq.chi.memAttr.asUInt
   io.txReq.bits.Order   := Order.None
-  io.txReq.bits.Addr    := io.getAddr.result.addr
+  io.txReq.bits.Addr    := DontCare // remap in chi xbar
   io.txReq.bits.Size    := task_sReq.chi.getSize
   io.txReq.bits.Opcode  := Mux(task_sReq.fromRepl, replOp, task_sReq.chi.opcode)
   io.txReq.bits.TxnID   := task_sReq.llcTxnID.get
   io.txReq.bits.SrcID   := task_sReq.chi.getNoC(io.config.ci)
-  // save ds
-  when(cmVec_sReq.reduce(_ | _)) {
-    dsRegVec(cmId_sReq).bank   := getDS(io.getAddr.result.addr, task_sReq.wrillcWay)._1
-    dsRegVec(cmId_sReq).idx    := getDS(io.getAddr.result.addr, task_sReq.wrillcWay)._2
-  }
 
 
   /*
@@ -136,7 +127,7 @@ class WriOrAtmCM(implicit p: Parameters) extends DJModule {
   io.dataTask.bits                := DontCare
   io.dataTask.bits.dataOp         := task_sDat.dataOp
   io.dataTask.bits.llcTxnID       := task_sDat.llcTxnID
-  io.dataTask.bits.ds             := dsRegVec(cmId_sDat)
+  io.dataTask.bits.ds             := task_sDat.ds
   io.dataTask.bits.dataVec        := task_sDat.chi.dataVec
   io.dataTask.bits.txDat.Resp     := task_sDat.cbResp
   io.dataTask.bits.txDat.Opcode   := task_sDat.chi.opcode

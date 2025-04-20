@@ -250,6 +250,8 @@ trait HasDJParam extends HasParseZJParam {
   // [S1(PoS/Block)] + [S2(ReadDir)] + [S3(Decode)] + Reserve for snp
   lazy val nrIssueBuf       = 4
   lazy val issueBufBits     = log2Ceil(nrIssueBuf)
+  // (LAN + BBN) * (Req + Snp) + wriLLC + wriSF
+  lazy val nrGetAddr        = nrIcn * 2 + 2
 
 
   // DataBlock Parameters

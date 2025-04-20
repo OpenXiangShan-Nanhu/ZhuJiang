@@ -102,6 +102,12 @@ trait HasLLCTxnID extends DJBundle { this: DJBundle =>
   val dirBank = UInt(dirBankBits.W)
   val pos     = new PosIndex()
   def get     = pos.getLLCTxnID(dirBank)
+  // Note: only set pos.set and dirBank
+  def getAddr = {
+    val a = Wire(new Addr())
+    a.Addr.catPoS(0.U(bankBits.W), 0.U(posTagBits.W), pos.set, dirBank)
+    a.addr
+  }
 }
 
 class LLCTxnID(implicit p: Parameters) extends DJBundle with HasLLCTxnID
@@ -165,3 +171,14 @@ class Chi(implicit p: Parameters) extends DJBundle with HasNodeId with HasChiCha
 trait HasPackChi { this: DJBundle => val chi = new Chi() }
 
 class PackChi(implicit p: Parameters) extends DJBundle with HasPackChi
+
+/*
+ * GetAddr
+ */
+class GetAddr(frontend: Boolean = false)(implicit p: Parameters) extends DJBundle {
+  val llcTxnIdOpt = if(!frontend) Some(Output(new LLCTxnID())) else None
+  val posOpt      = if(frontend)  Some(Output(new PosIndex())) else None
+  val result      = Input(new Addr())
+  def llcTxnID    = llcTxnIdOpt.get
+  def pos         = posOpt.get
+}

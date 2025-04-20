@@ -42,7 +42,8 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     val txDat = new Bundle {
       val in      = Flipped(Decoupled(new DataFlit()))
       val outVec  = Vec(nrIcn, Decoupled(new DataFlit()))
-    }
+    } // get addr from pos
+    val addrVec   = Vec(nrIcn*2, new GetAddr())
     // cBusy
     val cBusy     = Input(UInt(3.W))
   })
@@ -128,6 +129,12 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
   io.txSnp.outVec.foreach(_.bits.SrcID := 0.U)
   io.txRsp.outVec.foreach(_.bits.SrcID := 0.U)
   io.txDat.outVec.foreach(_.bits.SrcID := 0.U)
+
+  // set Addr
+  val txTxnIDSeq  = io.txReq.outVec.map(_.bits.TxnID) ++ io.txSnp.outVec.map(_.bits.TxnID)
+  io.addrVec.zip(txTxnIDSeq).foreach { case(a, b) => a.llcTxnID := b.asTypeOf(new LLCTxnID) }
+  io.txReq.outVec.map(_.bits.Addr).zip(io.addrVec.take(nrIcn)).foreach { case(a, b) => a := b.result.addr }
+  io.txSnp.outVec.map(_.bits.Addr).zip(io.addrVec.drop(nrIcn)).foreach { case(a, b) => a := b.result.addr >> 3.U }
 
   // Set CBusy
   io.txRsp.outVec.foreach(_.bits.CBusy := io.cBusy)

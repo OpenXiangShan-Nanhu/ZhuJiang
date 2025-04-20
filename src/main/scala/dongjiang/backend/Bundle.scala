@@ -21,9 +21,8 @@ class CommitTask(implicit p: Parameters) extends DJBundle with HasPackChi with H
   with HasPackDirMsg with HasAlready with HasPackOperations with HasPackCmtCode with HasDsIdx with HasSnpTgt
 
 class CMTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasPackLLCTxnID
-  with HasAlready with HasPackDataOp {
+  with HasAlready with HasPackDataOp with HasDsIdx {
   val snpVec    = Vec(nrSfMetas, Bool())  // Only use in SnoopCM
-  val wrillcWay = UInt(llcWayBits.W)      // Only use in WriOrAtmCm
   val fromRepl  = Bool()                  // from ReplaceCM
   val cbResp    = UInt(ChiResp.width.W)   // CopyBack Resp //  Only use in WriOrAtmCm
   val doDMT     = Bool()                  // Only use in ReadCM
@@ -31,7 +30,9 @@ class CMTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasPa
   def needReqDB = dataOp.reqs & !alr.reqs
 }
 
-class PackCMTask(implicit p: Parameters) extends DJBundle { val task = new CMTask() }
+trait HasPackCMTask { this: DJBundle => val task = new CMTask() }
+
+class PackCMTask(implicit p: Parameters) extends DJBundle with HasPackCMTask
 
 class RespToCmt(implicit p: Parameters) extends DJBundle with HasPackLLCTxnID with HasPackTaskInst with HasAlready
 
@@ -41,12 +42,4 @@ class ReplTask(implicit p: Parameters) extends DJBundle with HasAlready with Has
   def replSF  = wriSF  & !dir.sf.hit
   def replLLC = wriLLC & !dir.llc.hit
   def replDIR = replSF | replLLC
-}
-
-class GetAddr(frontend: Boolean = false)(implicit p: Parameters) extends DJBundle {
-  val llcTxnIdOpt = if(!frontend) Some(Output(new LLCTxnID())) else None
-  val posOpt      = if(frontend)  Some(Output(new PosIndex())) else None
-  val result      = Input(new Addr())
-  def llcTxnID    = llcTxnIdOpt.get
-  def pos         = posOpt.get
 }

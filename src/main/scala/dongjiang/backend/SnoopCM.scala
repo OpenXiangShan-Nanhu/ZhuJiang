@@ -50,8 +50,6 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config      = new DJConfigIO()
-    // Get Full Addr In PoS
-    val getAddr     = new GetAddr()
     // Commit Task In
     val alloc       = Flipped(Decoupled(new CMTask))
     // CHI
@@ -119,13 +117,11 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   nodeId_sSnp.setSnpNodeId(metaId_sSnp)
   // valid
   io.txSnp.valid  := cmVec_sSnp.reduce(_ | _)
-  // get addr
-  io.getAddr.llcTxnID       := task_sSnp.llcTxnID
   // bits
   io.txSnp.bits             := DontCare
   io.txSnp.bits.RetToSrc    := Mux(snpIsFst, task_sSnp.chi.retToSrc, false.B)
   io.txSnp.bits.DoNotGoToSD := false.B
-  io.txSnp.bits.Addr        := io.getAddr.result.addr >> 3.U // Snoop address in CHI is aligned to 8-bytes boundary
+  io.txSnp.bits.Addr        := DontCare // remap in chi xbar
   io.txSnp.bits.Opcode      := Mux(snpIsFst, task_sSnp.chi.opcode, task_sSnp.chi.getNoFwdSnpOp)
   io.txSnp.bits.FwdTxnID    := task_sSnp.chi.txnID
   io.txSnp.bits.FwdNID      := task_sSnp.chi.nodeId

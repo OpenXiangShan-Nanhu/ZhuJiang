@@ -66,7 +66,8 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   cmTask_s3.dataOp          := task_s3.code.dataOp
   cmTask_s3.fromRepl        := false.B
   cmTask_s3.cbResp          := task_s3.dir.llc.metaVec.head.cbResp
-  cmTask_s3.wrillcWay       := task_s3.dir.llc.way
+  cmTask_s3.ds.bank         := getDS(io.task_s3.bits.addr, io.task_s3.bits.dir.llc.way)._1
+  cmTask_s3.ds.idx          := getDS(io.task_s3.bits.addr, io.task_s3.bits.dir.llc.way)._2
   cmTask_s3.doDMT           := task_s3.code.doDMT
   // set by decode
   cmTask_s3.chi.channel     := PriorityMux(Seq(

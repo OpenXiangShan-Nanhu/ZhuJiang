@@ -37,8 +37,6 @@ class Backend(implicit p: Parameters) extends DJModule {
     val rxDat           = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
     // CHI RESP From Frontend
     val fastResp        = Flipped(Decoupled(new RespFlit()))
-    // Get Full Addr In PoS
-    val getAddrVec2     = Vec(djparam.nrDirBank, Vec(nrTaskCM + 1, new GetAddr(true)))
     // Update PoS Message
     val updPosNestVec   = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasNest))
     val updPosTagVec    = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasAddr)) // Only from replace
@@ -99,18 +97,6 @@ class Backend(implicit p: Parameters) extends DJModule {
   /*
    * Connect Frontend
    */
-  // getAddrVec2
-  val mods_getAddr = Seq(replCM.io.getAddr, snoopCM.io.getAddr, wriOrAtmCM.io.getAddr, readCM.io.getAddr, datalessCM.io.getAddr)
-  io.getAddrVec2.transpose.head.zip(cmtCMs.map(_.io.getAddr)).foreach { case(a, b) => a <> b }
-  io.getAddrVec2.transpose.tail.zip(mods_getAddr).foreach { case(get, mods) =>
-    val addrVec = Wire(Vec(djparam.nrDirBank, new Addr()))
-    addrVec.zip(get.map(_.result)).foreach { case(a, b) => a.addr := b.addr }
-    // Output
-    get.foreach(_.pos := mods.llcTxnID.pos)
-    // Input
-    mods.result := addrVec(mods.llcTxnID.dirBank)
-  }
-
   // updPosNestVec
   io.updPosNestVec.zipWithIndex.foreach { case(upd, i) => upd <> fastRRArb(Seq(cmtCMs(i).io.updPosNest, wriOrAtmCM.io.updPosNestVec(i))) }
 

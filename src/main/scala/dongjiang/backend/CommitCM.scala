@@ -54,8 +54,6 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config      = new DJConfigIO()
-    // Get Full Addr In PoS
-    val getAddr     = new GetAddr(true)
     // Commit Task In
     val alloc       = Flipped(Valid(new CommitTask))
     // CHI
@@ -83,7 +81,6 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val cmTable       = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { 0.U.asTypeOf(new CMState()) }) }))
   val msgTable      = Reg(Vec(posSets, Vec(posWays, new PackChi with HasPackDirMsg with HasAlready with HasPackCmtCode
                                                       with HasDsIdx with HasPackTaskInst with HasPackTaskCode with HasSnpTgt)))
-  val timeoutPos    = WireInit(0.U.asTypeOf(new PosIndex()))
   // receive
   val cm_rec        = Wire(new CMState())
   val msg_rec       = Wire(chiselTypeOf(msgTable.head.head))
@@ -355,7 +352,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   alloc_task.llcTxnID.dirBank     := dirBank.U
   alloc_task.alr                  := msg_task.alr
   alloc_task.snpVec               := msg_task.dir.getSnpVec(msg_task.code.snpTgt, msg_task.chi.metaIdOH)
-  alloc_task.wrillcWay            := msg_task.dir.llc.way
+  alloc_task.ds                   := msg_task.ds
   alloc_task.fromRepl             := false.B
   alloc_task.cbResp               := msg_task.dir.llc.metaVec.head.cbResp
   alloc_task.doDMT                := msg_task.code.doDMT
@@ -481,15 +478,10 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             HardwareAssertion.withEn(cm.chi.w_ack | msg.chi.reqIs(WriteEvictOrEvict),  waitCompAckHit, cf"Commit Index[${i}][${j}]")
             // TIMEOUT
             val timeout = HardwareAssertion.checkTimeout(!cm.valid, TIMEOUT_COMMIT, cf"TIMEOUT: Commit Index[${i}][${j}]" +
-              cf"\nADDR: ${io.getAddr.result.addr}\nInternal Send: ${cm.intl.s}\nInternal Wait: ${cm.intl.w}\nCHI: ${cm.chi}\n${msg.chi.getChiInst()}\n${msg.dir.getStateInst(msg.chi.metaIdOH)}")
-            when(timeout) {
-              timeoutPos.set := i.U
-              timeoutPos.way := j.U
-            }
+              cf"\nInternal Send: ${cm.intl.s}\nInternal Wait: ${cm.intl.w}\nCHI: ${cm.chi}\n${msg.chi.getChiInst()}\n${msg.dir.getStateInst(msg.chi.metaIdOH)}")
           }
       }
   }
-  io.getAddr.pos := timeoutPos
 
 
   /*

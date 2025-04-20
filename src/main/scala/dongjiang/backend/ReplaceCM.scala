@@ -52,8 +52,6 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config          = new DJConfigIO()
-    // Get Full Addr In PoS
-    val getAddr         = new GetAddr()
     // Commit Task In
     val alloc           = Flipped(Decoupled(new ReplTask))
     val resp            = Valid(new LLCTxnID())
@@ -66,7 +64,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     // Write Directory
     val writeDir        = new DJBundle {
       val llc           = Decoupled(new DirEntry("llc") with HasPackPosIndex)
-      val sf            = Decoupled(new DirEntry("sf") with HasPackPosIndex)
+      val sf            = Decoupled(new DirEntry("sf")  with HasPackPosIndex)
     }
     // Write Directory Resp
     val respDir         = new DJBundle {
@@ -83,6 +81,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
    */
   val cmRegVec  = RegInit(VecInit(Seq.fill(nrReplaceCM) { 0.U.asTypeOf(new CMState()) }))
   val msgRegVec = Reg(Vec(nrReplaceCM, new ReplTask()))
+  val replDsVec = Reg(Vec(nrReplaceCM, new DsIdx()))
   val waitPipe  = Module(new Pipe(UInt(log2Ceil(nrReplaceCM).W), readDirLatency))
 
 
@@ -100,18 +99,16 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   val cmVec_wri = cmRegVec.map(_.isWriDir)
   val cmId_wri  = RREncoder(cmVec_wri)
   val msg_wri   = msgRegVec(cmId_wri)
-  // getAddr
-  io.getAddr.llcTxnID           := msg_wri.llcTxnID
   // llc
   io.writeDir.llc.valid         := cmVec_wri.reduce(_ | _) & msg_wri.wriLLC & (!msg_wri.wriSF | io.writeDir.sf.ready)
-  io.writeDir.llc.bits.addr     := io.getAddr.result.addr
+  io.writeDir.llc.bits.addr     := msg_wri.llcTxnID.getAddr // remap in DongJiang
   io.writeDir.llc.bits.wayOH    := msg_wri.dir.llc.wayOH
   io.writeDir.llc.bits.hit      := msg_wri.dir.llc.hit
   io.writeDir.llc.bits.metaVec  := msg_wri.dir.llc.metaVec
   io.writeDir.llc.bits.pos      := msg_wri.llcTxnID.pos
   // sf
   io.writeDir.sf.valid          := cmVec_wri.reduce(_ | _) & msg_wri.wriSF & (!msg_wri.wriLLC | io.writeDir.llc.ready)
-  io.writeDir.sf.bits.addr      := io.getAddr.result.addr
+  io.writeDir.sf.bits.addr      := msg_wri.llcTxnID.getAddr // remap in DongJiang
   io.writeDir.sf.bits.wayOH     := msg_wri.dir.sf.wayOH
   io.writeDir.sf.bits.hit       := msg_wri.dir.sf.hit
   io.writeDir.sf.bits.metaVec   := msg_wri.dir.sf.metaVec
@@ -136,6 +133,11 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.updPosTag.bits.dirBank := msg_get.llcTxnID.dirBank
   io.updPosTag.bits.pos     := msg_get.llcTxnID.pos
   io.updPosTag.bits.addr    := addr_get
+  // save repl ds
+  when(needReplLLC) {
+    replDsVec(cmId_get).bank  := getDS(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)._1
+    replDsVec(cmId_get).idx   := getDS(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)._2
+  }
   // lock when write
   io.lockPosSet.valid       := waitPipe.io.enq.fire
   io.lockPosSet.bits        := msg_wri.llcTxnID
@@ -185,7 +187,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.cmAllocVec(CMID.WOA).bits.chi.memAttr.ewa        := true.B
   io.cmAllocVec(CMID.WOA).bits.chi.toLAN    := DontCare
   io.cmAllocVec(CMID.WOA).bits.fromRepl     := true.B
-  io.cmAllocVec(CMID.WOA).bits.wrillcWay    := msg_rpLLC.dir.llc.way
+  io.cmAllocVec(CMID.WOA).bits.ds           := replDsVec(cmId_rpLLC)
   io.cmAllocVec(CMID.WOA).bits.cbResp       := msg_rpLLC.dir.llc.metaVec.head.cbResp
   io.cmAllocVec(CMID.WOA).bits.alr          := msg_rpLLC.alr
   io.cmAllocVec(CMID.WOA).bits.dataOp.reqs  := false.B

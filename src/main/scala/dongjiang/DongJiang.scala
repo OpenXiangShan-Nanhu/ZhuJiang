@@ -185,6 +185,29 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   ))
   chiXbar.io.cBusy := RegNext(Cat(multicore, posBusy))
 
+  /*
+   * Get addr from PoS logic
+   */
+  // wriDirGetVec
+  val wriDirGetVec = Wire(Vec(2, new GetAddr))
+  // sf/llc dirBank
+  wriDirGetVec.head.llcTxnID.dirBank := backend.io.writeDir.sf.bits.Addr.dirBank
+  wriDirGetVec.last.llcTxnID.dirBank := backend.io.writeDir.llc.bits.Addr.dirBank
+  // sf/llc pos
+  wriDirGetVec.head.llcTxnID.pos := backend.io.writeDir.sf.bits.pos
+  wriDirGetVec.last.llcTxnID.pos := backend.io.writeDir.llc.bits.pos
+  // modsGetVec
+  val modsGetVec = chiXbar.io.addrVec ++ wriDirGetVec
+  // getAddrVec2
+  val getAddrVec2 = Wire(Vec(djparam.nrDirBank, Vec(nrGetAddr, new GetAddr(true))))
+  getAddrVec2.transpose.zip(modsGetVec).foreach { case (get, mods) =>
+    val addrVec = Wire(Vec(djparam.nrDirBank, new Addr()))
+    addrVec.zip(get.map(_.result)).foreach { case (a, b) => a.addr := b.addr }
+    // get pos index
+    get.foreach(_.pos := mods.llcTxnID.pos)
+    // get result
+    mods.result := addrVec(mods.llcTxnID.dirBank)
+  }
 
   /*
    * Connect frontends
@@ -197,15 +220,18 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
       f.io.cleanPos     := backend.io.cleanPosVec(i)
       f.io.lockPosSet   := backend.io.lockPosSetVec(i)
       f.io.unlockPosSet := backend.io.unlockPosSetVec(i)
-      f.io.getAddrVec.zip(backend.io.getAddrVec2(i)).foreach { case(a, b) => a <> b }
+      f.io.getAddrVec.zip(getAddrVec2(i)).foreach { case(a, b) => a <> b }
   }
 
   /*
    * Connect Directory
    */
   directory.io.readVec.zip(frontends.map(_.io.readDir_s1)).foreach { case(a, b) => a <> b }
-  directory.io.write <> backend.io.writeDir
   directory.io.unlockVec.zipWithIndex.foreach { case(vec, i) => vec := backend.io.unlockVec(i) }
+  directory.io.write.sf  <> backend.io.writeDir.sf
+  directory.io.write.llc <> backend.io.writeDir.llc
+  directory.io.write.sf.bits.addr  := wriDirGetVec.head.result.addr
+  directory.io.write.llc.bits.addr := wriDirGetVec.last.result.addr
 
   /*
    * Connect backend

@@ -175,13 +175,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   /*
    * Receive Chi Task
    */
-  val freeVec = entries.map(_.io.chiTaskIn.ready)
-  val freeId  = PriorityEncoder(freeVec); dontTouch(freeId)
-  entries.zipWithIndex.foreach { case(e, i) =>
-    e.io.chiTaskIn.valid  := io.chiTaskIn.valid & freeId === i.U
-    e.io.chiTaskIn.bits   := io.chiTaskIn.bits
-  }
-  io.chiTaskIn.ready      := freeVec.reduce(_ | _)
+  Alloc(entries.map(_.io.chiTaskIn), io.chiTaskIn)
 
   /*
    * Send Task & Req

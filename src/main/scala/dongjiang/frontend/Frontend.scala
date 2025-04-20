@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.{CMTask, CommitTask, GetAddr}
+import dongjiang.backend.{CMTask, CommitTask}
 import dongjiang.utils._
 import dongjiang.bundle._
 import dongjiang.data.DataTask
@@ -35,7 +35,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val cmtAlloc_s3   = Valid(new CommitTask())
     val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new CMTask()))
     // Get Full Addr In PoS
-    val getAddrVec    = Vec(nrTaskCM + 1, Flipped(new GetAddr(true)))
+    val getAddrVec    = Vec(nrGetAddr, Flipped(new GetAddr(true)))
     // Update PoS Message
     val updPosNest    = Flipped(Decoupled(new PackPosIndex with HasNest))
     val updPosTag     = Flipped(Valid(new PackPosIndex with HasAddr))
