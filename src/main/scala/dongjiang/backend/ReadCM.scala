@@ -144,7 +144,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   val allocHit    = io.alloc.fire
   val reqDBHit    = io.reqDB.fire
   val sendReqHit  = io.txReq.fire
-  val recDataHit  = io.rxDat.fire & cmReg.task.llcTxnID.get === io.rxDat.bits.TxnID & io.rxDat.bits.Opcode === CompData & cm.isValid
+  val recDataHit  = io.rxDat.fire & cmReg.task.llcTxnID.get === io.rxDat.bits.TxnID & io.rxDat.bits.Opcode === CompData & cmReg.isValid
   val sendAckHit  = io.txRsp.fire
   val respCmtHit  = io.respCmt.fire
 
