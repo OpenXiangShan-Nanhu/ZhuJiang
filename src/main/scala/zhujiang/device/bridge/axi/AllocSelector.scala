@@ -15,13 +15,12 @@ class SelNto1(size:Int, outstanding: Int) extends Module {
     val out = Output(UInt(outstanding.W))
   })
 
-  private val oldestOHMatrix = io.in.zipWithIndex.map({ case (self, idx) =>
-    io.in.zipWithIndex.filterNot(_._2 == idx).map(i => (i._1.valid && self.valid && (self.bits.waitNum <= i._1.bits.waitNum)) ^ i._1.valid)
+  private val oldestOhSeq = io.in.zipWithIndex.map({ case (self, idx) =>
+    val cmpVec = io.in.zipWithIndex.filterNot(_._2 == idx).map(i => self.valid && Mux(i._1.valid, self.bits.waitNum <= i._1.bits.waitNum, true.B))
+    Cat(cmpVec).andR
   })
-  private val oldestOHSeq = oldestOHMatrix.map(_.reduce(_ | _)).map(!_)
-  private val oldestOH = Cat(oldestOHSeq.reverse)
-  private val valids = Cat(io.in.map(_.valid).reverse)
-  io.out := oldestOH & valids
+  private val valids = Cat(io.in.map(_.valid))
+  io.out := Cat(oldestOhSeq.reverse)
   when(valids.orR) {
     assert(io.out.orR)
   }
