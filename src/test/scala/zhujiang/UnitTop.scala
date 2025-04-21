@@ -19,6 +19,10 @@ import zhujiang.device.tlu2chi.TLUL2ChiBridge
 import zhujiang.tilelink.TilelinkParams
 import zhujiang.{ZJParameters, ZJParametersKey}
 import dongjiang.{DJParam, DongJiang, DongJiangTop}
+import dongjiang.directory._
+import dongjiang.data._
+import dongjiang.backend._
+import dongjiang.frontend._
 import xs.utils.debug.{HardwareAssertionKey, HwaParams}
 
 object UnitTop {
@@ -114,6 +118,34 @@ object HomeTop extends App {
   val nrHfFrnd = homeNodeGrps.flatMap(_._2).map(_.friends.size).max
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
     ChiselGeneratorAnnotation(() => new HomeWrapper(homeNodeGrps.head._2, nrHfFrnd)(config))
+  ))
+}
+
+object DirectoryTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
+    ChiselGeneratorAnnotation(() => new Directory()(config))
+  ))
+}
+
+object DataBlockTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
+    ChiselGeneratorAnnotation(() => new DataBlock()(config))
+  ))
+}
+
+object BackendTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
+    ChiselGeneratorAnnotation(() => new Backend()(config))
+  ))
+}
+
+object FrontendTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
+    ChiselGeneratorAnnotation(() => new Frontend(0)(config))
   ))
 }
 
