@@ -245,7 +245,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val posWays          = djparam.posWays
   lazy val posWayBits       = log2Ceil(posWays)
   lazy val dirMuticycle     = djparam.dirLatency.max(if(djparam.dirExtraHold) djparam.dirSetup + 1 else djparam.dirSetup)
-  lazy val readDirLatency   = djparam.dirSetup + djparam.dirLatency
+  lazy val readDirLatency   = (if(djparam.dirSetup > 1) djparam.dirSetup + 1 else djparam.dirSetup) + djparam.dirLatency
   lazy val llcWayBits       = log2Ceil(djparam.llcWays)
   // [S1(PoS/Block)] + [S2(ReadDir)] + [S3(Decode)] + Reserve for snp
   lazy val nrIssueBuf       = 4
@@ -263,7 +263,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val nrDsSet          = djparam.dsSets / dsBank
   lazy val dsIdxBits        = log2Ceil(nrDsSet)
   lazy val dsMuticycle      = djparam.dataLatency.max(if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup)
-  lazy val readDsLatency    = djparam.dataSetup + djparam.dataLatency
+  lazy val readDsLatency    = (if(djparam.dataSetup > 1) djparam.dataSetup + 1 else djparam.dataSetup) + djparam.dataLatency
 
   // Replacement(PLRU) Parameters
   lazy val sReplWayBits     = djparam.llcWays - 1

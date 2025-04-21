@@ -23,7 +23,6 @@ class Shift(implicit p: Parameters) extends DJBundle {
   private val lo = readDsLatency - (dsMuticycle - 1)
   def req        = read | write
   def reqReady   = if(dsMuticycle > 1) !req(hi, lo).orR else true.B
-  def getData    = read(1).asBool
   def outResp    = read(0).asBool
 }
 

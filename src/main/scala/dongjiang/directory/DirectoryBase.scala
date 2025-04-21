@@ -22,7 +22,6 @@ class Shift(implicit p: Parameters) extends DJBundle {
   def recRepl_d0(fire: Bool) = this.repl   := Cat(fire, repl >> 1)
   def recWri_d0 (fire: Bool) = this.write  := Cat(fire, write >> 1)
 
-  def getTagMeta_d1 = read(1).asBool
   def outDirResp_d2 = read(0).asBool
   def updTagMeta_d2 = read(0).asBool  &  repl(0).asBool
   def wriUpdRepl_d2 = write(0).asBool & !repl(0).asBool
@@ -116,10 +115,10 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     val wriWayOH      = UInt(param.ways.W)
   }) }))
   val replSftReg_d1   = RegInit(VecInit(Seq.fill(readDirLatency-1) { 0.U(repl.nBits.W) }))
-  val tagResp_d2   = tagArray.io.resp.bits.data
-  val metaResp_d2  = metaArray.io.resp.bits.data
 
   // [D2]: Select Way and Output DIR Resp
+  val tagResp_d2      = tagArray.io.resp.bits.data
+  val metaResp_d2     = metaArray.io.resp.bits.data
   // from d1
   val req_d2          = WireInit(0.U.asTypeOf(reqSftReg_d1.head))
   val replMes_d2      = WireInit(0.U(repl.nBits.W))
