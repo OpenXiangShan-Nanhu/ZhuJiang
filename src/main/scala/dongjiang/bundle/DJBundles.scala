@@ -28,7 +28,7 @@ trait HasAddr extends DJBundle { this: DJBundle =>
   object Addr {
     def ci        = getCI(addr)
     def useAddr   = getUseAddr(addr)
-    def bankId    = getBankId(addr)
+    def bankId    = if(bankBits != 0) getBankId(addr) else 0.U
     def offset    = getOffset(addr)
     def dirBank   = getDirBank(addr)
     def llcTag    = getLlcTag(addr)
