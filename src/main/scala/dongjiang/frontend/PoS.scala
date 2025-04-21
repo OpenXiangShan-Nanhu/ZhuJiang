@@ -124,7 +124,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   reqReg_s1.bits.tag      := reqTag_s0
   reqReg_s1.bits.channel  := io.req_s0.bits.channel
   reqReg_s1.bits.way      := Mux(canNest_s0, matTagWay_s0, freeWay_s0)
-  HardwareAssertion.withEn(reqTag_s0 =/= reqReg_s1.bits.tag, reqReg_s1.valid)
+  HardwareAssertion.withEn(reqTag_s0 =/= reqReg_s1.bits.tag, io.req_s0.valid & reqReg_s1.valid)
 
   /*
    * Retrun ack to taskBuf and block
@@ -262,12 +262,12 @@ class PosTable(implicit p: Parameters) extends DJModule {
   /*
    * Module and Reg declaration
    */
-  val posTable      = Seq.fill(posSets) { Module(new PosSet()) }
+  val posSet = Seq.fill(posSets) { Module(new PosSet()) }
 
   /*
    * Connect PoS <- IO
    */
-  posTable.zipWithIndex.foreach { case(set, i) =>
+  posSet.zipWithIndex.foreach { case(set, i) =>
     // base
     set.io.config       := io.config
     set.io.dirBank      := io.dirBank
@@ -297,17 +297,17 @@ class PosTable(implicit p: Parameters) extends DJModule {
   /*
    * Connect IO <- PoS
    */
-  val posTableIo      = posTable.map(_.io)
-  val setVec_s1       = posTableIo.map(_.posWay_s1.valid)
-  val wakeupVec_s1    = posTableIo.map(_.wakeup.valid)
+  val posSetIo        = posSet.map(_.io)
+  val setVec_s1       = posSetIo.map(_.posWay_s1.valid)
+  val wakeupVec_s1    = posSetIo.map(_.wakeup.valid)
   // ack
-  io.sleep_s1         := posTableIo.map(_.sleep_s1).reduce(_ | _)
-  io.block_s1         := posTableIo.map(_.block_s1).reduce(_ | _)
+  io.sleep_s1         := posSetIo.map(_.sleep_s1).reduce(_ | _)
+  io.block_s1         := posSetIo.map(_.block_s1).reduce(_ | _)
   io.posIdx_s1.set    := PriorityEncoder(setVec_s1)
-  io.posIdx_s1.way    := PriorityMux(setVec_s1, posTableIo.map(_.posWay_s1.bits))
+  io.posIdx_s1.way    := PriorityMux(setVec_s1, posSetIo.map(_.posWay_s1.bits))
   // wakeup
   io.wakeup.valid     := wakeupVec_s1.reduce(_ | _)
-  io.wakeup.bits.addr := PriorityMux(wakeupVec_s1, posTableIo.map(_.wakeup.bits.addr))
+  io.wakeup.bits.addr := PriorityMux(wakeupVec_s1, posSetIo.map(_.wakeup.bits.addr))
   // HAssert
   HAssert(PopCount(setVec_s1) <= 1.U)
   HAssert(PopCount(wakeupVec_s1) <= 1.U)
@@ -315,13 +315,13 @@ class PosTable(implicit p: Parameters) extends DJModule {
   /*
    * already use PoS num
    */
-  io.alrUsePoS := PopCount(posTableIo.flatMap(_.stateVec.map(_.valid)))
+  io.alrUsePoS := PopCount(posSetIo.flatMap(_.stateVec.map(_.valid)))
 
   /*
    * Get Addr
    */
   val addrVec2 = Wire(Vec(posSets, Vec(posWays, UInt(addrBits.W))))
-  addrVec2.zip(posTableIo.map(_.stateVec.map(_.bits.addr))).foreach { case(a, b) => a := b }
+  addrVec2.zip(posSetIo.map(_.stateVec.map(_.bits.addr))).foreach { case(a, b) => a := b }
   io.getAddrVec.foreach { get =>
     get.result.addr := addrVec2(get.pos.set)(get.pos.way)
   }
