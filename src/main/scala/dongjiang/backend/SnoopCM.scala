@@ -151,8 +151,8 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   val allocHit    = io.alloc.fire
   val reqDBHit    = io.reqDB.fire
   val sendSnpHit  = io.txSnp.fire
-  val recRespHit  = rspFire & cmReg.task.llcTxnID.get === io.rxRsp.bits.TxnID
-  val recDataHit  = datFire & cmReg.task.llcTxnID.get === io.rxDat.bits.TxnID
+  val recRespHit  = rspFire & cmReg.task.llcTxnID.get === io.rxRsp.bits.TxnID & cmReg.isValid
+  val recDataHit  = datFire & cmReg.task.llcTxnID.get === io.rxDat.bits.TxnID & cmReg.isValid
   val respCmtHit  = io.respCmt.fire
 
   // Store Msg From Frontend
