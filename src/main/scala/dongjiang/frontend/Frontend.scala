@@ -48,6 +48,8 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val alrUsePoS     = Output(UInt(log2Ceil(nrPoS + 1).W))
     // Multiple cores are actively making requests
     val multicore     = Bool()
+    //  system is working
+    val working       = Output(Bool())
   })
 
 
@@ -93,6 +95,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.cmtAlloc_s3            := issue.io.cmtAlloc_s3
   io.cmAllocVec_s4          <> issue.io.cmAllocVec_s4
   io.multicore              := reqTaskBuf.io.multicore
+  io.working                := reqTaskBuf.io.working | snpTaskBuf.io.working | posTable.io.working
 
   // req2Task
   req2Task.io.rxReq         <> io.rxReq

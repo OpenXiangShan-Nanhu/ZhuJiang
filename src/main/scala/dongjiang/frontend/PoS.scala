@@ -257,6 +257,8 @@ class PosTable(implicit p: Parameters) extends DJModule {
     val getAddrVec  = Vec(nrGetAddr, Flipped(new GetAddr(true)))
     // PoS Busy Signal
     val alrUsePoS   = Output(UInt(log2Ceil(nrPoS + 1).W))
+    //  system is working
+    val working     = Output(Bool())
   })
 
   /*
@@ -326,6 +328,11 @@ class PosTable(implicit p: Parameters) extends DJModule {
     get.result.addr := addrVec2(get.pos.set)(get.pos.way)
   }
   dontTouch(addrVec2)
+
+  /*
+   * Has PoS valid
+   */
+  io.working := posSetIo.flatMap(_.stateVec.map(_.valid)).reduce(_ | _)
 
   /*
    * HardwareAssertion placePipe

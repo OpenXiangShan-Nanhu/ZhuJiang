@@ -51,10 +51,10 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
     // nid
     val initNid     = if(sort) Some(Input(UInt(nidBits.W))) else None
     val othRel      = if(sort) Some(Input(Bool())) else None // Other Release
-    val state       = if(sort) Some(Output(new DJBundle with HasAddr {
+    val state       = Output(new DJBundle with HasAddr {
       val valid     = Bool()
       val release   = Bool()
-    })) else None
+    })
     // multiple cores are actively making requests
     val multicore   = Bool()
   })
@@ -106,13 +106,12 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
       nidReg.get := nidReg.get - io.othRel.get
       HardwareAssertion.withEn(nidReg.get > 0.U, io.othRel.get)
     }
-
-    // Output State
-    io.state.get.valid    := taskReg.isValid
-    io.state.get.release  := RegNext(taskReg.isValid) & taskReg.isFree
-    io.state.get.addr     := taskReg.addr
-    HardwareAssertion(!(io.state.get.valid & io.state.get.release))
   }
+  // Output State
+  io.state.valid := taskReg.isValid
+  io.state.release := RegNext(taskReg.isValid) & taskReg.isFree
+  io.state.addr := taskReg.addr
+  HardwareAssertion(!(io.state.valid & io.state.release))
 
   /*
    * State Transfer:
@@ -164,6 +163,8 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
     val wakeup      = Flipped(Valid(new Addr)) // PoS wakeup someone
     // multiple cores are actively making requests
     val multicore   = Bool()
+    //  system is working
+    val working     = Output(Bool())
   })
 
 
@@ -199,16 +200,21 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
    */
   if(sort) {
     entries.foreach { self =>
-      self.io.initNid.get  := PopCount(entries.map(other => other.io.state.get.valid & other.io.state.get.Addr.useAddr === io.chiTaskIn.bits.Addr.useAddr))
-      self.io.othRel.get   := entries.map(other => other.io.state.get.release & other.io.state.get.Addr.useAddr === self.io.state.get.Addr.useAddr).reduce(_ | _)
+      self.io.initNid.get  := PopCount(entries.map(other => other.io.state.valid & other.io.state.Addr.useAddr === io.chiTaskIn.bits.Addr.useAddr))
+      self.io.othRel.get   := entries.map(other => other.io.state.release & other.io.state.Addr.useAddr === self.io.state.Addr.useAddr).reduce(_ | _)
     }
-    HardwareAssertion(PopCount(entries.map(e => e.io.state.get.release)) <= 1.U)
+    HardwareAssertion(PopCount(entries.map(e => e.io.state.release)) <= 1.U)
   }
 
   /*
    * Multiple cores are actively making requests
    */
   io.multicore := entries.map(_.io.multicore).reduce(_ | _)
+
+  /*
+   * Has DataBuffer valid
+   */
+  io.working := entries.map(_.io.state.valid).reduce(_ | _)
 
   /*
    * HardwareAssertion placePipe

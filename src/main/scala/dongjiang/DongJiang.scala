@@ -46,7 +46,6 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
 
   // TODO
   io.flushCache.ack := DontCare
-  io.working        := true.B
 
   /*
    * Requirement LAN and BBN
@@ -123,6 +122,13 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   val directory = Module(new Directory())
   val dataBlock = Module(new DataBlock())
   val chiXbar   = Module(new ChiXbar())
+
+  /*
+   * System is Working
+   */
+  val workSftReg = RegInit(0.U((readDirLatency.max(readDsLatency) * 2).W))
+  workSftReg := Cat(frontends.map(_.io.working).reduce(_ | _), workSftReg(workSftReg.getWidth-1, 1))
+  io.working := workSftReg.orR
 
 
   /*
