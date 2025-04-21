@@ -64,7 +64,8 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     latency     = djparam.dirLatency,
     extraHold   = djparam.dirExtraHold,
     outputReg   = true,
-    suffix      = s"_${dirType}_meta"
+    suffix      = s"_${dirType}_meta",
+    hasMbist    = hasMbist
   ))
 
   val tagArray  = Module(new SinglePortSramTemplate(
