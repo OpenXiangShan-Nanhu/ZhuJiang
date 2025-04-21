@@ -48,8 +48,12 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
     RegNext(Cat(rxvs.toSeq).orR)
   }).reduce(_ | _)
 
+  if(zjParams.hnxPipelineDepth == 0) {
+    cg.io.E := ckCtrl | inbound
+  } else {
+    cg.io.E := ckCtrl
+  }
   cg.io.CK := clock
-  cg.io.E := ckCtrl
   cg.io.TE := io.dfx.func.cgen
   hnx.io.config.ci := io.ci
   hnx.io.config.bankId := io.bank
