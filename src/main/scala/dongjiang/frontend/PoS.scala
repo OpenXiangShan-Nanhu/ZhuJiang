@@ -108,7 +108,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   val freeWay_s0      = PriorityEncoder(freeVec_s0)
 
   // judge block req
-  val blockReq_s0     = hasMatLock | Mux(hasMatTag, false.B, !hasFree_s0)
+  val blockReq_s0     = hasMatLock | Mux(hasMatTag, true.B, !hasFree_s0)
 
   // judge block snp
   val canNest_s0      = Mux(hasMatTag, posSetVecReg(matTagWay_s0).canNest, false.B)
