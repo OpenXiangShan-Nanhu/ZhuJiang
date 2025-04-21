@@ -191,7 +191,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   // write
   replArray.io.wreq.valid         := shiftReg.wriUpdRepl_d2 | shiftReg.updTagMeta_d2 | (shiftReg.outDirResp_d2 & readHit_d2)
   replArray.io.wreq.bits.addr     := reqSet_d2
-  replArray.io.wreq.bits.data(0)  := repl.get_next_state(replMes_d2,  OHToUInt(Mux(shiftReg.wriUpdRepl_d2, req_d2.wriWayOH, selWayOH_d2)))
+  replArray.io.wreq.bits.data(0)  := newReplMes_d2
   HardwareAssertion.withEn(replArray.io.rreq.ready, replArray.io.rreq.valid)
   HardwareAssertion.withEn(replArray.io.wreq.ready, replArray.io.wreq.valid)
 
@@ -268,6 +268,9 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   io.resp.bits.hit     := hit_d2
   io.resp.bits.metaVec := metaResp_d2(selWay_d2)
   io.resp.bits.pos     := req_d2.pos
+
+  // Get New replace message
+  newReplMes_d2 := repl.get_next_state(replMes_d2,  OHToUInt(Mux(shiftReg.wriUpdRepl_d2, req_d2.wriWayOH, selWayOH_d2)))
 
   // Update Lock Table
   lockTable.zipWithIndex.foreach {
