@@ -270,16 +270,14 @@ trait HasDJParam extends HasParseZJParam {
   lazy val sfReplWayBits    = djparam.sfWays - 1
 
   // Backend Parameters
-  lazy val nrReplaceCM      = djparam.nrPoS / 2
+  lazy val nrReplaceCM      = (djparam.nrPoS / 2).max(2)
   lazy val nrTaskCM         = 5
-  lazy val nrSnoopCM        = djparam.nrPoS / 4
-  lazy val nrReadCM         = djparam.nrPoS / 2
-  lazy val nrDatalessCM     = djparam.nrPoS / 4
-  lazy val nrWriOrAtmCM     = djparam.nrPoS / 4
-  lazy val nrReceiveCM      = djparam.nrPoS / 4
-  lazy val fastRespQSzie    = djparam.nrPoS / 8
-  require(djparam.nrPoS >= 16)
-
+  lazy val nrSnoopCM        = (djparam.nrPoS / 4).max(2)
+  lazy val nrReadCM         = (djparam.nrPoS / 2).max(2)
+  lazy val nrDatalessCM     = (djparam.nrPoS / 4).max(2)
+  lazy val nrWriOrAtmCM     = (djparam.nrPoS / 4).max(2)
+  lazy val nrReceiveCM      = (djparam.nrPoS / 4).max(2)
+  lazy val fastRespQSzie    = (djparam.nrPoS / 8).max(2)
 
   // TIMEOUT CHECK CNT VALUE
   lazy val TIMEOUT_TASKBUF  = 30000
