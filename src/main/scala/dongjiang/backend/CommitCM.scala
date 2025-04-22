@@ -211,7 +211,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // cm chi send
   cm_rCmt.chi.s_resp      := cmt_rCmt.commit & alloc_rec.commit.channel === ChiChannel.RSP
   // cm chi wait
-  cm_rCmt.chi.w_ack       := msg_resp.chi.expCompAck
+  cm_rCmt.chi.w_ack       := cm_resp.chi.w_ack
   // valid
   cm_rCmt.clean           := false.B
   cm_rCmt.valid           := true.B
