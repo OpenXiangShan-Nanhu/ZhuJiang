@@ -207,6 +207,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
     // getDataVec
     val beatId = Mux(io.rxDat.bits.DataID === "b10".U, 1.U, 0.U)
     cmReg.getDataVec(beatId) := cmReg.getDataVec(beatId) | recDataHit
+    HardwareAssertion.withEn(!cmReg.getDataVec(beatId), recDataHit)
     // getRespVec
     cmReg.getRespVec.zipWithIndex.foreach { case(get, i) =>
       val rspHit = recRespHit & rspMetaId === i.U
@@ -220,9 +221,9 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
 
   // Check send or wait
   val alrSnpAll     = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.alrSendVec.asUInt) === 0.U & cmReg.isSendSnp
-  val alrGetRspAll  = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.getRespVec.asUInt) === 0.U & cmReg.isWaitResp
+  val alrGetRspAll  = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.getRespVec.asUInt) === 0.U
   val alrGetDatAll  = !cmReg.getDataOne
-  val alrGetAll     = alrGetRspAll & alrGetDatAll
+  val alrGetAll     = alrGetRspAll & alrGetDatAll & cmReg.isWaitResp
 
   // Get Next State
   cmReg.state   := PriorityMux(Seq(
