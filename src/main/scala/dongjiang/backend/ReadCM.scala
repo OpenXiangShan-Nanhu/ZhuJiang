@@ -161,7 +161,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
     cmReg.task.chi.nodeId := io.rxDat.bits.HomeNID
     cmReg.task.chi.txnID  := io.rxDat.bits.DBID
     // inst
-    cmReg.inst.resp       := io.rxDat.bits.DBID
+    cmReg.inst.resp       := io.rxDat.bits.Resp
   }
 
   // Get Next State
