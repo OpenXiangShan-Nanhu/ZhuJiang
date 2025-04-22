@@ -19,11 +19,9 @@ class SelNto1(size:Int, outstanding: Int) extends Module {
     val cmpVec = io.in.zipWithIndex.filterNot(_._2 == idx).map(i => self.valid && Mux(i._1.valid, self.bits.waitNum <= i._1.bits.waitNum, true.B))
     Cat(cmpVec).andR
   })
-  private val valids = Cat(io.in.map(_.valid))
+  private val valids = Cat(io.in.map(_.valid).reverse)
   io.out := Cat(oldestOhSeq.reverse)
-  when(valids.orR) {
-    assert(io.out.orR)
-  }
+  assert((valids & io.out) === io.out, "selected entries should all be valid!")
 }
 
 class DataBufferAllocReqSelector(outstanding: Int) extends Module {
