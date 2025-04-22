@@ -196,14 +196,16 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
     cmReg := 0.U.asTypeOf(cmReg)
   }
 
-  // Update
+  // Release
   when(respCmtHit) {
     cmReg.alrSendVec := 0.U.asTypeOf(cmReg.alrSendVec)
     cmReg.getRespVec := 0.U.asTypeOf(cmReg.getRespVec)
     cmReg.getDataVec := 0.U.asTypeOf(cmReg.getDataVec)
+  // Update
   }.otherwise {
     // alrSendVec
-    cmReg.alrSendVec(metaId_sSnp) := cmReg.alrSendVec(metaId_sSnp) & !sendSnpHit
+    cmReg.alrSendVec(metaId_sSnp) := cmReg.alrSendVec(metaId_sSnp) | sendSnpHit
+    HardwareAssertion.withEn(!cmReg.alrSendVec(metaId_sSnp), sendSnpHit)
     // getDataVec
     val beatId = Mux(io.rxDat.bits.DataID === "b10".U, 1.U, 0.U)
     cmReg.getDataVec(beatId) := cmReg.getDataVec(beatId) | recDataHit
@@ -220,7 +222,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
 
 
   // Check send or wait
-  val alrSnpAll     = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.alrSendVec.asUInt) === 0.U & cmReg.isSendSnp
+  val alrSnpAll     = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.alrSendVec.asUInt) === 1.U & sendSnpHit
   val alrGetRspAll  = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.getRespVec.asUInt) === 0.U
   val alrGetDatAll  = !cmReg.getDataOne
   val alrGetAll     = alrGetRspAll & alrGetDatAll & cmReg.isWaitResp
@@ -236,12 +238,12 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   ))
 
   // HardwareAssertion
-  HardwareAssertion.withEn(cmReg.isFree,       allocHit)
-  HardwareAssertion.withEn(cmReg.isReqDB,      reqDBHit)
-  HardwareAssertion.withEn(cmReg.isSendSnp,    sendSnpHit)
-  HardwareAssertion.withEn(cmReg.isWaitResp,   recRespHit)
-  HardwareAssertion.withEn(cmReg.isWaitResp,   recDataHit)
-  HardwareAssertion.withEn(cmReg.isResp,       respCmtHit)
+  HardwareAssertion.withEn(cmReg.isFree,    allocHit)
+  HardwareAssertion.withEn(cmReg.isReqDB,   reqDBHit)
+  HardwareAssertion.withEn(cmReg.isSendSnp, sendSnpHit)
+  HardwareAssertion.withEn(cmReg.isSendSnp | cmReg.isWaitResp, recRespHit)
+  HardwareAssertion.withEn(cmReg.isSendSnp | cmReg.isWaitResp, recDataHit)
+  HardwareAssertion.withEn(cmReg.isResp,    respCmtHit)
   HardwareAssertion.checkTimeout(cmReg.isFree, TIMEOUT_SNP, cf"TIMEOUT: Snoop State[${cmReg.state}]")
 }
 
