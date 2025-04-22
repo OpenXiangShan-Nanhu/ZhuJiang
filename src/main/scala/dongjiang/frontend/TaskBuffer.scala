@@ -73,12 +73,12 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   /*
    * Hit Message
    */
-  val recTaskHit  =  taskReg.isFree  & io.chiTaskIn.fire
-  val sendTaskHit =  taskReg.isSend  & io.chiTask_s0.fire
-  val wakeupHit   = (taskReg.isSleep | taskReg.isWait) & io.wakeup.valid & io.wakeup.bits.Addr.useAddr === taskReg.Addr.useAddr
-  val sleepHit    =  taskReg.isWait  & io.sleep_s1
-  val retryHit    =  taskReg.isWait  & io.retry_s1
-  val toFreeHit   =  taskReg.isWait
+  val recTaskHit  = taskReg.isFree  & io.chiTaskIn.fire
+  val sendTaskHit = taskReg.isSend  & io.chiTask_s0.fire
+  val wakeupHit   = taskReg.isSleep & io.wakeup.valid & io.wakeup.bits.Addr.useAddr === taskReg.Addr.useAddr
+  val sleepHit    = taskReg.isWait  & io.sleep_s1
+  val retryHit    = taskReg.isWait  & io.retry_s1
+  val toFreeHit   = taskReg.isWait
 
   /*
    * Receive ChiTask
@@ -122,7 +122,6 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
    * |    0     | FREE   | recTaskHit  | SEND   |
    * |    1     | SEND   | sendTaskHit | WAIT   |
    * |    2     | SLEEP  | wakeupHit   | SEND   |
-   * |    2     | WAIT   | wakeupHit   | SEND   |
    * |    3     | WAIT   | sleepHit    | SLEEP  |
    * |    4     | WAIT   | retryHit    | SEND   |
    * |    5     | WAIT   | toFreeHit   | FREE   |
@@ -139,7 +138,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   ))
 
   // assert hit num
-  HardwareAssertion(PopCount(Seq(recTaskHit, sendTaskHit, wakeupHit | sleepHit | retryHit | toFreeHit)) <= 1.U,
+  HardwareAssertion(PopCount(Seq(recTaskHit, sendTaskHit, wakeupHit, sleepHit | retryHit | toFreeHit)) <= 1.U,
                                                                           desc = cf"State[${taskReg.state}]")
   // assert timeout
   HardwareAssertion.checkTimeout(taskReg.isFree, TIMEOUT_TASKBUF,         desc = cf"State[${taskReg.state}]")

@@ -198,8 +198,9 @@ class PosSet(implicit p: Parameters) extends DJModule {
    * Wakeup someone by addr
    */
   val cleanWay        = posSetVecReg(io.clean.bits.way)
-  io.wakeup.valid     := io.clean.valid & cleanWay.one
-  io.wakeup.bits.addr := cleanWay.get.addr
+  val clean           = io.clean.valid & cleanWay.one
+  io.wakeup.valid     := RegNext(clean)
+  io.wakeup.bits.addr := RegEnable(cleanWay.get.addr, clean)
 
   /*
    * Output state
