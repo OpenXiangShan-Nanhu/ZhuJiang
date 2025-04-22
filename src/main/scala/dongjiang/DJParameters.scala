@@ -63,6 +63,8 @@ case class DJParam(
   require(isPow2(dataBufSizeInByte))
   require(isPow2(nrDSBank))
   require(isPow2(nrDirBank))
+  require(isPow2(llcSets))
+  require(isPow2(sfSets))
   require(isPow2(llcWays))
   require(isPow2(sfWays))
 }

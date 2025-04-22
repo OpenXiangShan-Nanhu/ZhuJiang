@@ -92,7 +92,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  sfMetas: ${nrSfMetas}
        |  openDCT: ${djparam.openDCT}
        |  nrPoS: ${djparam.nrPoS}
-       |  dataBufSize: ${djparam.dataBufSizeInByte} Byte
+       |  dataBufSize: ${djparam.dataBufSizeInByte} B
        |  dataSetup: ${djparam.dataSetup}
        |  dataLatency: ${djparam.dataSetup}
        |  dataExtraHold: ${djparam.dataExtraHold}
