@@ -24,11 +24,11 @@ import chisel3.experimental.BundleLiterals._
 // ----------------------------------------------------------------------------------------------------- //
 object State {
   val width       = 5
-  val FREE        = "b00001".U
-  val REQDB       = "b00010".U
-  val SENDSNP     = "b00100".U
-  val WAITRESP    = "b01000".U
-  val RESP        = "b10000".U
+  val FREE        = "b00001".U // 0x1
+  val REQDB       = "b00010".U // 0x2
+  val SENDSNP     = "b00100".U // 0x4
+  val WAITRESP    = "b01000".U // 0x8
+  val RESP        = "b10000".U // 0x10
 }
 
 class CMState(implicit p: Parameters) extends DJBundle {
@@ -37,6 +37,8 @@ class CMState(implicit p: Parameters) extends DJBundle {
   val alrSendVec  = Vec(nrSfMetas, Bool())
   val getRespVec  = Vec(nrSfMetas, Bool())
   val getDataVec  = Vec(2, Bool())
+  def getDataOne  = getDataVec.reduce(_ ^ _)
+  def getDataAll  = getDataVec.reduce(_ & _)
 
   def isFree      = state(0)
   def isValid     = !isFree
@@ -204,7 +206,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
     cmReg.alrSendVec(metaId_sSnp) := cmReg.alrSendVec(metaId_sSnp) & !sendSnpHit
     // getDataVec
     val beatId = Mux(io.rxDat.bits.DataID === "b10".U, 1.U, 0.U)
-    cmReg.getDataVec(beatId) := cmReg.getDataVec(beatId) & !recDataHit
+    cmReg.getDataVec(beatId) := cmReg.getDataVec(beatId) | recDataHit
     // getRespVec
     cmReg.getRespVec.zipWithIndex.foreach { case(get, i) =>
       val rspHit = recRespHit & rspMetaId === i.U
@@ -216,17 +218,20 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   }
 
 
+  // Check send or wait
+  val alrSnpAll     = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.alrSendVec.asUInt) === 0.U & cmReg.isSendSnp
+  val alrGetRspAll  = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.getRespVec.asUInt) === 0.U & cmReg.isWaitResp
+  val alrGetDatAll  = !cmReg.getDataOne
+  val alrGetAll     = alrGetRspAll & alrGetDatAll
+
   // Get Next State
-  val alrSnpAll = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.alrSendVec.asUInt) === 1.U
-  val alrGetAll = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.getRespVec.asUInt) === 0.U & (cmReg.getDataVec.asUInt === cmReg.task.chi.dataVec.asUInt | !cmReg.task.chi.retToSrc) // TODO
-  cmReg.state := PriorityMux(Seq(
-    allocHit   -> Mux(io.alloc.bits.needReqDB, REQDB, SENDSNP),
-    reqDBHit   -> SENDSNP,
-    sendSnpHit -> Mux(alrSnpAll, WAITRESP, SENDSNP),
-    recRespHit -> Mux(alrGetAll, RESP, WAITRESP),
-    recDataHit -> Mux(alrGetAll, RESP, WAITRESP),
-    respCmtHit -> FREE,
-    true.B     -> cmReg.state,
+  cmReg.state   := PriorityMux(Seq(
+    allocHit    -> Mux(io.alloc.bits.needReqDB, REQDB, SENDSNP),
+    reqDBHit    -> SENDSNP,
+    alrSnpAll   -> WAITRESP,
+    alrGetAll   -> RESP,
+    respCmtHit  -> FREE,
+    true.B      -> cmReg.state,
   ))
 
   // HardwareAssertion
