@@ -7,7 +7,7 @@ import xijiang.c2c.C2cLoopBack
 import xijiang.router.base.{EjectBuffer, SingleChannelTap}
 import xijiang.{Node, NodeType}
 import xs.utils.stage.XsStage
-import zhujiang.UnitTop.firtoolOpts
+import zhujiang.UnitTop.{firtoolOpts, firtoolOptsDebug}
 import zhujiang.chi.{RingFlit, SnoopFlit}
 import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
@@ -26,8 +26,7 @@ import dongjiang.frontend._
 import xs.utils.debug.{HardwareAssertionKey, HwaParams}
 
 object UnitTop {
-  val firtoolOpts = Seq(
-    FirtoolOption("-O=release"),
+  val _firtoolOpts = Seq(
     FirtoolOption("--export-module-hierarchy"),
     FirtoolOption("--disable-all-randomization"),
     FirtoolOption("--disable-annotation-unknown"),
@@ -37,6 +36,8 @@ object UnitTop {
     FirtoolOption("--lowering-options=noAlwaysComb," +
       " disallowLocalVariables, disallowMuxInlining," +
       " emittedLineLength=120, explicitBitcast, locationInfoStyle=plain"))
+  val firtoolOpts = Seq(FirtoolOption("-O=release")) ++ _firtoolOpts
+  val firtoolOptsDebug = Seq(FirtoolOption("-O=debug")) ++ _firtoolOpts
 }
 
 object AxiBridgeTop extends App {
@@ -151,7 +152,7 @@ object FrontendTop extends App {
 
 object DongJiangTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
-  (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
+  (new XsStage).execute(firrtlOpts, firtoolOptsDebug ++ Seq(
     ChiselGeneratorAnnotation(() => new DongJiangTop()(config.alterPartial({
       case HardwareAssertionKey => config(HardwareAssertionKey).copy(enable = false)
       case ZJParametersKey => config(ZJParametersKey).copy(
