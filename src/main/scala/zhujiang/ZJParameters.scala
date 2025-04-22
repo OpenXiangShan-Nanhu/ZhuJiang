@@ -233,10 +233,14 @@ case class ZJParameters(
 
   private lazy val bank = nodeParams.filter(_.hfpId == 0).count(_.nodeType == NodeType.HF)
   private lazy val cores = nodeParams.count(_.nodeType == NodeType.CC)
+  private lazy val originSfSizeInB = clusterCacheSizeInB * 2 * cores / bank
+  private lazy val sfSetSize = cachelineBytes * snoopFilterWays
+  private lazy val fixedSfSets = 1 << log2Ceil(originSfSizeInB / sfSetSize)
+  private lazy val fixedSfSizeInB =  fixedSfSets * sfSetSize
   lazy val djParams = djParamsOpt.getOrElse(DJParam(
     addressBits = requestAddrBits,
     llcSizeInB = cacheSizeInB / bank,
-    sfSizeInB = clusterCacheSizeInB * 2 * cores / bank,
+    sfSizeInB = fixedSfSizeInB,
     llcWays = cacheWays,
     sfWays = snoopFilterWays,
     nrDSBank = hnxDirSRAMBank * 2,
