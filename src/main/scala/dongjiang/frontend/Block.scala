@@ -89,6 +89,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.task_s1.bits.addr      := taskReg_s1.addr
   io.task_s1.bits.pos       := io.posIdx_s1
   io.task_s1.bits.alr.reqs  := io.reqDB_s1.fire
+  io.task_s1.bits.alr.sRepl := false.B
   io.task_s1.bits.alr.sDBID := io.fastResp_s1.fire & taskReg_s1.chi.isWrite
   io.task_s1.bits.alr.sData := false.B
   HardwareAssertion.withEn(io.task_s1.bits.alr.reqs, validReg_s1 & io.task_s1.bits.alr.sDBID)

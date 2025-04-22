@@ -19,13 +19,13 @@ import dongjiang.backend.replace.State._
 
 object State {
   val width   = 6
-  val FREE    = "b000000".U
-  val WRIDIR  = "b000001".U
-  val WAITDIR = "b000010".U
-  val REPLSF  = "b000100".U
-  val REPLLLC = "b001000".U
-  val WAITCM  = "b010000".U
-  val RESP    = "b100000".U
+  val FREE    = "b000000".U // 0x0
+  val WRIDIR  = "b000001".U // 0x1
+  val WAITDIR = "b000010".U // 0x2
+  val REPLSF  = "b000100".U // 0x4
+  val REPLLLC = "b001000".U // 0x8
+  val WAITCM  = "b010000".U // 0x10
+  val RESP    = "b100000".U // 0x20
 }
 
 class CMState(implicit p: Parameters) extends DJBundle {
@@ -54,7 +54,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     val config          = new DJConfigIO()
     // Commit Task In
     val alloc           = Flipped(Decoupled(new ReplTask))
-    val resp            = Valid(new LLCTxnID())
+    val resp            = Valid(new LLCTxnID with HasAlready with HasDsIdx)
     // Send Task To CM
     val cmAllocVec      = Vec(2, Decoupled(new CMTask)) // SNP and WOA
     // Update PoS Message
@@ -73,7 +73,6 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     }
     // Resp From TaskCM
     val respRepl        = Flipped(Valid(new PackLLCTxnID with HasChiChannel with HasChiResp)) // Channel and Resp only use in SnpResp
-
   })
 
   /*
@@ -82,6 +81,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   val cmRegVec  = RegInit(VecInit(Seq.fill(nrReplaceCM) { 0.U.asTypeOf(new CMState()) }))
   val msgRegVec = Reg(Vec(nrReplaceCM, new ReplTask()))
   val replDsVec = Reg(Vec(nrReplaceCM, new DsIdx()))
+  val toLanVec  = Reg(Vec(nrReplaceCM, Bool()))
   val waitPipe  = Module(new Pipe(UInt(log2Ceil(nrReplaceCM).W), readDirLatency))
 
 
@@ -137,6 +137,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   when(needReplLLC) {
     replDsVec(cmId_get).bank  := getDS(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)._1
     replDsVec(cmId_get).idx   := getDS(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)._2
+    toLanVec(cmId_get)        := io.respDir.llc.bits.Addr.isToLAN(io.config.ci)
   }
   // lock when write
   io.lockPosSet.valid       := waitPipe.io.enq.fire
@@ -177,6 +178,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   // REQ
   io.cmAllocVec(CMID.WOA).valid             := cmVec_rpLLC.reduce(_ | _)
   io.cmAllocVec(CMID.WOA).bits              := DontCare
+  io.cmAllocVec(CMID.WOA).bits.chi.toLAN    := toLanVec(cmId_rpLLC)
   io.cmAllocVec(CMID.WOA).bits.chi.nodeId   := DontCare
   io.cmAllocVec(CMID.WOA).bits.chi.channel  := ChiChannel.REQ
   io.cmAllocVec(CMID.WOA).bits.chi.opcode   := DontCare // will remap in WOA
@@ -204,6 +206,8 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.resp.valid         := cmVec_resp.reduce(_ | _)
   io.resp.bits.dirBank  := msg_resp.llcTxnID.dirBank
   io.resp.bits.pos      := msg_resp.llcTxnID.pos
+  io.resp.bits.alr      := msg_resp.alr
+  io.resp.bits.ds       := replDsVec(cmId_resp)
 
 
   /*
@@ -220,12 +224,16 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
       val respHit     = io.resp.fire & cmId_resp === i.U
 
       // Message
-      val needSecRepl = cmRespHit & !io.respRepl.bits.isValid
+      val needSecRepl = cmRespHit & io.respRepl.bits.isDat
       HardwareAssertion.withEn(msg.replSF, needSecRepl)
-      HardwareAssertion.withEn(io.respRepl.bits.isDat, needSecRepl)
       when(allocHit) {
         msg := io.alloc.bits
+      }.elsewhen(replSFHit){
+        msg.alr.reqs      := true.B // snoop will get SnpRespData
+      }.elsewhen(replLLCHit){
+        msg.alr.sRepl     := true.B
       }.elsewhen(needSecRepl) {
+        msg.wriSF         := false.B
         msg.wriLLC        := true.B
         msg.dir.llc.wayOH := DontCare
         msg.dir.llc.hit   := false.B
@@ -241,7 +249,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
         waitHit     -> Mux(needReplSF, REPLSF, Mux(needReplLLC, REPLLLC, RESP)),
         replSFHit   -> WAITCM,
         replLLCHit  -> WAITCM,
-        cmRespHit   -> Mux(needSecRepl, REPLLLC, RESP),
+        cmRespHit   -> Mux(needSecRepl, WRIDIR, RESP),
         respHit     -> FREE,
         true.B      -> cm.state
       ))

@@ -65,7 +65,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val respCmt     = Flipped(Valid(new RespToCmt))
     // Send Task To Replace
     val replAlloc   = Decoupled(new ReplTask)
-    val replResp    = Flipped(Valid(new PackPosIndex()))
+    val replResp    = Flipped(Valid(new PackPosIndex() with HasAlready))
     // Send Task To Data
     val dataTask    = Decoupled(new DataTask)
     val dataResp    = Flipped(Valid(new PackPosIndex()))
@@ -323,6 +323,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
 
   /*
    * [canNest]
+   * TODO: cant nest when get cmResp
    */
   cmVec2_nest.zip(cmTable).foreach { case(a, b) => a.zip(b).foreach { case(a, b) => a := b.intl.s.canNest } }
   cmPoS_nest.set  := RREncoder(cmVec2_nest.map(_.reduce(_ | _)))
@@ -406,8 +407,9 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
     case((cmVec, msgVec), i) =>
       cmVec.zip(msgVec).zipWithIndex.foreach {
         case((cm, msg), j) =>
-          val allocHit    = io.alloc.fire   & io.alloc.bits.pos.idxMatch(i, j)
-          val taskRespHit = io.respCmt.fire & io.respCmt.bits.llcTxnID.pos.idxMatch(i, j)
+          val allocHit    = io.alloc.fire     & io.alloc.bits.pos.idxMatch(i, j)
+          val taskRespHit = io.respCmt.fire   & io.respCmt.bits.llcTxnID.pos.idxMatch(i, j)
+          val waitReplHit = io.replResp.valid & io.replResp.bits.pos.idxMatch(i, j)
 
           // Message
           // Alloc
@@ -419,6 +421,10 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             msg.inst        := respCmt.inst
             msg.code        := code_rCmt
             msg.commit      := cmt_rCmt
+          }.elsewhen(waitReplHit){
+            msg.commit.dataOp.save  := io.replResp.bits.alr.sRepl
+            msg.commit.dataOp.clean := io.replResp.bits.alr.reqs
+            HAssert.withEn(io.replResp.bits.alr.reqs, io.replResp.bits.alr.sRepl)
           }.elsewhen(cm.clean) {
             msg := 0.U.asTypeOf(msg)
           }
@@ -434,10 +440,12 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
           val wDirHit         = io.replAlloc.fire  & cmPoS_wDir.idxMatch(i, j)
           val canNestHit      = io.updPosNest.fire & cmPoS_nest.idxMatch(i, j)
           val secTaskHit      = fire_task          & cmPoS_task.idxMatch(i, j)
-          val waitReplHit     = io.replResp.valid  & io.replResp.bits.pos.idxMatch(i, j)
           val waitDataAckHit  = io.dataResp.valid  & io.dataResp.bits.pos.idxMatch(i, j)
           val respChiHit      = io.txRsp.fire      & cmPoS_sRsp.idxMatch(i, j)
           val waitCompAckHit  = io.rxRsp.fire      & io.rxRsp.bits.Opcode === CompAck & io.rxRsp.bits.TxnID === llcTxnID.get
+
+          // need save or clean
+          val replNeedSData1  = waitReplHit        & (io.replResp.bits.alr.reqs | io.replResp.bits.alr.sRepl)
 
           // transfer state
           when(allocHit) {
@@ -446,21 +454,21 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             cm  := cm_rCmt
           }.otherwise {
             // internal send
-            cm.intl.s.data0     := cm.intl.s.data0    & !(dataTaskHit & (io.dataTask.bits.dataOp.reqs | io.dataTask.bits.dataOp.read | io.dataTask.bits.dataOp.send))
-            cm.intl.s.data1     := cm.intl.s.data1    & !(dataTaskHit & (io.dataTask.bits.dataOp.save | io.dataTask.bits.dataOp.clean))
-            cm.intl.s.wriDir    := cm.intl.s.wriDir   & !wDirHit
-            cm.intl.s.canNest   := cm.intl.s.canNest  & !canNestHit
-            cm.intl.s.secTask   := cm.intl.s.secTask  & !secTaskHit
+            cm.intl.s.data0     :=  cm.intl.s.data0    & !(dataTaskHit & (io.dataTask.bits.dataOp.reqs | io.dataTask.bits.dataOp.read | io.dataTask.bits.dataOp.send))
+            cm.intl.s.data1     := (cm.intl.s.data1    & !(dataTaskHit & (io.dataTask.bits.dataOp.save | io.dataTask.bits.dataOp.clean))) | replNeedSData1
+            cm.intl.s.wriDir    :=  cm.intl.s.wriDir   & !wDirHit
+            cm.intl.s.canNest   :=  cm.intl.s.canNest  & !canNestHit
+            cm.intl.s.secTask   :=  cm.intl.s.secTask  & !secTaskHit
             // internal wait
-            cm.intl.w.cmResp    := cm.intl.w.cmResp // will be change in taskRespHit
-            cm.intl.w.secResp   := cm.intl.w.secResp  & !taskRespHit
-            cm.intl.w.repl      := cm.intl.w.repl     & !waitReplHit
-            cm.intl.w.data0     := cm.intl.w.data0    & !(waitDataAckHit & !cm.intl.s.data0)
-            cm.intl.w.data1     := cm.intl.w.data1    & !(waitDataAckHit & !cm.intl.s.data1)
+            cm.intl.w.cmResp    :=  cm.intl.w.cmResp // will be change in taskRespHit
+            cm.intl.w.secResp   :=  cm.intl.w.secResp  & !taskRespHit
+            cm.intl.w.repl      :=  cm.intl.w.repl     & !waitReplHit
+            cm.intl.w.data0     :=  cm.intl.w.data0    & !(waitDataAckHit & !cm.intl.s.data0)
+            cm.intl.w.data1     := (cm.intl.w.data1    & !(waitDataAckHit & !cm.intl.s.data1)) | replNeedSData1
             // chi send
-            cm.chi.s_resp       := cm.chi.s_resp      & !respChiHit
+            cm.chi.s_resp       :=  cm.chi.s_resp      & !respChiHit
             // chi wait
-            cm.chi.w_ack        := cm.chi.w_ack       & !(waitCompAckHit | msg.chi.reqIs(WriteEvictOrEvict)) // WriteEvictOrEvict Get CompAck in ReceiveCM
+            cm.chi.w_ack        :=  cm.chi.w_ack       & !(waitCompAckHit | msg.chi.reqIs(WriteEvictOrEvict)) // WriteEvictOrEvict Get CompAck in ReceiveCM
             // clean and valid
             cm.clean  := !(cm.intl.s.asUInt | cm.intl.w.asUInt | cm.chi.s_resp | cm.chi.w_ack).orR
             cm.valid  := cm.valid & !(cm.clean & cmPoS_clean.idxMatch(i, j))

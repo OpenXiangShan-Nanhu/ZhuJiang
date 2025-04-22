@@ -23,14 +23,14 @@ import chisel3.experimental.BundleLiterals._
 // ----------------------------------------------------------------------------------------------------- //
 object State {
   val width       = 8
-  val FREE        = "b00000001".U
-  val SENDREQ     = "b00000010".U
-  val CANNEST     = "b00000100".U
-  val WAITDBID    = "b00001000".U
-  val DATATASK    = "b00010000".U
-  val WAITDATA    = "b00100000".U
-  val WAITCOMP    = "b01000000".U
-  val RESP        = "b10000000".U
+  val FREE        = "b00000001".U // 0x1
+  val SENDREQ     = "b00000010".U // 0x2
+  val CANNEST     = "b00000100".U // 0x4
+  val WAITDBID    = "b00001000".U // 0x8
+  val DATATASK    = "b00010000".U // 0x10
+  val WAITDATA    = "b00100000".U // 0x20
+  val WAITCOMP    = "b01000000".U // 0x40
+  val RESP        = "b10000000".U // 0x80
 }
 
 class CMState(implicit p: Parameters) extends DJBundle {
@@ -112,7 +112,7 @@ class WriOrAtmEntry(implicit p: Parameters) extends DJModule {
   io.updPosNestVec.zipWithIndex.foreach { case (upd, i) => upd.valid := cmReg.isCanNest & cmReg.task.llcTxnID.dirBank === i.U }
   // bits
   io.updPosNestVec.foreach(_.bits.pos := cmReg.task.llcTxnID.pos)
-  io.updPosNestVec.foreach(_.bits.canNest := false.B)
+  io.updPosNestVec.foreach(_.bits.canNest := true.B)
 
   /*
    * [DataTask]
@@ -122,6 +122,7 @@ class WriOrAtmEntry(implicit p: Parameters) extends DJModule {
   // bits
   io.dataTask.bits                := DontCare
   io.dataTask.bits.dataOp         := cmReg.task.dataOp
+  io.dataTask.bits.dataOp.reqs    := cmReg.task.needReqDB
   io.dataTask.bits.llcTxnID       := cmReg.task.llcTxnID
   io.dataTask.bits.ds             := cmReg.task.ds
   io.dataTask.bits.dataVec        := cmReg.task.chi.dataVec
@@ -144,7 +145,7 @@ class WriOrAtmEntry(implicit p: Parameters) extends DJModule {
   io.respCmt.bits.alr           := cmReg.task.alr
   // bits respRepl
   io.respRepl.bits.llcTxnID     := cmReg.task.llcTxnID
-  io.respRepl.bits.channel      := DontCare
+  io.respRepl.bits.channel      := ChiChannel.RSP
   io.respRepl.bits.resp         := ChiState.I
 
 

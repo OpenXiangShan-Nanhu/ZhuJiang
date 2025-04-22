@@ -88,8 +88,8 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   datNodeId.fromLAN := NocType.rxIs(io.rxDat.bits, LAN)
   rspNodeId.nodeId  := io.rxRsp.bits.SrcID
   datNodeId.nodeId  := io.rxDat.bits.SrcID
-  val rspFire       = io.rxRsp.fire & (io.rxRsp.bits.Opcode === SnpResp | io.rxRsp.bits.Opcode === SnpRespFwded)
-  val datFire       = io.rxDat.fire & (io.rxRsp.bits.Opcode === SnpRespData | io.rxRsp.bits.Opcode === SnpRespDataFwded)
+  val rspFire       = io.rxRsp.fire & (io.rxRsp.bits.Opcode === SnpResp     | io.rxRsp.bits.Opcode === SnpRespFwded)
+  val datFire       = io.rxDat.fire & (io.rxDat.bits.Opcode === SnpRespData | io.rxDat.bits.Opcode === SnpRespDataFwded)
   val rspMetaId     = OHToUInt(rspNodeId.metaIdOH)
   val datMetaId     = OHToUInt(datNodeId.metaIdOH)
   HardwareAssertion.withEn(rspNodeId.metaIdOH.orR, rspFire)
@@ -119,7 +119,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   // bits
   io.txSnp.bits             := DontCare
   io.txSnp.bits.RetToSrc    := Mux(snpIsFst, cmReg.task.chi.retToSrc, false.B)
-  io.txSnp.bits.DoNotGoToSD := false.B
+  io.txSnp.bits.DoNotGoToSD := true.B
   io.txSnp.bits.Addr        := DontCare // remap in chi xbar
   io.txSnp.bits.Opcode      := Mux(snpIsFst, cmReg.task.chi.opcode, cmReg.task.chi.getNoFwdSnpOp)
   io.txSnp.bits.FwdTxnID    := cmReg.task.chi.txnID
@@ -155,7 +155,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   val sendSnpHit  = io.txSnp.fire
   val recRespHit  = rspFire & cmReg.task.llcTxnID.get === io.rxRsp.bits.TxnID & cmReg.isValid
   val recDataHit  = datFire & cmReg.task.llcTxnID.get === io.rxDat.bits.TxnID & cmReg.isValid
-  val respCmtHit  = io.respCmt.fire
+  val respCmtHit  = io.respCmt.fire | io.respRepl.fire
 
   // Store Msg From Frontend
   val rspIsFwd = io.rxRsp.bits.Opcode === SnpRespFwded & recRespHit

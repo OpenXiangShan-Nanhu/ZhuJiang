@@ -148,6 +148,7 @@ class Backend(implicit p: Parameters) extends DJModule {
       // replResp
       cmt.io.replResp.valid     := replCM.io.resp.valid & replCM.io.resp.bits.dirBank === i.U
       cmt.io.replResp.bits.pos  := replCM.io.resp.bits.pos
+      cmt.io.replResp.bits.alr  := replCM.io.resp.bits.alr
       // dataResp
       cmt.io.dataResp.valid     := io.dataResp.valid & io.dataResp.bits.llcTxnID.dirBank === i.U
       cmt.io.dataResp.bits.pos  := io.dataResp.bits.llcTxnID.pos

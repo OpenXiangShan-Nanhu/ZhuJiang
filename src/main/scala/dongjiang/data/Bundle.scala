@@ -15,6 +15,7 @@ import dongjiang.data.State._
 trait HasAlready { this: DJBundle =>
   val alr     = new DJBundle {
     val reqs  = Bool() // Already request DataCM and DataBuf. If set it, commit will clean when done all
+    val sRepl = Bool() // Already send repl to DataBuffer for replace LLC, need save data in DataStorage
     val sDBID = Bool() // Already retrun XDBIDResp to RN
     val sData = Bool() // Already Send Task[reqs+read+send+clean] to DataBlock
   }
