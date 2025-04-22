@@ -299,13 +299,13 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
           // read_miss -> readRepl -> wriRepl -> clean
           //                 ^                     ^
           //                lock                 unlock
-          HardwareAssertion(PopCount(Seq(read & hit_d2, readRepl, clean)) <= 1.U, cf"Lock Table Index[$i][$j]")
-          HardwareAssertion.withEn(!lock.valid, read, cf"Lock Table Index[$i][$j]")
-          HardwareAssertion.withEn( lock.valid, write, cf"Lock Table Index[$i][$j]")
-          HardwareAssertion.withEn(!lock.valid, readRepl, cf"Lock Table Index[$i][$j]")
-          // HardwareAssertion.withEn( lock.valid, wriRepl, cf"Lock Table Index[$i][$j]") // clean may occur before wriRepl
-          // HardwareAssertion.withEn( lock.valid, clean, cf"Lock Table Index[$i][$j]")   // It is possible to execute clean without lock
-          HardwareAssertion.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i}][${j}]")
+          HardwareAssertion(PopCount(Seq(read & hit_d2, readRepl, clean)) <= 1.U, cf"Lock Table Index[${i.U}][${j.U}]")
+          HardwareAssertion.withEn(!lock.valid, read, cf"Lock Table Index[${i.U}][${j.U}]")
+          HardwareAssertion.withEn( lock.valid, write, cf"Lock Table Index[${i.U}][${j.U}]")
+          HardwareAssertion.withEn(!lock.valid, readRepl, cf"Lock Table Index[${i.U}][${j.U}]")
+          // HardwareAssertion.withEn( lock.valid, wriRepl, cf"Lock Table Index[${i.U}][${j.U}]") // clean may occur before wriRepl
+          // HardwareAssertion.withEn( lock.valid, clean, cf"Lock Table Index[${i.U}][${j.U}]")   // It is possible to execute clean without lock
+          HardwareAssertion.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i.U}][${j.U}]")
       }
   }
 

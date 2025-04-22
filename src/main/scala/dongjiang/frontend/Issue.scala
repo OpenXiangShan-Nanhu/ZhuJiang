@@ -138,7 +138,7 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
       ))
       HardwareAssertion.withEn(ops.bits.valid, ops.valid)
       HardwareAssertion.withEn(!ops.valid, toBeValid)
-      HardwareAssertion.checkTimeout(!ops.valid, TIMEOUT_ISSUE, cf"TIMEOUT: Issue Index[${i}]")
+      HardwareAssertion.checkTimeout(!ops.valid, TIMEOUT_ISSUE, cf"TIMEOUT: Issue Index[${i.U}]")
   }
 
   /*

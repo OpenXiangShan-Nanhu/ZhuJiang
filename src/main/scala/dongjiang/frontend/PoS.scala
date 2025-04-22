@@ -165,14 +165,14 @@ class PosSet(implicit p: Parameters) extends DJModule {
       ctrl.req      := Mux(!cleanSnp, false.B, ctrl.req)
       ctrl.snp      := Mux( cleanSnp, false.B, ctrl.snp)
       // HAssert
-      HAssert.withEn(!ctrl.snp & ctrl.req, !cleanSnp, cf"PoS Way[$i]")
-      HAssert.withEn(ctrl.snp, cleanSnp, cf"PoS Way[$i]")
+      HAssert.withEn(!ctrl.snp & ctrl.req, !cleanSnp, cf"PoS Way[${i.U}]")
+      HAssert.withEn(ctrl.snp, cleanSnp, cf"PoS Way[${i.U}]")
     }.elsewhen(reqHit) {
       ctrl.req      := Mux(!reqIsSnp, true.B,  ctrl.req)
       ctrl.snp      := Mux( reqIsSnp, true.B,  ctrl.snp)
       // HAssert
-      HAssert.withEn(!ctrl.snp & !ctrl.req, !reqIsSnp, cf"PoS Way[$i]")
-      HAssert.withEn(!ctrl.snp, reqIsSnp, cf"PoS Way[$i]")
+      HAssert.withEn(!ctrl.snp & !ctrl.req, !reqIsSnp, cf"PoS Way[${i.U}]")
+      HAssert.withEn(!ctrl.snp, reqIsSnp, cf"PoS Way[${i.U}]")
     }
 
     // modify lockDirSet
@@ -180,18 +180,18 @@ class PosSet(implicit p: Parameters) extends DJModule {
     val unlockHit   = io.unlockSet.valid & io.unlockSet.bits.way === i.U
     ctrl.lockDirSet := Mux(lockHit, true.B, Mux(unlockHit, false.B, ctrl.lockDirSet))
     // HAssert
-    HAssert.withEn(!ctrl.lockDirSet, lockHit, cf"PoS Way[$i]")
-    HAssert.withEn( ctrl.lockDirSet, unlockHit, cf"PoS Way[$i]")
+    HAssert.withEn(!ctrl.lockDirSet, lockHit, cf"PoS Way[${i.U}]")
+    HAssert.withEn( ctrl.lockDirSet, unlockHit, cf"PoS Way[${i.U}]")
 
     // modify canNest
     val updNestHit  = io.updNest.valid & io.updNest.bits.way === i.U
     ctrl.canNest    := Mux(reqHit, false.B, Mux(updNestHit, io.updNest.bits.canNest, ctrl.canNest))
-    HAssert.withEn(!ctrl.canNest, updNestHit &  io.updNest.bits.canNest, cf"PoS Way[$i]")
-    HAssert.withEn( ctrl.canNest, updNestHit & !io.updNest.bits.canNest, cf"PoS Way[$i]")
+    HAssert.withEn(!ctrl.canNest, updNestHit &  io.updNest.bits.canNest, cf"PoS Way[${i.U}]")
+    HAssert.withEn( ctrl.canNest, updNestHit & !io.updNest.bits.canNest, cf"PoS Way[${i.U}]")
 
     // assert
-    HardwareAssertion(PopCount(Seq(cleanHit, reqHit)) <= 1.U, cf"PoS Way[$i]")
-    HardwareAssertion.checkTimeout(!ctrl.valid, TIMEOUT_POS, cf"TIMEOUT: PoS Way[$i]")
+    HardwareAssertion(PopCount(Seq(cleanHit, reqHit)) <= 1.U, cf"PoS Way[${i.U}]")
+    HardwareAssertion.checkTimeout(!ctrl.valid, TIMEOUT_POS, cf"TIMEOUT: PoS Way[${i.U}]")
   }
 
   /*
