@@ -172,7 +172,9 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   /*
    * Module declaration
    */
-  val entries = Seq.fill(nrEntries) { Module(new TaskEntry(log2Ceil(nrEntries), sort)) }
+  val entries  = Seq.fill(nrEntries) { Module(new TaskEntry(log2Ceil(nrEntries), sort)) }
+  val debugVec = WireInit(VecInit(entries.map(_.io.state)))
+  dontTouch(debugVec)
 
   /*
    * Receive Chi Task

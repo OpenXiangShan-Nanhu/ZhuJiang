@@ -265,7 +265,9 @@ class PosTable(implicit p: Parameters) extends DJModule {
   /*
    * Module and Reg declaration
    */
-  val posSet = Seq.fill(posSets) { Module(new PosSet()) }
+  val posSet   = Seq.fill(posSets) { Module(new PosSet()) }
+  val debugVec = WireInit(VecInit(posSet.map(_.io.stateVec)))
+  dontTouch(debugVec)
 
   /*
    * Connect PoS <- IO
