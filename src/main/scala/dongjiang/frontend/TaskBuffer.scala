@@ -139,7 +139,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   ))
 
   // assert hit num
-  HardwareAssertion(PopCount(Seq(recTaskHit, sendTaskHit, wakeupHit, sleepHit | retryHit | toFreeHit)) <= 1.U,
+  HardwareAssertion(PopCount(Seq(recTaskHit, sendTaskHit, wakeupHit | sleepHit | retryHit | toFreeHit)) <= 1.U,
                                                                           desc = cf"State[${taskReg.state}]")
   // assert timeout
   HardwareAssertion.checkTimeout(taskReg.isFree, TIMEOUT_TASKBUF,         desc = cf"State[${taskReg.state}]")
