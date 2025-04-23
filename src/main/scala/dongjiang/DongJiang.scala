@@ -270,8 +270,10 @@ class DongJiangTop()(implicit p: Parameters) extends Module {
   val zjParams = p(ZJParametersKey)
   val rnfNodes = zjParams.island.filter(_.nodeType == NodeType.CC)
   val hnfNodes = zjParams.island.filter(_.nodeType == NodeType.HF)
+  val snNodes  = zjParams.island.filter(_.nodeType == NodeType.S)
   val rnfIdSeq = rnfNodes.map(_.nodeId)
   val hnfIdSeq = hnfNodes.map(_.nodeId)
+  val snIdSeq  = snNodes.map(_.nodeId)
 
   def isToHNF(tgtID: UInt) = {
     VecInit(hnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).asUInt.orR
@@ -279,6 +281,10 @@ class DongJiangTop()(implicit p: Parameters) extends Module {
 
   def isToRNF(tgtID: UInt) = {
     VecInit(rnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits)).asUInt.orR
+  }
+
+  def isToSN(tgtID: UInt) = {
+    VecInit(snIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).asUInt.orR
   }
 
   val djNodeId = hnfNodes.head.nodeId
@@ -304,13 +310,17 @@ class DongJiangTop()(implicit p: Parameters) extends Module {
   io.rnf.rx.data.get <> io.sn.tx.data.get
   val djTxDatFlit = dj.io.lan.tx.data.get.bits.asTypeOf(new DataFlit)
   val rnfRxDat = io.rnf.rx.data.get
+  val snRxDat = io.sn.rx.data.get
   val djTxDatToRNF = dj.io.lan.tx.data.get.valid && isToRNF(djTxDatFlit.TgtID)
+  val djTxDatToSN = dj.io.lan.tx.data.get.valid && !djTxDatToRNF
   val snTxDatToRNF = io.sn.tx.data.get.valid && isToRNF(snTxDatFlit.TgtID)
   dontTouch(djTxDatToRNF)
   dontTouch(snTxDatToRNF)
   rnfRxDat.valid := djTxDatToRNF || snTxDatToRNF
   rnfRxDat.bits := Mux(djTxDatToRNF, dj.io.lan.tx.data.get.bits, io.sn.tx.data.get.bits)
-  dj.io.lan.tx.data.get.ready := rnfRxDat.ready
+  snRxDat.valid := djTxDatToSN
+  snRxDat.bits := dj.io.lan.tx.data.get.bits
+  dj.io.lan.tx.data.get.ready := Mux(djTxDatToRNF, rnfRxDat.ready, snRxDat.ready)
   io.sn.tx.data.get.ready := rnfRxDat.ready && !djTxDatToRNF
 
   io.rnf.rx.snoop.get <> dj.io.lan.tx.snoop.get
@@ -324,8 +334,6 @@ class DongJiangTop()(implicit p: Parameters) extends Module {
   djTxReq.ready := io.sn.rx.req.get.ready
   djTxReqFlitWire.ReturnNID.get := Mux(djTxReqFlit.ReturnNID.get === 0xFF.U, djNodeId.U, djTxReqFlit.ReturnNID.get)
   io.sn.rx.req.get.bits := djTxReqFlitWire
-
-  io.sn.rx.data.get <> dj.io.lan.tx.data.get
 
   val rnfTxRspFlit = io.rnf.tx.resp.get.bits.asTypeOf(new RespFlit)
   val snTxRspFlit = io.sn.tx.resp.get.bits.asTypeOf(new RespFlit)
