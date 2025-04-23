@@ -57,7 +57,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   val dbidPool      = Module(new DBIDPool())
   val wDsQ          = Module(new FastQueue(new DsWrite() with HasBeatNum with HasDCID, 2, false))
   val txDatQ        = Module(new FastQueue(new DataFlit(), 2, false))
-  val replQ         = Module(new FastQueue(new DataFlit(), 4, false)) // TODO
+  val replQ         = Module(new FastQueue(new DataFlit(), 4, false)) // TODO: parameterization
   val replNumReg    = RegInit(0.U(2.W))
   val datBuf_rData  = Wire(Vec(djparam.BeatByte, UInt(8.W)))
   val datBuf_rMask  = Wire(Vec(djparam.BeatByte, Bool()))
@@ -86,8 +86,8 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(PopCount(cmValVec.zip(taskIdHitVec).map(a => a._1 & a._2)) === 0.U, io.task.valid &  io.task.bits.dataOp.reqs)
   HardwareAssertion.withEn(PopCount(cmValVec.zip(taskIdHitVec).map(a => a._1 & a._2)) === 1.U, io.task.valid & !io.task.bits.dataOp.reqs)
   // Req
-  val reqidHitVec = datMsg.map(_.msg.llcTxnID.get === io.reqDB.bits.llcTxnID.get)
-  HardwareAssertion.withEn(PopCount(cmValVec.zip(reqidHitVec).map(a => a._1 & a._2)) === 0.U, io.reqDB.valid)
+  val reqIdHitVec = datMsg.map(_.msg.llcTxnID.get === io.reqDB.bits.llcTxnID.get)
+  HardwareAssertion.withEn(PopCount(cmValVec.zip(reqIdHitVec).map(a => a._1 & a._2)) === 0.U, io.reqDB.valid)
 
 
   /*
@@ -128,7 +128,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   // replNum
   val replNumNext = replNumReg - replQ.io.enq.fire +& (io.readDs.fire & datMsg(io.readDs.bits.dcid).msg.dataOp.repl)
   replNumReg      := replNumNext
-  HardwareAssertion(replNumNext <= 4.U )
+  HardwareAssertion(replNumNext <= 4.U)
 
 
   /*
@@ -149,7 +149,10 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   val v1_repl     = vec1_repl.reduce(_ | _)
   val dcid_repl   = Mux(v1_repl, PriorityEncoder(vec1_repl), PriorityEncoder(vec0_repl))
   val dsidx_repl  = datMsg(dcid_repl).msg.ds
-  val v_repl      = (v0_repl | v1_repl) & (replQ.io.count > replNumReg)
+  val v_repl      = (v0_repl | v1_repl) & (replQ.io.freeNum > replNumReg)
+  dontTouch(v0_repl)
+  dontTouch(v1_repl)
+  dontTouch(v_repl)
   // readDs
   io.readDs.valid         := v_rDS | v_repl
   io.readDs.bits.ds       := Mux(v_rDS, dsidx_rDS,      dsidx_repl)

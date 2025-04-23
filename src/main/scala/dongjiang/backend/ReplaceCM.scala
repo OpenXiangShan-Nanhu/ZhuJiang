@@ -74,15 +74,16 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     // Resp From TaskCM
     val respRepl        = Flipped(Valid(new PackLLCTxnID with HasChiChannel with HasChiResp)) // Channel and Resp only use in SnpResp
   })
+  dontTouch(io)
 
   /*
    * Reg and Wire declaration
    */
-  val cmRegVec  = RegInit(VecInit(Seq.fill(nrReplaceCM) { 0.U.asTypeOf(new CMState()) }))
-  val msgRegVec = Reg(Vec(nrReplaceCM, new ReplTask()))
-  val replDsVec = Reg(Vec(nrReplaceCM, new DsIdx()))
-  val toLanVec  = Reg(Vec(nrReplaceCM, Bool()))
-  val waitPipe  = Module(new Pipe(UInt(log2Ceil(nrReplaceCM).W), readDirLatency))
+  val cmRegVec      = RegInit(VecInit(Seq.fill(nrReplaceCM) { 0.U.asTypeOf(new CMState()) }))
+  val msgRegVec     = Reg(Vec(nrReplaceCM, new ReplTask())); msgRegVec.foreach(m => dontTouch(m.llcTxnID.pos.set))
+  val replDsRegVec  = Reg(Vec(nrReplaceCM, new DsIdx()))
+  val toLanRegVec   = Reg(Vec(nrReplaceCM, Bool()))
+  val waitPipe      = Module(new Pipe(UInt(log2Ceil(nrReplaceCM).W), readDirLatency))
 
 
   /*
@@ -135,9 +136,9 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.updPosTag.bits.addr    := addr_get
   // save repl ds
   when(needReplLLC) {
-    replDsVec(cmId_get).bank  := getDS(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)._1
-    replDsVec(cmId_get).idx   := getDS(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)._2
-    toLanVec(cmId_get)        := io.respDir.llc.bits.Addr.isToLAN(io.config.ci)
+    replDsRegVec(cmId_get).bank  := getDS(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)._1
+    replDsRegVec(cmId_get).idx   := getDS(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)._2
+    toLanRegVec(cmId_get)        := io.respDir.llc.bits.Addr.isToLAN(io.config.ci)
   }
   // lock when write
   io.lockPosSet.valid       := waitPipe.io.enq.fire
@@ -161,7 +162,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.cmAllocVec(CMID.SNP).bits.chi.opcode   := SnpOpcode.SnpUnique
   io.cmAllocVec(CMID.SNP).bits.chi.dataVec  := Seq(true.B, true.B)
   io.cmAllocVec(CMID.SNP).bits.chi.retToSrc := true.B
-  io.cmAllocVec(CMID.SNP).bits.chi.toLAN    := DontCare
+  io.cmAllocVec(CMID.SNP).bits.chi.toLAN    := toLanRegVec(cmId_rpSF)
   io.cmAllocVec(CMID.SNP).bits.llcTxnID     := msg_rpSF.llcTxnID
   io.cmAllocVec(CMID.SNP).bits.alr          := msg_rpSF.alr
   io.cmAllocVec(CMID.SNP).bits.snpVec       := msg_rpSF.dir.sf.metaVec.map(_.state.asBool)
@@ -178,7 +179,6 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   // REQ
   io.cmAllocVec(CMID.WOA).valid             := cmVec_rpLLC.reduce(_ | _)
   io.cmAllocVec(CMID.WOA).bits              := DontCare
-  io.cmAllocVec(CMID.WOA).bits.chi.toLAN    := toLanVec(cmId_rpLLC)
   io.cmAllocVec(CMID.WOA).bits.chi.nodeId   := DontCare
   io.cmAllocVec(CMID.WOA).bits.chi.channel  := ChiChannel.REQ
   io.cmAllocVec(CMID.WOA).bits.chi.opcode   := DontCare // will remap in WOA
@@ -187,9 +187,10 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.cmAllocVec(CMID.WOA).bits.chi.memAttr.device     := false.B
   io.cmAllocVec(CMID.WOA).bits.chi.memAttr.cacheable  := true.B
   io.cmAllocVec(CMID.WOA).bits.chi.memAttr.ewa        := true.B
-  io.cmAllocVec(CMID.WOA).bits.chi.toLAN    := DontCare
+  io.cmAllocVec(CMID.WOA).bits.chi.toLAN    := toLanRegVec(cmId_rpLLC)
+  io.cmAllocVec(CMID.WOA).bits.llcTxnID     := msg_rpLLC.llcTxnID
   io.cmAllocVec(CMID.WOA).bits.fromRepl     := true.B
-  io.cmAllocVec(CMID.WOA).bits.ds           := replDsVec(cmId_rpLLC)
+  io.cmAllocVec(CMID.WOA).bits.ds           := replDsRegVec(cmId_rpLLC)
   io.cmAllocVec(CMID.WOA).bits.cbResp       := msg_rpLLC.dir.llc.metaVec.head.cbResp
   io.cmAllocVec(CMID.WOA).bits.alr          := msg_rpLLC.alr
   io.cmAllocVec(CMID.WOA).bits.dataOp.reqs  := false.B
@@ -207,7 +208,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   io.resp.bits.dirBank  := msg_resp.llcTxnID.dirBank
   io.resp.bits.pos      := msg_resp.llcTxnID.pos
   io.resp.bits.alr      := msg_resp.alr
-  io.resp.bits.ds       := replDsVec(cmId_resp)
+  io.resp.bits.ds       := replDsRegVec(cmId_resp)
 
 
   /*
@@ -217,11 +218,11 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     case ((cm, msg), i) =>
       val allocHit    = io.alloc.fire & cmId_rec === i.U
       val writeHit    = (io.writeDir.llc.fire | io.writeDir.sf.fire) & cmId_wri === i.U
-      val waitHit     = waitPipe.io.deq.valid & waitPipe.io.deq.bits === i.U
-      val replSFHit   = io.cmAllocVec(CMID.SNP).fire & cmId_rpSF === i.U
-      val replLLCHit  = io.cmAllocVec(CMID.WOA).fire & cmId_rpLLC === i.U
-      val cmRespHit   = io.respRepl.fire & io.respRepl.bits.llcTxnID.get === msg.llcTxnID.get
-      val respHit     = io.resp.fire & cmId_resp === i.U
+      val waitHit     = waitPipe.io.deq.valid         & waitPipe.io.deq.bits === i.U
+      val replSFHit   = io.cmAllocVec(CMID.SNP).fire  & cmId_rpSF === i.U
+      val replLLCHit  = io.cmAllocVec(CMID.WOA).fire  & cmId_rpLLC === i.U
+      val cmRespHit   = io.respRepl.fire              & io.respRepl.bits.llcTxnID.get === msg.llcTxnID.get & cm.isValid
+      val respHit     = io.resp.fire                  & cmId_resp === i.U
 
       // Message
       val needSecRepl = cmRespHit & io.respRepl.bits.isDat

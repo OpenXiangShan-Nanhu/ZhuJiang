@@ -13,6 +13,7 @@ import dongjiang.frontend._
 import dongjiang.frontend.decode._
 import zhujiang.chi.ReqOpcode._
 import zhujiang.chi.RspOpcode._
+import zhujiang.chi.DatOpcode._
 import dongjiang.backend._
 import dongjiang.backend.wrioratm.State._
 import dongjiang.data._
@@ -91,15 +92,14 @@ class WriOrAtmEntry(implicit p: Parameters) extends DJModule {
    */
   // valid
   io.txReq.valid        := cmReg.isSendReq
-  // TODO: toBBN WriteBackFull / WriteEvictOrEvict
-  val replOp            = WriteNoSnpFull
+
   // bits
   io.txReq.bits         := DontCare
   io.txReq.bits.MemAttr := cmReg.task.chi.memAttr.asUInt
   io.txReq.bits.Order   := Order.None
   io.txReq.bits.Addr    := DontCare // remap in chi xbar
   io.txReq.bits.Size    := cmReg.task.chi.getSize
-  io.txReq.bits.Opcode  := Mux(cmReg.task.fromRepl, replOp, cmReg.task.chi.opcode)
+  io.txReq.bits.Opcode  := cmReg.task.chi.opcode
   io.txReq.bits.TxnID   := cmReg.task.llcTxnID.get
   io.txReq.bits.SrcID   := cmReg.task.chi.getNoC(io.config.ci)
 
@@ -127,7 +127,7 @@ class WriOrAtmEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.ds             := cmReg.task.ds
   io.dataTask.bits.dataVec        := cmReg.task.chi.dataVec
   io.dataTask.bits.txDat.Resp     := cmReg.task.cbResp
-  io.dataTask.bits.txDat.Opcode   := cmReg.task.chi.opcode
+  io.dataTask.bits.txDat.Opcode   := Mux(cmReg.task.chi.isImmediateWrite, NonCopyBackWriteData, CopyBackWriteData)
   io.dataTask.bits.txDat.TxnID    := cmReg.task.chi.txnID
   io.dataTask.bits.txDat.SrcID    := cmReg.task.chi.getNoC(io.config.ci)
   io.dataTask.bits.txDat.TgtID    := cmReg.task.chi.nodeId
@@ -165,7 +165,10 @@ class WriOrAtmEntry(implicit p: Parameters) extends DJModule {
 
   // task
   when(allocHit) {
+    // TODO: toBBN WriteBackFull / WriteEvictOrEvict
+    val replOp = WriteNoSnpFull
     cmReg.task := io.alloc.bits
+    cmReg.task.chi.opcode := Mux(io.alloc.bits.fromRepl, replOp, io.alloc.bits.chi.opcode)
   }.elsewhen(waitHit) {
     cmReg.task.chi.txnID  := io.rxRsp.bits.DBID
     cmReg.task.chi.nodeId := io.rxRsp.bits.SrcID
