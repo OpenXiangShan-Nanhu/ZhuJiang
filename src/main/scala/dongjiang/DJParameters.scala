@@ -24,18 +24,18 @@ case class DJParam(
                   nrDataCM:           Int = 32,
                   // Data SRAM
                   nrDSBank:           Int = 4,
-                  dataSetup:          Int = 2,
-                  dataExtraHold:      Boolean = false,
-                  dataLatency:        Int = 2,
+                  dataRamSetup:          Int = 2,
+                  dataRamExtraHold:      Boolean = false,
+                  dataRamLatency:        Int = 2,
                   // ------------------------ Directory  ----------------------- //
                   // Replace Policy is PLRU
                   llcWays:            Int = 16, // self llc ways
                   sfWays:             Int = 16, // snoop filter ways
                   // Dir SRAM
                   nrDirBank:          Int = 2,
-                  dirSetup:           Int = 1,
-                  dirExtraHold:       Boolean = false,
-                  dirLatency:         Int = 2,
+                  dirRamSetup:           Int = 1,
+                  dirRamExtraHold:       Boolean = false,
+                  dirRamLatency:         Int = 2,
                 ) {
   lazy val hasLLC    = llcSizeInB != 0
   lazy val CacheLine = 64 // Bytes
@@ -246,8 +246,8 @@ trait HasDJParam extends HasParseZJParam {
   lazy val nrPoS            = djparam.nrPoS / djparam.nrDirBank
   lazy val posWays          = djparam.posWays
   lazy val posWayBits       = log2Ceil(posWays)
-  lazy val dirMuticycle     = djparam.dirLatency.max(if(djparam.dirExtraHold) djparam.dirSetup + 1 else djparam.dirSetup)
-  lazy val readDirLatency   = (if(djparam.dirSetup > 1) djparam.dirSetup + 1 else djparam.dirSetup) + djparam.dirLatency
+  lazy val dirMuticycle     = djparam.dirRamLatency.max(if(djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup)
+  lazy val readDirLatency   = (if(djparam.dirRamSetup > 1 || djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup) + djparam.dirRamLatency
   lazy val llcWayBits       = log2Ceil(djparam.llcWays)
   // [S1(PoS/Block)] + [S2(ReadDir)] + [S3(Decode)] + Reserve for snp
   lazy val nrIssueBuf       = 4
@@ -264,8 +264,8 @@ trait HasDJParam extends HasParseZJParam {
   lazy val dsBank           = djparam.nrDSBank
   lazy val nrDsSet          = djparam.dsSets / dsBank
   lazy val dsIdxBits        = log2Ceil(nrDsSet)
-  lazy val dsMuticycle      = djparam.dataLatency.max(if(djparam.dataExtraHold) djparam.dataSetup + 1 else djparam.dataSetup)
-  lazy val readDsLatency    = (if(djparam.dataSetup > 1) djparam.dataSetup + 1 else djparam.dataSetup) + djparam.dataLatency
+  lazy val dsMuticycle      = djparam.dataRamLatency.max(if(djparam.dataRamExtraHold) djparam.dataRamSetup + 1 else djparam.dataRamSetup)
+  lazy val readDsLatency    = (if(djparam.dataRamSetup > 1) djparam.dataRamSetup + 1 else djparam.dataRamSetup) + djparam.dataRamLatency
 
   // Replacement(PLRU) Parameters
   lazy val sReplWayBits     = djparam.llcWays - 1

@@ -32,7 +32,7 @@ object State {
 }
 
 class CMState(implicit p: Parameters) extends DJBundle {
-  // CHI: Free --> ReqDB --> SendSnp --> WaitResp0 --> WaitResp1 --> Resp --> Free
+  // CHI: Free --> ReqDB --> SendSnp --> WaitResp0 --> WaitResp1 --> RespCmt --> Free
   val state       = UInt(State.width.W)
   val alrSendVec  = Vec(nrSfMetas, Bool())
   val getRespVec  = Vec(nrSfMetas, Bool())

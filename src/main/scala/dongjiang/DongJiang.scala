@@ -20,7 +20,7 @@ import zhujiang.ZJParametersKey
 
 class DJConfigIO(implicit p: Parameters) extends DJBundle {
   val ci            = Input(UInt(ciBits.W))
-  val closeLLC      = Input(Bool())
+  val closeLLC      = Input(Bool()) // TODO
   val bankId        = Input(UInt(bankBits.W))
 }
 
@@ -30,9 +30,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    * IO declaration
    */
   val io  = IO(new Bundle {
-    // Flush LLC
+    // Flush LLC  // TODO
     val flushCache  = new DJBundle {
-      val req       = Input(Valid(UInt(nrCcNode.W)))
+      val req       = Input(Valid(UInt(nrBank.W)))
       val ack       = Output(UInt(nrBank.W))
     }
     val working     = Output(Bool())

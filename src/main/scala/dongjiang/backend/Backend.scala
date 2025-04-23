@@ -159,38 +159,38 @@ class Backend(implicit p: Parameters) extends DJModule {
    */
   replCM.io.alloc     <> fastRRArb(cmtCMs.map(_.io.replAlloc))
   replCM.io.respDir   := io.respDir
-  replCM.io.respRepl  <> fastArb.validOut(Seq(snoopCM.io.respRepl, wriOrAtmCM.io.respRepl))
+  replCM.io.respRepl  <> fastRRArb.validOut(Seq(snoopCM.io.respRepl, wriOrAtmCM.io.respRepl))
 
   /*
    * Connect replCM
    */
-  snoopCM.io.alloc    <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.SNP)) ++ Seq(replCM.io.cmAllocVec(CMID.SNP)) ++ io.cmAllocVec2.map(_(CMID.SNP)))
+  snoopCM.io.alloc    <> fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.SNP)) ++ Seq(replCM.io.cmAllocVec(CMID.SNP)) ++ io.cmAllocVec2.map(_(CMID.SNP)))
   snoopCM.io.rxRsp    := io.rxRsp
   snoopCM.io.rxDat    := io.rxDat
 
   /*
    * Connect wriOrAtmCM
    */
-  wriOrAtmCM.io.alloc     <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.WOA)) ++ Seq(replCM.io.cmAllocVec(CMID.WOA)) ++ io.cmAllocVec2.map(_(CMID.WOA)))
+  wriOrAtmCM.io.alloc     <> fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.WOA)) ++ Seq(replCM.io.cmAllocVec(CMID.WOA)) ++ io.cmAllocVec2.map(_(CMID.WOA)))
   wriOrAtmCM.io.rxRsp     := io.rxRsp
   wriOrAtmCM.io.dataResp  := io.dataResp
 
   /*
    * Connect readCM
    */
-  readCM.io.alloc <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.READ)) ++ io.cmAllocVec2.map(_(CMID.READ)))
+  readCM.io.alloc <> fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.READ)) ++ io.cmAllocVec2.map(_(CMID.READ)))
   readCM.io.rxDat := io.rxDat
 
   /*
    * Connect datalessCM
    */
-  datalessCM.io.alloc <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.DL)) ++ io.cmAllocVec2.map(_(CMID.DL)))
+  datalessCM.io.alloc <> fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.DL)) ++ io.cmAllocVec2.map(_(CMID.DL)))
   datalessCM.io.rxRsp := io.rxRsp
 
   /*
    * Connect receiveCM
    */
-  receiveCM.io.alloc <> fastArb(cmtCMs.map(_.io.cmAllocVec(CMID.REC)) ++ io.cmAllocVec2.map(_(CMID.REC)))
+  receiveCM.io.alloc <> fastRRArb(cmtCMs.map(_.io.cmAllocVec(CMID.REC)) ++ io.cmAllocVec2.map(_(CMID.REC)))
   receiveCM.io.rxRsp := io.rxRsp
   receiveCM.io.rxDat := io.rxDat
 
