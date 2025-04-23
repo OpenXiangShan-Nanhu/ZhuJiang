@@ -158,8 +158,8 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   val respCmtHit  = io.respCmt.fire | io.respRepl.fire
 
   // Store Msg From Frontend
-  val rspIsFwd = io.rxRsp.bits.Opcode === SnpRespFwded & recRespHit
-  val datIsFwd = io.rxDat.bits.Opcode === SnpRespData  & recDataHit
+  val rspIsFwd = io.rxRsp.bits.Opcode === SnpRespFwded      & recRespHit
+  val datIsFwd = io.rxDat.bits.Opcode === SnpRespDataFwded  & recDataHit
   when(allocHit) {
     cmReg      := 0.U.asTypeOf(cmReg)
     cmReg.task := io.alloc.bits
