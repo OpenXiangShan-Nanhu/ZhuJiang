@@ -452,6 +452,8 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             cm  := cm_rec
           }.elsewhen(taskRespHit & !msg.commit.valid) {
             cm  := cm_rCmt
+            // It is also possible to receive an CompAck when receiving a task resp.
+            cm.chi.w_ack        :=  cm.chi.w_ack       & !(waitCompAckHit | msg.chi.reqIs(WriteEvictOrEvict)) // WriteEvictOrEvict Get CompAck in ReceiveCM
           }.otherwise {
             // internal send
             cm.intl.s.data0     :=  cm.intl.s.data0    & !(dataTaskHit & (io.dataTask.bits.dataOp.reqs | io.dataTask.bits.dataOp.read | io.dataTask.bits.dataOp.send))
