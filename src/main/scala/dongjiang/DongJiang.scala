@@ -93,12 +93,12 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  openDCT: ${djparam.openDCT}
        |  nrPoS: ${djparam.nrPoS}
        |  dataBufSize: ${djparam.dataBufSizeInByte} B
-       |  dataSetup: ${djparam.dataSetup}
-       |  dataLatency: ${djparam.dataSetup}
-       |  dataExtraHold: ${djparam.dataExtraHold}
-       |  dirSetup: ${djparam.dirSetup}
-       |  dirLatency: ${djparam.dirLatency}
-       |  dirExtraHold: ${djparam.dirExtraHold}
+       |  dataSetup: ${djparam.dataRamSetup}
+       |  dataLatency: ${djparam.dataRamSetup}
+       |  dataExtraHold: ${djparam.dataRamExtraHold}
+       |  dirSetup: ${djparam.dirRamSetup}
+       |  dirLatency: ${djparam.dirRamLatency}
+       |  dirExtraHold: ${djparam.dirRamExtraHold}
        |  ccNodeIdSeq: $ccNodeIdSeq
        |  rniNodeIdSeq: $rniNodeIdSeq
        |  snNodeIdSeq: $snNodeIdSeq

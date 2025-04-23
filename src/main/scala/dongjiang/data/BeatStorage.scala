@@ -54,9 +54,9 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
     gen         = UInt(8.W),
     set         = nrDsSet,
     way         = djparam.BeatByte,
-    setup       = djparam.dataSetup,
-    latency     = djparam.dataLatency,
-    extraHold   = djparam.dataExtraHold,
+    setup       = djparam.dataRamSetup,
+    latency     = djparam.dataRamLatency,
+    extraHold   = djparam.dataRamExtraHold,
     hasMbist    = hasMbist,
     outputReg   = true,
     suffix      = "_llc_dat"
