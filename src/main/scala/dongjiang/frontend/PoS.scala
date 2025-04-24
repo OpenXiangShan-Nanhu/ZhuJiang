@@ -9,7 +9,6 @@ import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
 import chisel3.experimental.BundleLiterals._
-import zhujiang.chi.ReqOpcode.AtomicLoadUMIN
 
 // ----------------------------------------------------------------------------------------------------- //
 // ------------------------------------------- PoS Bundle ---------------------------------------------- //

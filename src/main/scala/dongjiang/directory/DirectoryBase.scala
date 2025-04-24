@@ -12,7 +12,6 @@ import xs.utils.debug.{HAssert, HardwareAssertion}
 import xs.utils.sram.{DualPortSramTemplate, SinglePortSramTemplate}
 import freechips.rocketchip.util.ReplacementPolicy
 import xs.utils.mbist.MbistPipeline
-import chisel3.experimental.Param
 
 class Shift(implicit p: Parameters) extends DJBundle {
   val read  = UInt(readDirLatency.W)

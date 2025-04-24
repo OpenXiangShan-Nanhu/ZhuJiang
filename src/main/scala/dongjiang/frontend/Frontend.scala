@@ -119,7 +119,7 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   }
 
   // posTable [S1]
-  posTable.io.req_s0        := fastRRArb(Seq(snpTaskBuf.io.req2Pos_s0, reqTaskBuf.io.req2Pos_s0)) // TODO
+  posTable.io.req_s0        := fastRRArb(Seq(snpTaskBuf.io.req2Pos_s0, reqTaskBuf.io.req2Pos_s0)) 
   posTable.io.retry_s1      := block.io.retry_s1
   posTable.io.updNest       := fastArb.validOut(Seq(decode.io.updNest_s3, io.updPosNest))
   posTable.io.updTag        := io.updPosTag
