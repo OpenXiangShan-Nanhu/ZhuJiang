@@ -191,7 +191,6 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   }
   // HardwareAssertion
   when(respVal) {
-    HardwareAssertion(cmt_rCmt.valid)
     HardwareAssertion.withEn(code_rCmt.valid, cmt_temp.waitSecDone)
     HardwareAssertion.withEn(code_rCmt.asUInt === 0.U, !code_rCmt.valid)
     HardwareAssertion.withEn(cmt_rCmt.asUInt === 0.U, !cmt_rCmt.valid)
