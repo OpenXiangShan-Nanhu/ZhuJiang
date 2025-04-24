@@ -466,7 +466,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             cm.intl.w.secResp   :=  cm.intl.w.secResp  & !taskRespHit
             cm.intl.w.repl      :=  cm.intl.w.repl     & !waitReplHit
             cm.intl.w.data0     :=  cm.intl.w.data0    & !(waitDataAckHit & !cm.intl.s.data0)
-            cm.intl.w.data1     := (cm.intl.w.data1    & !(waitDataAckHit & !cm.intl.s.data1)) | replNeedSData1
+            cm.intl.w.data1     := (cm.intl.w.data1    & !(waitDataAckHit & !cm.intl.s.data1 & !cm.intl.w.repl)) | replNeedSData1
             // chi send
             cm.chi.s_resp       :=  cm.chi.s_resp      & !respChiHit
             // chi wait
@@ -479,7 +479,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             HardwareAssertion.withEn(!cm.valid, allocHit, cf"Commit Index[${i}][${j}]")
             HardwareAssertion.withEn(cm.intl.w.cmResp | cm.intl.w.secResp, taskRespHit, cf"Commit Index[${i}][${j}]")
             HardwareAssertion.withEn(cm.intl.s.data0  | cm.intl.s.data1,   dataTaskHit, cf"Commit Index[${i}][${j}]")
-            HardwareAssertion.withEn(cm.intl.w.data0  | cm.intl.w.data1,   waitDataAckHit, cf"Commit Index[${i}][${j}]")
+            HardwareAssertion.withEn(cm.intl.w.data0  | cm.intl.w.data1 | cm.intl.w.repl, waitDataAckHit, cf"Commit Index[${i}][${j}]")
             HardwareAssertion.withEn(cm.intl.s.wriDir,  wDirHit, cf"Commit Index[${i}][${j}]")
             HardwareAssertion.withEn(cm.intl.s.canNest, canNestHit, cf"Commit Index[${i}][${j}]")
             HardwareAssertion.withEn(cm.intl.s.secTask, secTaskHit, cf"Commit Index[${i}][${j}]")

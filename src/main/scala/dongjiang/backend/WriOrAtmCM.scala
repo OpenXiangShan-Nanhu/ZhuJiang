@@ -159,7 +159,7 @@ class WriOrAtmEntry(implicit p: Parameters) extends DJModule {
   val waitHit   = io.rxRsp.fire    & io.rxRsp.bits.TxnID === cmReg.task.llcTxnID.get &
                   (io.rxRsp.bits.Opcode === CompDBIDResp | io.rxRsp.bits.Opcode === DBIDResp) & cmReg.isValid
   val taskHit   = io.dataTask.fire
-  val dataHit   = io.dataResp.fire & io.dataResp.bits.llcTxnID.get === cmReg.task.llcTxnID.get & cmReg.task.chi.memAttr.ewa & cmReg.isValid
+  val dataHit   = io.dataResp.fire & io.dataResp.bits.llcTxnID.get === cmReg.task.llcTxnID.get & cmReg.isValid
   val compHit   = io.rxRsp.fire    & io.rxRsp.bits.TxnID === cmReg.task.llcTxnID.get & io.rxRsp.bits.Opcode === Comp & cmReg.isValid
   val respHit   = io.respCmt.fire | io.respRepl.fire
 
@@ -172,7 +172,7 @@ class WriOrAtmEntry(implicit p: Parameters) extends DJModule {
   }.elsewhen(waitHit) {
     cmReg.task.chi.txnID  := io.rxRsp.bits.DBID
     cmReg.task.chi.nodeId := io.rxRsp.bits.SrcID
-  }.elsewhen(taskHit) {
+  }.elsewhen(respHit) {
     cmReg.task := 0.U.asTypeOf(cmReg.task)
   }
 
