@@ -92,7 +92,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   val matTagWay_s0    = PriorityEncoder(matTagVec_s0)
   val hasMatTag       = matTagVec_s0.orR
   dontTouch(matTagVec_s0)
-  HardwareAssertion(PopCount(matTagVec_s0) <= 1.U)
+  HardwareAssertion.withEn(PopCount(matTagVec_s0) <= 1.U, io.req_s0.valid)
 
   // get free way
   val freeVec_s0      = Cat(posSetVecReg.map(!_.valid).reverse)
