@@ -39,7 +39,7 @@ class CMState(implicit p: Parameters) extends DJBundle {
   }
   // chi send/wait
   val chi = new DJBundle {
-    val s_resp      = Bool() // Send Resp To RN/HN
+    val s_resp      = Bool() // Send Resp(Comp, SnpResp) To RN/HN
     val w_ack       = Bool() // Wait CompAck From RN
   }
   // other
@@ -209,7 +209,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
   cm_rCmt.intl.w.data0    := cm_rCmt.intl.s.data0
   cm_rCmt.intl.w.data1    := cm_rCmt.intl.s.data1
   // cm chi send
-  cm_rCmt.chi.s_resp      := cmt_rCmt.commit & alloc_rec.commit.channel === ChiChannel.RSP
+  cm_rCmt.chi.s_resp      := cmt_rCmt.commit & cmt_rCmt.channel === ChiChannel.RSP
   // cm chi wait
   cm_rCmt.chi.w_ack       := cm_resp.chi.w_ack
   // valid
