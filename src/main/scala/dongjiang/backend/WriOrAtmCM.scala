@@ -107,7 +107,7 @@ class WriOrAtmEntry(implicit p: Parameters) extends DJModule {
   /*
    * [CanNest] Update PoS Message
    */
-  val fire_nest   = io.updPosNestVec.map(_.fire).reduce(_ | _)
+  val fire_nest   = Cat(io.updPosNestVec.map(_.fire)).orR
   // valid
   io.updPosNestVec.zipWithIndex.foreach { case (upd, i) => upd.valid := cmReg.isCanNest & cmReg.task.llcTxnID.dirBank === i.U }
   // bits

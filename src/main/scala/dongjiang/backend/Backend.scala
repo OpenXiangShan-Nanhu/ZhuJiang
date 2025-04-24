@@ -131,9 +131,9 @@ class Backend(implicit p: Parameters) extends DJModule {
     case(cmt, i) =>
       cmt.io.alloc              := io.cmtAllocVec(i)
       cmt.io.rxRsp              := io.rxRsp
-      val respCmtValVec         = respCmtVec.map(r => r.valid & r.bits.llcTxnID.dirBank === i.U)
+      val respCmtValVec         = Cat(respCmtVec.map(r => r.valid & r.bits.llcTxnID.dirBank === i.U).reverse)
       respCmtSelIdVec(i)        := RREncoder(respCmtValVec)
-      cmt.io.respCmt.valid      := respCmtValVec.reduce(_ | _)
+      cmt.io.respCmt.valid      := respCmtValVec.orR
       cmt.io.respCmt.bits       := respCmtVec(respCmtSelIdVec(i)).bits
       // replResp
       cmt.io.replResp.valid     := replCM.io.resp.valid & replCM.io.resp.bits.dirBank === i.U

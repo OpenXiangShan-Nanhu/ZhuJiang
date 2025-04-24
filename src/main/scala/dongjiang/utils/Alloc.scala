@@ -6,7 +6,7 @@ import org.chipsalliance.cde.config._
 
 object Alloc {
   def apply[T <: Data](out: Seq[DecoupledIO[T]], in: DecoupledIO[T]): Unit = {
-    val freeVec = Cat(out.map(_.ready).reverse) // TODO: modify map
+    val freeVec = Cat(out.map(_.ready).reverse)
     val freeId = PriorityEncoder(freeVec)
     dontTouch(freeId)
     out.zipWithIndex.foreach { case (o, i) =>

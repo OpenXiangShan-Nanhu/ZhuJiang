@@ -181,7 +181,6 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   chiXbar.io.txDat.outVec.zip(icnVec.map(_.tx.data.get)).foreach { case (a, b) => connIcn(b, a) }
 
   // Set CBusy in CHIXbar
-  val multicore = frontends.map(_.io.multicore).reduce(_ |  _); dontTouch(multicore)
   val alrUsePos = frontends.map(_.io.alrUsePoS).reduce(_ +& _); dontTouch(alrUsePos)
   val posBusy   = PriorityMux(Seq(
     (alrUsePos < (djparam.nrPoS * 0.5 ).toInt.U)  -> "b00".U,
@@ -189,7 +188,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
     (alrUsePos < (djparam.nrPoS * 0.9 ).toInt.U)  -> "b10".U,
     true.B -> "b11".U,
   ))
-  chiXbar.io.cBusy := RegNext(Cat(multicore, posBusy))
+  chiXbar.io.cBusy := RegNext(Cat(0.U(1.W), posBusy))
 
   /*
    * Get addr from PoS logic
@@ -274,15 +273,15 @@ class DongJiangTop()(implicit p: Parameters) extends Module {
   val snIdSeq  = snNodes.map(_.nodeId)
 
   def isToHNF(tgtID: UInt) = {
-    VecInit(hnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).asUInt.orR
+    Cat(hnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).orR
   }
 
   def isToRNF(tgtID: UInt) = {
-    VecInit(rnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits)).asUInt.orR
+    Cat(rnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits)).orR
   }
 
   def isToSN(tgtID: UInt) = {
-    VecInit(snIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).asUInt.orR
+    Cat(snIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).orR
   }
 
   val djNodeId = hnfNodes.head.nodeId

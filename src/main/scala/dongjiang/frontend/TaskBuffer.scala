@@ -53,11 +53,9 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
     val othRel      = if(sort) Some(Input(Bool())) else None // Other Release
     val state       = Output(new DJBundle with HasAddr {
       val valid     = Bool()
-      val value     = new TaskState()
+      val value     = UInt(TASKSTATE.width.W)
       val release   = Bool()
     })
-    // multiple cores are actively making requests
-    val multicore   = Bool() // TODO
   })
 
   /*
@@ -65,11 +63,6 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
    */
   val taskReg = RegInit((new TaskState with HasPackChi with HasAddr).Lit(_.state -> FREE))
   val nidReg  = if(sort) Some(Reg(UInt(nidBits.W))) else None
-
-  /*
-   * Multiple cores are actively making requests
-   */
-  io.multicore := taskReg.isSleep // TODO: use srcId
 
   /*
    * Receive ChiTask
@@ -102,7 +95,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   io.state.valid   := taskReg.isValid
   io.state.release := RegNext(taskReg.isValid) & taskReg.isFree
   io.state.addr    := taskReg.addr
-  io.state.value   := taskReg
+  io.state.value   := taskReg.state
   HardwareAssertion(!(io.state.valid & io.state.release))
 
   /*
@@ -156,8 +149,6 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
     val retry_s1    = Input(Bool()) // Reject Task by Block or PoS Full
     val sleep_s1    = Input(Bool()) // Reject Task by PoS Match
     val wakeup      = Flipped(Valid(new Addr)) // PoS wakeup someone
-    // multiple cores are actively making requests
-    val multicore   = Bool()
     //  system is working
     val working     = Output(Bool())
   })
@@ -197,16 +188,11 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
    */
   if(sort) {
     entries.foreach { self =>
-      self.io.initNid.get  := PopCount(entries.map(other => other.io.state.valid & other.io.state.Addr.useAddr === io.chiTaskIn.bits.Addr.useAddr))
-      self.io.othRel.get   := entries.map(other => other.io.state.release & other.io.state.Addr.useAddr === self.io.state.Addr.useAddr).reduce(_ | _)
+      self.io.initNid.get  := PopCount(Cat(entries.map(other => other.io.state.valid & other.io.state.Addr.useAddr === io.chiTaskIn.bits.Addr.useAddr)))
+      self.io.othRel.get   := Cat(entries.map(other => other.io.state.release & other.io.state.Addr.useAddr === self.io.state.Addr.useAddr)).orR
     }
-    HardwareAssertion(PopCount(entries.map(e => e.io.state.release)) <= 1.U)
+    HardwareAssertion(PopCount(Cat(entries.map(e => e.io.state.release))) <= 1.U)
   }
-
-  /*
-   * Multiple cores are actively making requests
-   */
-  io.multicore := Cat(entries.map(_.io.multicore)).orR
 
   /*
    * Has DataBuffer valid

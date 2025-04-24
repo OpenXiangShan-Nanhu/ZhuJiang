@@ -9,6 +9,7 @@ import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
 import chisel3.experimental.BundleLiterals._
+import zhujiang.chi.ReqOpcode.AtomicLoadUMIN
 
 // ----------------------------------------------------------------------------------------------------- //
 // ------------------------------------------- PoS Bundle ---------------------------------------------- //
@@ -87,16 +88,16 @@ class PosSet(implicit p: Parameters) extends DJModule {
   val reqTag_s0       = io.req_s0.bits.Addr.posTag
   val reqDirSet_s0    = io.req_s0.bits.Addr.dirSet
   // match pos tag
-  val matTagVec_s0    = Wire(Vec(posWays, Bool()))
-  matTagVec_s0        := posSetVecReg.map(way => way.valid & way.tag === reqTag_s0)
+  val matTagVec_s0    = Wire(UInt(posWays.W))
+  matTagVec_s0        := Cat(posSetVecReg.map(way => way.valid & way.tag === reqTag_s0).reverse)
   val matTagWay_s0    = PriorityEncoder(matTagVec_s0)
-  val hasMatTag       = matTagVec_s0.reduce(_ | _)
+  val hasMatTag       = matTagVec_s0.orR
   dontTouch(matTagVec_s0)
   HardwareAssertion(PopCount(matTagVec_s0) <= 1.U)
 
   // get free way
-  val freeVec_s0      = posSetVecReg.map(!_.valid)
-  val hasFree_s0      = freeVec_s0.reduce(_ | _)
+  val freeVec_s0      = Cat(posSetVecReg.map(!_.valid).reverse)
+  val hasFree_s0      = freeVec_s0.orR
   val freeWay_s0      = PriorityEncoder(freeVec_s0)
 
   // judge block req
@@ -290,8 +291,8 @@ class PosTable(implicit p: Parameters) extends DJModule {
   val setVec_s1       = posSetIo.map(_.posWay_s1.valid)
   val wakeupVec_s1    = posSetIo.map(_.wakeup.valid)
   // ack
-  io.sleep_s1         := posSetIo.map(_.sleep_s1).reduce(_ | _)
-  io.block_s1         := posSetIo.map(_.block_s1).reduce(_ | _)
+  io.sleep_s1         := Cat(posSetIo.map(_.sleep_s1)).orR
+  io.block_s1         := Cat(posSetIo.map(_.block_s1)).orR
   io.posIdx_s1.set    := PriorityEncoder(setVec_s1)
   io.posIdx_s1.way    := PriorityMux(setVec_s1, posSetIo.map(_.posWay_s1.bits))
   // wakeup
@@ -304,7 +305,7 @@ class PosTable(implicit p: Parameters) extends DJModule {
   /*
    * already use PoS num
    */
-  io.alrUsePoS := PopCount(posSetIo.flatMap(_.stateVec.map(_.valid)))
+  io.alrUsePoS := PopCount(Cat(posSetIo.flatMap(_.stateVec.map(_.valid))))
 
   /*
    * Get Addr
@@ -319,7 +320,7 @@ class PosTable(implicit p: Parameters) extends DJModule {
   /*
    * Has PoS valid
    */
-  io.working := posSetIo.flatMap(_.stateVec.map(_.valid)).reduce(_ | _)
+  io.working := Cat(posSetIo.flatMap(_.stateVec.map(_.valid))).orR
 
   /*
    * HardwareAssertion placePipe

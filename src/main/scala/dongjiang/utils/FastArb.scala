@@ -11,7 +11,7 @@ class ArbiterWithReset[T <: Data](gen:T, size:Int, rr:Boolean) extends Module {
   })
 
   if(rr) {
-    val selId = StepRREncoder(io.in.map(_.valid), io.out.fire)
+    val selId = StepRREncoder(Cat(io.in.map(_.valid).reverse), io.out.fire)
     io.out.valid  := io.in.map(_.valid).reduce(_ | _)
     io.out.bits   := io.in(selId).bits
     io.in.zipWithIndex.foreach { case(in, i) => in.ready := io.out.ready & selId === i.U }

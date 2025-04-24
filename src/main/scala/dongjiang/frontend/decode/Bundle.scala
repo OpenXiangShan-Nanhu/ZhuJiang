@@ -460,13 +460,13 @@ object Decode {
     secInstVec_2.zipWithIndex.foreach { case (inst, i) =>
       secInstVecCf = secInstVecCf + cf"[$i] -> [${inst.asTypeOf(new TaskInst)}]\n"
     }
-    HardwareAssertion.withEn(PopCount(chiInstVec.map(_.asUInt === chi.asUInt)) === 1.U,       chi.valid,
+    HardwareAssertion.withEn(PopCount(Cat(chiInstVec.map(_.asUInt === chi.asUInt))) === 1.U,       chi.valid,
       cf"\n\nDECODE [ChiInst] ERROR\n\nChiInst:\n$chi\n\nAll Legal ChiInsts:\n" + chiInstVecCf + cf"\n")
-    HardwareAssertion.withEn(PopCount(stateInstVec_0.map(_.asUInt === state.asUInt)) === 1.U, state.valid,
+    HardwareAssertion.withEn(PopCount(Cat(stateInstVec_0.map(_.asUInt === state.asUInt))) === 1.U, state.valid,
       cf"\n\nDECODE [StateInst] ERROR\n\nChiInst:\n$chi\nStateInst Invalid:\n$state\n\nAll Legal StateInsts:\n" + stateInstVecCf + cf"\n")
-    HardwareAssertion.withEn(PopCount(taskInstVec_1.map(_.asUInt === task.asUInt)) === 1.U,   task.valid,
+    HardwareAssertion.withEn(PopCount(Cat(taskInstVec_1.map(_.asUInt === task.asUInt))) === 1.U,   task.valid,
       cf"\n\nDECODE [TaskInst] ERROR\n\nChiInst:\n$chi\nStateInst:\n$state\nTaskInst:\n$task\n\nAll Legal TaskInsts:\n" + taskInstVecCf + cf"\n")
-    HardwareAssertion.withEn(PopCount(secInstVec_2.map(_.asUInt === secTask.asUInt)) === 1.U, secTask.valid,
+    HardwareAssertion.withEn(PopCount(Cat(secInstVec_2.map(_.asUInt === secTask.asUInt))) === 1.U, secTask.valid,
       cf"\n\nDECODE [SecTaskInst] ERROR\n\nChiInst:\n$chi\nStateInst:\n$state\nTaskInst:\n$task\nSecond TaskInst:\n$secTask\n\nAll Legal SecTaskInsts:\n" + secInstVecCf + cf"\n")
 
     // Return

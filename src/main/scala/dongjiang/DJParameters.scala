@@ -115,9 +115,9 @@ trait HasParseZJParam extends HasZJParams {
    */
   def fromLanXNode(nodeId: UInt, nodeIdSeq: Seq[Int]): Bool = {
     require(nodeId.getWidth == nodeIdBits)
-    val fromXSeq = nodeIdSeq.map(_.asUInt >> lanABits === nodeId >> lanABits)
+    val fromXSeq = Cat(nodeIdSeq.map(_.asUInt >> lanABits === nodeId >> lanABits))
     HardwareAssertion(PopCount(fromXSeq) <= 1.U)
-    fromXSeq.reduce(_ | _)
+    fromXSeq.orR
   }
 }
 

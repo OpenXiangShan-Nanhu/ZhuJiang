@@ -47,6 +47,9 @@ object StepRREncoder {
     stepRREncoder.io.enable := enable
     stepRREncoder.io.outIdx
   }
+  def apply(in: Bits, enable: Bool): UInt = {
+    apply(in.asBools, enable)
+  }
 }
 
 object StepRREncoderOH {
@@ -69,5 +72,8 @@ object RREncoder {
     }
     arb.io.out.ready := true.B
     arb.io.out.bits
+  }
+  def apply(in: Bits): UInt = {
+    apply(in.asBools)
   }
 }

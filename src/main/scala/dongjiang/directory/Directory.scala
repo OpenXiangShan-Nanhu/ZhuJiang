@@ -46,10 +46,10 @@ class Directory(implicit p: Parameters) extends DJModule {
   /*
    * Connect llcs and sfs
    */
-  val llcWReadyVec    = Wire(Vec(djparam.nrDirBank, Bool()))
-  val sfWReadyVec     = Wire(Vec(djparam.nrDirBank, Bool()))
-  llcWReadyVec        := llcs.map(_.io.write.ready)
-  sfWReadyVec         := sfs.map(_.io.write.ready)
+  val llcWReadyVec    = Wire(UInt(djparam.nrDirBank.W))
+  val sfWReadyVec     = Wire(UInt(djparam.nrDirBank.W))
+  llcWReadyVec        := Cat(llcs.map(_.io.write.ready).reverse)
+  sfWReadyVec         := Cat(sfs.map(_.io.write.ready).reverse)
   io.write.llc.ready  := llcWReadyVec(io.write.llc.bits.Addr.dirBank)
   io.write.sf.ready   := sfWReadyVec(io.write.sf.bits.Addr.dirBank)
   llcs.zip(sfs).zipWithIndex.foreach {

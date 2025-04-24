@@ -85,11 +85,11 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * [S4] Save cmTask
    */
-  val freeVec_s3  = taskOpsVecReg_s4.map(!_.valid)
+  val freeVec_s3  = Cat(taskOpsVecReg_s4.map(!_.valid).reverse)
   val freeId_s3   = PriorityEncoder(freeVec_s3)
-  val deqOpHit_s3 = io.cmAllocVec_s4.zipWithIndex.map { case(alloc, i) => alloc.fire & task_s3.code.cmid === i.U }.reduce(_ | _)
-  val nid_s3      = PopCount(taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === task_s3.code.cmid))
-  HardwareAssertion.withEn(freeVec_s3.reduce(_ | _), io.task_s3.valid)
+  val deqOpHit_s3 = Cat(io.cmAllocVec_s4.zipWithIndex.map { case(alloc, i) => alloc.fire & task_s3.code.cmid === i.U }).orR
+  val nid_s3      = PopCount(Cat(taskOpsVecReg_s4.map(ops => ops.valid & ops.bits.cmid === task_s3.code.cmid)))
+  HardwareAssertion.withEn(freeVec_s3.orR, io.task_s3.valid)
   HardwareAssertion.withEn(nid_s3 > 0.U, deqOpHit_s3)
 
   when(io.task_s3.valid) {

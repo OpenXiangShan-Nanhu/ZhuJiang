@@ -50,8 +50,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
   task.chi.fwdTxnID   := DontCare
   task.chi.retToSrc   := DontCare
   // Use Data Vec
-  // TODO:
-  require(dw == 256)
+  // Only applicable when dw == 256, the number of dataVec dimensions is the number of beats
   task.chi.dataVec(1) := req.Size === 6.U | req.Addr(5)
   task.chi.dataVec(0) := req.Size === 6.U | !req.Addr(5)
 

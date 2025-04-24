@@ -12,6 +12,7 @@ import xs.utils.debug.{HAssert, HardwareAssertion}
 import xs.utils.sram.{DualPortSramTemplate, SinglePortSramTemplate}
 import freechips.rocketchip.util.ReplacementPolicy
 import xs.utils.mbist.MbistPipeline
+import chisel3.experimental.Param
 
 class Shift(implicit p: Parameters) extends DJBundle {
   val read  = UInt(readDirLatency.W)
@@ -237,7 +238,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
 
   // Get Hit Vec
   tagHitVec_d2      := addrVec_d2.map(_.Addr.tag === reqTag_d2)
-  metaValVec_d2     := metaResp_d2.map(_.map(_.isValid).reduce(_ | _))
+  metaValVec_d2     := metaResp_d2.map(meta => Cat(meta.map(_.isValid)).orR)
   val hasInvalid    = metaValVec_d2.map(!_).reduce(_ | _)
   val hitVec_d2     = tagHitVec_d2.zip(metaValVec_d2).map { case(a, b) => a & b }
   val hit_d2        = hitVec_d2.reduce(_ | _)

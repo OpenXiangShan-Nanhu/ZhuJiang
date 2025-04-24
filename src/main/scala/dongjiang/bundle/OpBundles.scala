@@ -12,19 +12,19 @@ trait HasChiOp { this: DJBundle with HasChiChannel =>
   val opcode = UInt(ChiOpcodeBits.W)
 
   def reqIs(op: UInt*): Bool = {
-    isReq & op.map(_ === opcode).reduce(_ | _)
+    isReq & Cat(op.map(_ === opcode)).orR
   }
 
   def snpIs(op: UInt*): Bool = {
-    isSnp & op.map(_ === opcode).reduce(_ | _)
+    isSnp & Cat(op.map(_ === opcode)).orR
   }
 
   def rspIs(op: UInt*): Bool = {
-    isRsp& op.map(_ === opcode).reduce(_ | _)
+    isRsp& Cat(op.map(_ === opcode)).orR
   }
 
   def datIs(op: UInt*): Bool = {
-    isDat & op.map(_ === opcode).reduce(_ | _)
+    isDat & Cat(op.map(_ === opcode)).orR
   }
 
   // REQ
