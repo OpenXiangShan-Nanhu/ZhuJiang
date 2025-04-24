@@ -72,16 +72,6 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   io.multicore := taskReg.isSleep // TODO: use srcId
 
   /*
-   * Hit Message
-   */
-  val recTaskHit  =  taskReg.isFree  & io.chiTaskIn.fire
-  val sendTaskHit =  taskReg.isSend  & io.chiTask_s0.fire
-  val wakeupHit   = (taskReg.isSleep | taskReg.isWait) & io.wakeup.valid & io.wakeup.bits.Addr.useAddr === taskReg.Addr.useAddr
-  val sleepHit    =  taskReg.isWait  & io.sleep_s1
-  val retryHit    =  taskReg.isWait  & io.retry_s1
-  val toFreeHit   =  taskReg.isWait
-
-  /*
    * Receive ChiTask
    */
   when(io.chiTaskIn.fire) {
@@ -116,34 +106,35 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   HardwareAssertion(!(io.state.valid & io.state.release))
 
   /*
-   * State Transfer:
-   *
-   * --------------------------------------------
-   * | Priority | Init   | Condition   | Next   |
-   * --------------------------------------------
-   * |    0     | FREE   | recTaskHit  | SEND   |
-   * |    1     | SEND   | sendTaskHit | WAIT   |
-   * |    2     | SLEEP  | wakeupHit   | SEND   |
-   * |    2     | WAIT   | wakeupHit   | SEND   |
-   * |    3     | WAIT   | sleepHit    | SLEEP  |
-   * |    4     | WAIT   | retryHit    | SEND   |
-   * |    5     | WAIT   | toFreeHit   | FREE   |
-   * --------------------------------------------
+   * State Transfer
    */
-  // TODO: use switch
-  taskReg.state := PriorityMux(Seq(
-    recTaskHit  -> SEND,
-    sendTaskHit -> WAIT,
-    wakeupHit   -> SEND,
-    sleepHit    -> SLEEP,
-    retryHit    -> SEND,
-    toFreeHit   -> FREE,
-    true.B      -> taskReg.state,
-  ))
+  switch(taskReg.state) {
+    is(FREE) {
+      when(io.chiTaskIn.fire) {
+        taskReg.state := SEND
+      }
+    }
+    is(SEND) {
+      when(io.chiTask_s0.fire) {
+        taskReg.state := WAIT
+      }
+    }
+    is(WAIT) {
+      when(io.sleep_s1) {
+        taskReg.state := SLEEP
+      }.elsewhen(io.retry_s1) {
+        taskReg.state := SEND
+      }.otherwise {
+        taskReg.state := FREE
+      }
+    }
+    is(SLEEP) {
+      when(io.wakeup.valid && taskReg.Addr.useAddr === io.wakeup.bits.Addr.useAddr) {
+        taskReg.state := SEND
+      }
+    }
+  }
 
-  // assert hit num
-  HardwareAssertion(PopCount(Seq(recTaskHit, sendTaskHit, wakeupHit | sleepHit | retryHit | toFreeHit)) <= 1.U,
-                                                                          desc = cf"State[${taskReg.state}]")
   // assert timeout
   HardwareAssertion.checkTimeout(taskReg.isFree, TIMEOUT_TASKBUF,         desc = cf"State[${taskReg.state}]")
 }
