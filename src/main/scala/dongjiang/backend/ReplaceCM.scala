@@ -59,8 +59,6 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     val cmAllocVec      = Vec(2, Decoupled(new CMTask)) // SNP and WOA
     // Update PoS Message
     val updPosTag       = Valid(new LLCTxnID with HasAddr)
-    val lockPosSet      = Valid(new LLCTxnID)
-    val unlockPosSet    = Valid(new LLCTxnID)
     // Write Directory
     val writeDir        = new DJBundle {
       val llc           = Decoupled(new DirEntry("llc") with HasPackPosIndex)
@@ -119,7 +117,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   waitPipe.io.enq.bits  := cmId_wri
 
   /*
-   * Update PoS Tag and Lock
+   * Update PoS Tag and Save Message of Addr
    */
   val cm_get      = waitPipe.io.deq.valid
   val cmId_get    = waitPipe.io.deq.bits
@@ -140,12 +138,6 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     replDsRegVec(cmId_get).idx   := getDS(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)._2
     toLanRegVec(cmId_get)        := io.respDir.llc.bits.Addr.isToLAN(io.config.ci)
   }
-  // lock when write
-  io.lockPosSet.valid       := waitPipe.io.enq.fire
-  io.lockPosSet.bits        := msg_wri.llcTxnID
-  // unlock when get resp
-  io.unlockPosSet.valid     := waitPipe.io.deq.fire
-  io.unlockPosSet.bits      := msg_get.llcTxnID
 
 
   /*

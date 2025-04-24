@@ -41,8 +41,6 @@ class Backend(implicit p: Parameters) extends DJModule {
     val updPosNestVec   = Vec(djparam.nrDirBank, Decoupled(new PackPosIndex with HasNest))
     val updPosTagVec    = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasAddr)) // Only from replace
     val cleanPosVec     = Vec(djparam.nrDirBank, Valid(new PackPosIndex with HasChiChannel))
-    val lockPosSetVec   = Vec(djparam.nrDirBank, Valid(new PackPosIndex)) // Only from replace
-    val unlockPosSetVec = Vec(djparam.nrDirBank, Valid(new PackPosIndex)) // Only from replace
     // Write Directory
     val writeDir        = new DJBundle {
       val llc           = Decoupled(new DirEntry("llc") with HasPackPosIndex)
@@ -108,14 +106,6 @@ class Backend(implicit p: Parameters) extends DJModule {
 
   // cleanPosVec
   io.cleanPosVec.zip(cmtCMs.map(_.io.cleanPos)).foreach { case(a, b) => a := b }
-
-  // lockPosSetVec
-  io.lockPosSetVec.zip(io.unlockPosSetVec).zipWithIndex.foreach { case ((lock, unlock), i) =>
-    lock.valid    := replCM.io.lockPosSet.valid & replCM.io.lockPosSet.bits.dirBank === i.U
-    lock.bits     := replCM.io.lockPosSet.bits
-    unlock.valid  := replCM.io.unlockPosSet.valid & replCM.io.unlockPosSet.bits.dirBank === i.U
-    unlock.bits   := replCM.io.unlockPosSet.bits
-  }
 
   /*
    * Connect Directory

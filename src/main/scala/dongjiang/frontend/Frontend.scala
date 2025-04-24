@@ -40,8 +40,6 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val updPosNest    = Flipped(Decoupled(new PackPosIndex with HasNest))
     val updPosTag     = Flipped(Valid(new PackPosIndex with HasAddr))
     val cleanPos      = Flipped(Valid(new PackPosIndex with HasChiChannel))
-    val lockPosSet    = Flipped(Valid(new PackPosIndex))
-    val unlockPosSet  = Flipped(Valid(new PackPosIndex))
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
     val fastResp      = Decoupled(new RespFlit())
     // PoS Busy Signal
@@ -129,8 +127,6 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   posTable.io.updNest       := fastArb.validOut(Seq(decode.io.updNest_s3, io.updPosNest))
   posTable.io.updTag        := io.updPosTag
   posTable.io.clean         := io.cleanPos
-  posTable.io.lockSet       := io.lockPosSet
-  posTable.io.unlockSet     := io.unlockPosSet
 
   // block [S1]
   block.io.chiTask_s0       := fastRRArb(Seq(snpTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0))

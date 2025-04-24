@@ -224,8 +224,6 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
       f.io.updPosNest   <> backend.io.updPosNestVec(i)
       f.io.updPosTag    := backend.io.updPosTagVec(i)
       f.io.cleanPos     := backend.io.cleanPosVec(i)
-      f.io.lockPosSet   := backend.io.lockPosSetVec(i)
-      f.io.unlockPosSet := backend.io.unlockPosSetVec(i)
       f.io.getAddrVec.zip(getAddrVec2(i)).foreach { case(a, b) => a <> b }
   }
 
