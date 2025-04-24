@@ -122,7 +122,7 @@ class PackLLCTxnID(implicit p: Parameters) extends DJBundle with HasPackLLCTxnID
  * HasDataVec
  */
 trait HasDataVec extends DJBundle { this: DJBundle =>
-  val dataVec = Vec(2, Bool())
+  val dataVec = Vec(512/dw, Bool())
   def isFullSize = dataVec.asUInt.andR
   def isHalfSize = PopCount(dataVec) === 1.U
   def getSize = Mux(isFullSize, 6.U, Mux(isHalfSize, 5.U, 0.U))

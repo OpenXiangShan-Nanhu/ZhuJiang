@@ -53,10 +53,11 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
     val othRel      = if(sort) Some(Input(Bool())) else None // Other Release
     val state       = Output(new DJBundle with HasAddr {
       val valid     = Bool()
+      val value     = new TaskState()
       val release   = Bool()
     })
     // multiple cores are actively making requests
-    val multicore   = Bool()
+    val multicore   = Bool() // TODO
   })
 
   /*
@@ -68,7 +69,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   /*
    * Multiple cores are actively making requests
    */
-  io.multicore := taskReg.isSleep
+  io.multicore := taskReg.isSleep // TODO: use srcId
 
   /*
    * Hit Message
@@ -108,9 +109,10 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
     }
   }
   // Output State
-  io.state.valid := taskReg.isValid
+  io.state.valid   := taskReg.isValid
   io.state.release := RegNext(taskReg.isValid) & taskReg.isFree
-  io.state.addr := taskReg.addr
+  io.state.addr    := taskReg.addr
+  io.state.value   := taskReg
   HardwareAssertion(!(io.state.valid & io.state.release))
 
   /*
@@ -128,6 +130,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
    * |    5     | WAIT   | toFreeHit   | FREE   |
    * --------------------------------------------
    */
+  // TODO: use switch
   taskReg.state := PriorityMux(Seq(
     recTaskHit  -> SEND,
     sendTaskHit -> WAIT,
@@ -212,12 +215,12 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   /*
    * Multiple cores are actively making requests
    */
-  io.multicore := entries.map(_.io.multicore).reduce(_ | _)
+  io.multicore := Cat(entries.map(_.io.multicore)).orR
 
   /*
    * Has DataBuffer valid
    */
-  io.working := entries.map(_.io.state.valid).reduce(_ | _)
+  io.working := Cat(entries.map(_.io.state.valid)).orR
 
   /*
    * HardwareAssertion placePipe

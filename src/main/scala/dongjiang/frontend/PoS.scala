@@ -43,8 +43,8 @@ class PosSet(implicit p: Parameters) extends DJModule {
     val updNest     = Flipped(Valid(new PosWay with HasNest))
     val updTag      = Flipped(Valid(new PosWay with HasAddr))
     val clean       = Flipped(Valid(new PosWay with HasChiChannel))
-    val lockSet     = Flipped(Valid(new PosWay))
-    val unlockSet   = Flipped(Valid(new PosWay))
+    val lockSet     = Flipped(Valid(new PosWay)) // TODO Del it
+    val unlockSet   = Flipped(Valid(new PosWay)) // TODO Del it
     // wakeup TaskBuf Entry
     val wakeup      = Valid(new Addr)
     // PoS State Signal
