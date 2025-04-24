@@ -99,37 +99,37 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   HardwareAssertion(!(io.state.valid & io.state.release))
 
   /*
-   * State Transfer
+   * State Transfer:
+   *                          |---------------------(wakeUpHit)--------------------------|
+   *                          v                                                          |
+   * FREE --(taskIn.fire)--> SEND --(taskOut_s0.fire)--> WAIT --|--(sleep_s1)--> SLEEP --|
+   *  ^                       ^                                 |
+   *  |                       |------(retry_s1 & !sleep)--------|
+   *  |                                                         |
+   *  |------------------(!retry_s1 & !sleep_s1)----------------|
+   *
    */
+  val wakeUpHit = io.wakeup.valid && taskReg.Addr.useAddr === io.wakeup.bits.Addr.useAddr
   switch(taskReg.state) {
     is(FREE) {
-      when(io.chiTaskIn.fire) {
-        taskReg.state := SEND
-      }
+      when(io.chiTaskIn.fire) { taskReg.state := SEND }
     }
     is(SEND) {
-      when(io.chiTask_s0.fire) {
-        taskReg.state := WAIT
-      }
+      when(io.chiTask_s0.fire) { taskReg.state := WAIT }
     }
     is(WAIT) {
-      when(io.sleep_s1) {
-        taskReg.state := SLEEP
-      }.elsewhen(io.retry_s1) {
-        taskReg.state := SEND
-      }.otherwise {
-        taskReg.state := FREE
-      }
+      when(io.sleep_s1)      { taskReg.state := SLEEP }
+      .elsewhen(io.retry_s1) { taskReg.state := SEND  }
+      .otherwise             { taskReg.state := FREE  }
     }
     is(SLEEP) {
-      when(io.wakeup.valid && taskReg.Addr.useAddr === io.wakeup.bits.Addr.useAddr) {
-        taskReg.state := SEND
-      }
+      when(wakeUpHit) { taskReg.state := SEND }
     }
   }
-
+  // assert
+  HAssert.withEn(nidReg.getOrElse(0.U) === 0.U, taskReg.isSleep & wakeUpHit)
   // assert timeout
-  HardwareAssertion.checkTimeout(taskReg.isFree, TIMEOUT_TASKBUF,         desc = cf"State[${taskReg.state}]")
+  HAssert.checkTimeout(taskReg.isFree, TIMEOUT_TASKBUF, desc = cf"State[${taskReg.state}]")
 }
 
 
