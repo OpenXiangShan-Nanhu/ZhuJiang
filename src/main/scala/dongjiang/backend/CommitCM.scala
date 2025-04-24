@@ -422,8 +422,8 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
             msg.code        := code_rCmt
             msg.commit      := cmt_rCmt
           }.elsewhen(waitReplHit){
-            msg.commit.dataOp.save  := io.replResp.bits.alr.sRepl
-            msg.commit.dataOp.clean := io.replResp.bits.alr.reqs
+            msg.commit.dataOp.save  := msg.commit.dataOp.save  | io.replResp.bits.alr.sRepl
+            msg.commit.dataOp.clean := msg.commit.dataOp.clean | io.replResp.bits.alr.reqs
             HAssert.withEn(io.replResp.bits.alr.reqs, io.replResp.bits.alr.sRepl)
           }.elsewhen(cm.clean) {
             msg := 0.U.asTypeOf(msg)
