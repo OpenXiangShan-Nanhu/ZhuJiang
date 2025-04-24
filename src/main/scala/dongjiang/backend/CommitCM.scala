@@ -407,7 +407,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
       cmVec.zip(msgVec).zipWithIndex.foreach {
         case((cm, msg), j) =>
           val allocHit    = io.alloc.fire     & io.alloc.bits.pos.idxMatch(i, j)
-          val taskRespHit = io.respCmt.fire   & io.respCmt.bits.llcTxnID.pos.idxMatch(i, j)
+          val taskRespHit = io.respCmt.fire   & io.respCmt.bits.llcTxnID.pos.idxMatch(i, j) & !msg.commit.valid
           val waitReplHit = io.replResp.valid & io.replResp.bits.pos.idxMatch(i, j)
 
           // Message
@@ -415,7 +415,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
           when(allocHit) {
             msg := msg_rec
           // Get Resp From TaskCM
-          }.elsewhen(taskRespHit & !msg.commit.valid) {
+          }.elsewhen(taskRespHit) {
             msg.alr.reqs    := msg.alr.reqs | respCmt.alr.reqs
             msg.inst        := respCmt.inst
             msg.code        := code_rCmt
@@ -449,7 +449,7 @@ class CommitCM(dirBank: Int)(implicit p: Parameters) extends DJModule {
           // transfer state
           when(allocHit) {
             cm  := cm_rec
-          }.elsewhen(taskRespHit & !msg.commit.valid) {
+          }.elsewhen(taskRespHit) {
             cm  := cm_rCmt
             // It is also possible to receive an CompAck when receiving a task resp.
             cm.chi.w_ack        :=  cm.chi.w_ack       & !(waitCompAckHit | msg.chi.reqIs(WriteEvictOrEvict)) // WriteEvictOrEvict Get CompAck in ReceiveCM
