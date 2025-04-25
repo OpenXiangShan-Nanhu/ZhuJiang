@@ -100,13 +100,13 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
 
   /*
    * State Transfer:
-   *                          |---------------------(wakeUpHit)--------------------------|
-   *                          v                                                          |
-   * FREE --(taskIn.fire)--> SEND --(taskOut_s0.fire)--> WAIT --|--(sleep_s1)--> SLEEP --|
-   *  ^                       ^                                 |
-   *  |                       |------(retry_s1 & !sleep)--------|
-   *  |                                                         |
-   *  |------------------(!retry_s1 & !sleep_s1)----------------|
+   *                          |---------------------(wakeUpHit)--------------------------------|
+   *                          v                                                                |
+   * FREE --(taskIn.fire)--> SEND ---(taskOut_s0.fire)--> WAIT ---->|-->(sleep_s1)--> SLEEP -->|
+   *  ^                       ^                                     |
+   *  |                       |--(wakeUpHit | (retry_s1 & !sleep))--|
+   *  |                                                             |
+   *  |------------------(!retry_s1 & !sleep_s1)--------------------|
    *
    */
   val wakeUpHit = io.wakeup.valid && taskReg.Addr.useAddr === io.wakeup.bits.Addr.useAddr
@@ -118,7 +118,8 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
       when(io.chiTask_s0.fire) { taskReg.state := WAIT }
     }
     is(WAIT) {
-      when(io.sleep_s1)      { taskReg.state := SLEEP }
+      when(wakeUpHit)        { taskReg.state := SEND  }
+      .elsewhen(io.sleep_s1) { taskReg.state := SLEEP }
       .elsewhen(io.retry_s1) { taskReg.state := SEND  }
       .otherwise             { taskReg.state := FREE  }
     }
