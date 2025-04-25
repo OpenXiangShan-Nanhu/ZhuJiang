@@ -107,7 +107,9 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
       txBd.bits.asTypeOf(new RingFlit(txBd.bits.getWidth)).TgtID
     }
 
-    val friendsHitVec = io.friends.map(fs => Cat(fs.map(_ === tgt.asTypeOf(new NodeIdBundle).router)).orR)
+    val friendsHitVec = WireInit(Cat(io.friends.map(fs => Cat(fs.map(_ === tgt.asTypeOf(new NodeIdBundle).router)).orR).reverse))
+    dontTouch(friendsHitVec)
+
     val srcId = Mux1H(friendsHitVec, io.nids)
 
     val txd = if(chn == "ERQ" && mems.nonEmpty) {
