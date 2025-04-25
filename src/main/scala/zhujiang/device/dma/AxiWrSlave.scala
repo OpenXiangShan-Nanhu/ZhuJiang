@@ -56,6 +56,7 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   private val dHeadPtr       = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val dTailPtr       = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val wDataPtr       = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
+  private val sDataPtr       = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
 
   private val rxAwPipe       = Module(new Queue(gen = new AxiWrEntry(isPipe = true), entries = 2, pipe = false, flow = false))
   private val bIdQueue       = Module(new Queue(gen = UInt(axiParams.idBits.W), entries = 2, pipe = false, flow = false))
@@ -75,12 +76,14 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
   private val wDataPtrAdd            = (nextShiftHintLastValid || !dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits.last & Burst.isFix(dAwEntrys(wDataPtr.value).burst) || dAwEntrys(wDataPtr.value).dontMerge || io.uAxiW.bits.last) & io.uAxiW.fire & !dAwEntrys(wDataPtr.value).fullWrap
   private val tailPtrAdd             = io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get)
+  private val sDataPtrAdd            = io.dAxiW.fire & io.dAxiW.bits.last
 
   uHeadPtr   := Mux(rxAwPipe.io.deq.fire, uHeadPtr + 1.U, uHeadPtr)
   uTailPtr   := Mux(tailPtrAdd          , uTailPtr + 1.U, uTailPtr)
   dHeadPtr   := Mux(io.dAxiAw.fire      , dHeadPtr + 1.U, dHeadPtr)
   dTailPtr   := Mux(io.dAxiB.fire       , dTailPtr + 1.U, dTailPtr)
   wDataPtr   := Mux(wDataPtrAdd         , wDataPtr + 1.U, wDataPtr)
+  sDataPtr   := Mux(sDataPtrAdd         , sDataPtr + 1.U, sDataPtr)
 
   //Merge Data Reg Logic
   merComReg    := Mux(io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, merComReg))
@@ -157,7 +160,7 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   io.dAxiW.bits      := 0.U.asTypeOf(io.dAxiW.bits)
   io.dAxiW.bits.data := mergeReg.io.dataOut.bits.data
   io.dAxiW.bits.strb := mergeReg.io.dataOut.bits.strb
-  io.dAxiW.bits.last := mergeLastReg & !dAwEntrys(wDataPtr.value).fullWrap
+  io.dAxiW.bits.last := mergeLastReg & !dAwEntrys(sDataPtr.value).fullWrap
   io.dAxiW.valid     := merComReg || mergeLastReg
   io.dAxiB.ready     := bIdQueue.io.enq.ready
 
