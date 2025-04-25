@@ -139,6 +139,6 @@ class MiscDevice(node: Node)(implicit p:Parameters) extends ZJModule {
     io.icn.rx.debug.get.ready := hwaDev.get.io.hwa.ready
     io.axi.get <> hwaDev.get.io.axi
     io.intr.get := hwaDev.get.io.intr
+    MbistPipeline.PlaceMbistPipeline(1, "MbistPipelineMn", hasMbist)
   }
-  MbistPipeline.PlaceMbistPipeline(1, "MbistPipelineMn", hasMbist)
 }
