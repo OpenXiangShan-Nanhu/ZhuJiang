@@ -144,7 +144,7 @@ class Issue(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * Output Already Use Buffer Number
    */
-  val useVec_s4 = taskOpsVecReg_s4.map(_.asUInt.orR)
+  val useVec_s4 = taskOpsVecReg_s4.map(_.valid)
   io.alrUseBuf  := PopCount(useVec_s4)
 
   /*
