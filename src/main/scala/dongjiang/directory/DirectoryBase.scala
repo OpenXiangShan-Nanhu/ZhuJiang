@@ -12,6 +12,7 @@ import xs.utils.debug.{HAssert, HardwareAssertion}
 import xs.utils.sram.{DualPortSramTemplate, SinglePortSramTemplate}
 import freechips.rocketchip.util.ReplacementPolicy
 import xs.utils.mbist.MbistPipeline
+import chisel3.experimental.BundleLiterals._
 
 class Shift(implicit p: Parameters) extends DJBundle {
   val read  = UInt(readDirLatency.W)
@@ -95,11 +96,11 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   dontTouch(tagArray.io)
   dontTouch(replArray.io)
 
-  val lockTable = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { 0.U.asTypeOf(new DJBundle {
+  val lockTable = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { new DJBundle {
     val valid   = Bool()
     val set     = UInt(param.setBits.W)
     val way     = UInt(param.wayBits.W)
-  }) }) }))
+  }.Lit(_.valid -> false.B) }) }))
 
   val shiftReg      = RegInit(0.U.asTypeOf(new Shift))
 
@@ -238,7 +239,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   // Get Hit Vec
   tagHitVec_d2      := addrVec_d2.map(_.Addr.tag === reqTag_d2)
   metaValVec_d2     := metaResp_d2.map(meta => Cat(meta.map(_.isValid)).orR)
-  val hasInvalid    = metaValVec_d2.map(!_).reduce(_ | _)
+  val hasInvalid_d2 = metaValVec_d2.map(!_).reduce(_ | _)
   val hitVec_d2     = tagHitVec_d2.zip(metaValVec_d2).map { case(a, b) => a & b }
   val hit_d2        = hitVec_d2.reduce(_ | _)
   readHit_d2        := shiftReg.read(0) & hit_d2
@@ -246,18 +247,25 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(PopCount(hitVec_d2) <= 1.U, shiftReg.read(0))
 
   // Select Way
-  useWayVec_d2    := lockTable(req_d2.pos.set).map(lock => Mux(lock.valid & lock.set === reqSet_d2, UIntToOH(lock.way), 0.U)).reduce(_ | _)
-  val unuseWay_d2 = PriorityEncoder(~useWayVec_d2.asUInt)
-  val replWay_d2  = repl.get_replace_way(replMes_d2)
-  val hitWay_d2   = PriorityEncoder(hitVec_d2)
-  val invWay_d2   = PriorityEncoder(metaValVec_d2.map(!_))
-  val selIsUsing  = useWayVec_d2(replWay_d2)
-  val selWay_d2   = PriorityMux(Seq(
-    hit_d2        -> hitWay_d2,
-    hasInvalid    -> invWay_d2,
-    selIsUsing    -> unuseWay_d2,
-    true.B        -> replWay_d2
+  useWayVec_d2      := lockTable(req_d2.pos.set).map(lock => Mux(lock.valid & lock.set === reqSet_d2, UIntToOH(lock.way), 0.U)).reduce(_ | _)
+  val unuseWay_d2   = PriorityEncoder(~useWayVec_d2.asUInt)
+  val replWay_d2    = repl.get_replace_way(replMes_d2)
+  val hitWay_d2     = PriorityEncoder(hitVec_d2)
+  val invWay_d2     = PriorityEncoder(metaValVec_d2.map(!_))
+  val selIsUsing_d2 = useWayVec_d2(replWay_d2)
+  val selWay_d2     = PriorityMux(Seq(
+    hit_d2          -> hitWay_d2,
+    hasInvalid_d2   -> invWay_d2,
+    selIsUsing_d2   -> unuseWay_d2,
+    true.B          -> replWay_d2
   ))
+  dontTouch(hit_d2)
+  dontTouch(hasInvalid_d2)
+  dontTouch(selIsUsing_d2)
+  dontTouch(hitWay_d2)
+  dontTouch(invWay_d2)
+  dontTouch(unuseWay_d2)
+  dontTouch(replWay_d2)
   HardwareAssertion.withEn(PopCount(useWayVec_d2) < param.ways.U, !hit_d2 & shiftReg.read(0))
 
   // Output Directory Resp

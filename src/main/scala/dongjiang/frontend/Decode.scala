@@ -35,9 +35,6 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * Reg and Wire declaration
    */
   val chiInst_s2          = Wire(new ChiInst())
-  val stateInstVecReg_s3  = RegInit(VecInit(Seq.fill(Decode.l_si) { 0.U.asTypeOf(new StateInst)  }))
-  val taskCodeVecReg_s3   = RegInit(VecInit(Seq.fill(Decode.l_si) { 0.U.asTypeOf(new TaskCode)   }))
-  val commitVecReg_s3     = RegInit(VecInit(Seq.fill(Decode.l_si) { 0.U.asTypeOf(new CommitCode) }))
   val validReg_s3         = RegNext(io.task_s2.valid)
   val taskReg_s3          = RegEnable(io.task_s2.bits, 0.U.asTypeOf(io.task_s2.bits), io.task_s2.valid)
   val stateInst_s3        = Wire(new StateInst())
@@ -45,11 +42,11 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   /*
    * [S2]: Pre-Decode
    */
-  chiInst_s2          := io.task_s2.bits.chi.getChiInst(io.task_s2.valid)
-  val result_s2       = Decode.decode(chiInst_s2)
-  stateInstVecReg_s3.zip(result_s2._1).foreach { case(a, b) => a := b.asTypeOf(a) }
-  taskCodeVecReg_s3.zip(result_s2._2).foreach  { case(a, b) => a := b.asTypeOf(a) }
-  commitVecReg_s3.zip(result_s2._3).foreach    { case(a, b) => a := b.asTypeOf(a) }
+  chiInst_s2              := io.task_s2.bits.chi.getChiInst(io.task_s2.valid)
+  val result_s2           = Decode.decode(chiInst_s2)
+  val stateInstVecReg_s3  = RegEnable(VecInit(result_s2._1), io.task_s2.valid)
+  val taskCodeVecReg_s3   = RegEnable(VecInit(result_s2._2), io.task_s2.valid)
+  val commitVecReg_s3     = RegEnable(VecInit(result_s2._3), io.task_s2.valid)
   dontTouch(chiInst_s2)
 
   /*
