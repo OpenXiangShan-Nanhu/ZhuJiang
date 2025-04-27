@@ -9,6 +9,7 @@ class StepRREncoder(size: Int) extends Module {
     val inVec   = Input(Vec(size, Bool()))
     val enable  = Input(Bool())
     val outIdx  = Output(UInt(log2Ceil(size).W))
+    val vipIdx  = Output(UInt(log2Ceil(size).W))
   })
 
   val indexReg  = RegInit(0.U(log2Ceil(size).W))
@@ -38,6 +39,7 @@ class StepRREncoder(size: Int) extends Module {
   assert(indexReg < size.U)
 
   io.outIdx     := indexOut
+  io.vipIdx     := indexReg
 }
 
 object StepRREncoder {

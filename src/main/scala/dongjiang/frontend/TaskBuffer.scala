@@ -158,8 +158,9 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   /*
    * Module declaration
    */
-  val entries  = Seq.fill(nrEntries) { Module(new TaskEntry(log2Ceil(nrEntries), sort)) }
-  val debugVec = WireInit(VecInit(entries.map(_.io.state)))
+  val entries       = Seq.fill(nrEntries) { Module(new TaskEntry(log2Ceil(nrEntries), sort)) }
+  val selRREncoder  = Module(new StepRREncoder(nrEntries))
+  val debugVec      = WireInit(VecInit(entries.map(_.io.state)))
   dontTouch(debugVec)
 
   /*
@@ -170,7 +171,15 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   /*
    * Send Task & Req
    */
-  io.chiTask_s0               := fastRRArb.validOut(entries.map(_.io.chiTask_s0))
+  val taskVec_s0              = VecInit(entries.map(_.io.chiTask_s0).reverse)
+  val releaseVec              = VecInit(entries.map(_.io.state.release).reverse)
+  // select task by StepRREncoder to send in s0
+  selRREncoder.io.inVec       := VecInit(taskVec_s0.map(_.valid).reverse)
+  selRREncoder.io.enable      := releaseVec(selRREncoder.io.vipIdx)
+  val selId_s0                = selRREncoder.io.outIdx
+  taskVec_s0.zipWithIndex.foreach { case(t, i) => t.ready := selId_s0 === i.U }
+  // connect
+  io.chiTask_s0               := taskVec_s0(selId_s0)
   io.req2Pos_s0.valid         := io.chiTask_s0.valid
   io.req2Pos_s0.bits.addr     := io.chiTask_s0.bits.addr
   io.req2Pos_s0.bits.channel  := io.chiTask_s0.bits.chi.channel
