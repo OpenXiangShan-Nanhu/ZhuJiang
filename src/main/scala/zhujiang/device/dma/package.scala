@@ -205,7 +205,7 @@ class CHIREntry(dmt : Boolean)(implicit p : Parameters) extends ZJBundle {
   val nid            = UInt(log2Ceil(rni.chiEntrySize).W)
   val dbSite1        = UInt(log2Ceil(rni.dbEntrySize).W)
   val dbSite2        = UInt(log2Ceil(rni.dbEntrySize).W)
-  val memAttr        = UInt(4.W)
+  val memAttr        = new MemAttr
   val haveWrDB1      = Bool()
   val haveWrDB2      = Bool()
   val sendComp       = Bool()
@@ -216,14 +216,17 @@ class CHIREntry(dmt : Boolean)(implicit p : Parameters) extends ZJBundle {
   val dbid           = if(dmt) Some(UInt(12.W))  else None
 
   def ARMesInit[T <: ARFlit](b: T): CHIREntry = {
-    this                  := 0.U.asTypeOf(this)
-    this.double           := b.len(0).asBool
-    this.arId             := b.user
-    this.idx              := b.id
-    this.addr             := b.addr
-    this.size             := b.size
-    this.memAttr          := Cat(b.cache(2), b.cache(3) | b.cache(2), !b.cache(1) & !b.cache(2) & !b.cache(3), b.cache(0) | b.cache(2) | b.cache(3))
-    this.haveSendAck.get  := Mux(!b.cache(1) & !b.cache(2) & !b.cache(3), true.B, false.B)
+    this                   := 0.U.asTypeOf(this)
+    this.double            := b.len(0).asBool
+    this.arId              := b.user
+    this.idx               := b.id
+    this.addr              := b.addr
+    this.size              := b.size
+    this.memAttr.allocate  := b.cache(3) & b.cache(0)
+    this.memAttr.cacheable := b.cache(3) | b.cache(2)
+    this.memAttr.device    := !b.cache(3) & !b.cache(2) & !b.cache(1)
+    this.memAttr.ewa       := (b.cache(3) | b.cache(2)) & b.cache(0)
+    this.haveSendAck.get   := Mux(!b.cache(1) & !b.cache(2) & !b.cache(3), true.B, false.B)
     this
   }
 }
@@ -286,29 +289,29 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
   def RReqInit[T <: CHIREntry](c : T, i : UInt): ReqFlit = {
     this          := 0.U.asTypeOf(this)
     this.Addr     := c.addr
-    this.Opcode   := Mux(c.memAttr(1), ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
+    this.Opcode   := Mux(!c.memAttr.allocate & !c.memAttr.cacheable, ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
     this.SrcID    := zjParams.dmaParams.rniID.U
-    this.Order    := Mux(c.memAttr(1), "b11".U, "b00".U)
+    this.Order    := Mux(c.memAttr.device, "b11".U, "b00".U)
     this.TxnID    := i
     this.Size     := Mux(c.double, 6.U, c.size)
-    this.MemAttr  := c.memAttr
-    this.SnpAttr  := Mux(c.memAttr(1), 0.U, 1.U)
+    this.MemAttr  := c.memAttr.asUInt
+    this.SnpAttr  := Mux(c.memAttr.device, 0.U, 1.U)
     if(zjParams.dmaParams.readDMT){
-      this.ExpCompAck := Mux(c.memAttr(1), false.B, true.B)
+      this.ExpCompAck := Mux(c.memAttr.device, false.B, true.B)
     } else {this.ExpCompAck := false.B}
     this
   }
   def wReqInit[T <: CHIWEntry](c : T, i : UInt): ReqFlit = {
     this            := 0.U.asTypeOf(this)
     this.Addr       := c.addr
-    this.Opcode     := Mux(c.memAttr(1), ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteUniquePtl)
+    this.Opcode     := Mux(!c.memAttr.allocate & !c.memAttr.cacheable, ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteUniquePtl)
     this.Size       := Mux(c.double, 6.U, c.size)
     this.TxnID      := (1.U << (this.TxnID.getWidth - 1)) | i
-    this.MemAttr    := c.memAttr
+    this.MemAttr    := c.memAttr.asUInt
     this.ExpCompAck := true.B
     this.Order      := "b10".U
     this.SrcID      := zjParams.dmaParams.rniID.U
-    this.SnpAttr    := Mux(c.memAttr(1), 0.U, 1.U)
+    this.SnpAttr    := Mux(c.memAttr.device, 0.U, 1.U)
     this
   }
 }
@@ -340,7 +343,7 @@ class CHIWEntry(implicit p: Parameters) extends ZJBundle {
   val awId           = UInt(log2Ceil(rni.axiEntrySize).W)
   val double         = Bool()
   val size           = UInt(3.W)
-  val memAttr        = UInt(4.W)
+  val memAttr        = new MemAttr
   val tgtid          = UInt(niw.W)
   val addr           = UInt(raw.W)
   val dbid           = UInt(12.W)
@@ -351,10 +354,13 @@ class CHIWEntry(implicit p: Parameters) extends ZJBundle {
   def awMesInit[T <: AWFlit](aw : T): CHIWEntry = {
     this           := 0.U.asTypeOf(this)
     this.double    := aw.len(0).asBool
-    this.memAttr   := Cat(aw.cache(3), aw.cache(2) | aw.cache(3), !aw.cache(1) & !aw.cache(2) & !aw.cache(3), aw.cache(0) | aw.cache(2) | aw.cache(3))
     this.awId      := aw.id
     this.size      := aw.size
     this.addr      := aw.addr
+    this.memAttr.allocate  := aw.cache(2) & aw.cache(0)
+    this.memAttr.cacheable := aw.cache(3) | aw.cache(2)
+    this.memAttr.device    := !aw.cache(3) & !aw.cache(2) & !aw.cache(1)
+    this.memAttr.ewa       := (aw.cache(3) | aw.cache(2)) | (aw.cache(1) & aw.cache(0))
     this
   }
 }
