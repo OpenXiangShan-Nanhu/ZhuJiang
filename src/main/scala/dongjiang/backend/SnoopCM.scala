@@ -196,8 +196,8 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
     cmReg := 0.U.asTypeOf(cmReg)
   }
 
-  // Release
-  when(respCmtHit) {
+  // Release or alloc
+  when(respCmtHit | allocHit){
     cmReg.alrSendVec := 0.U.asTypeOf(cmReg.alrSendVec)
     cmReg.getRespVec := 0.U.asTypeOf(cmReg.getRespVec)
     cmReg.getDataVec := 0.U.asTypeOf(cmReg.getDataVec)
