@@ -71,7 +71,7 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val cmReg     = RegInit((new CMState with HasPackCMTask with HasPackTaskInst).Lit(_.state -> FREE))
+  val cmReg     = RegInit((new CMState with HasPackCMTask with HasPackTaskInst).Lit(_.state -> FREE, _.task.chi.nodeId -> 0.U))
   val tempDatQ  = Module(new FastQueue(new PackLLCTxnID with HasChiResp { val opcode = UInt(ChiOpcodeBits.W) }, djparam.nrPoS*2 + 1, false))
   io.state      := cmReg.state
 
@@ -125,7 +125,7 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   val allocHit    = io.alloc.fire
   val reqDBHit    = io.reqDB.fire
   val sRspHit     = io.txRsp.fire
-  val waitRspHit  = io.rxRsp.fire & io.rxRsp.bits.TxnID === cmReg.task.llcTxnID.get & io.rxRsp.bits.Opcode === CompAck & cmReg.isValid
+  val waitRspHit  = io.rxRsp.fire & io.rxRsp.bits.TxnID === cmReg.task.llcTxnID.get & io.rxRsp.bits.Opcode === CompAck & cmReg.isValid & cmReg.task.chi.fromCcRnf
   val waitDatHit  = tempDatQ.io.deq.valid & tempDatQ.io.deq.bits.llcTxnID.get === cmReg.task.llcTxnID.get & cmReg.isValid
   val respHit     = io.respCmt.fire
 
