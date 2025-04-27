@@ -10,7 +10,7 @@ import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
 import xs.utils.debug.{HAssert, HardwareAssertion, HardwareAssertionKey}
 import xs.utils.mbist.{MbistInterface, MbistPipeline}
-import xs.utils.sram.SramHelper
+import xs.utils.sram.{SramCtrlBundle, SramHelper}
 import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.chi.{ChiBuffer, DataFlit, HReqFlit, NodeIdBundle, ReqAddrBundle, RingFlit}
 import zhujiang.{DftWires, ZJRawModule}
@@ -26,6 +26,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
     val ci = Input(UInt(ciIdBits.W))
     val bank = Input(UInt(nodes.head.bankBits.W))
     val dfx = Input(new DftWires)
+    val ramctl = Input(new SramCtrlBundle)
   })
   @public val reset = IO(Input(AsyncReset()))
   @public val clock = IO(Input(Clock()))
@@ -146,6 +147,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
   hnx.io.lan.tx.debug.foreach(_ := DontCare)
 
   MbistInterface("NocHome", io.dfx.func, hasMbist)
+  SramHelper.genSramCtrlBundleTop() := io.ramctl
   private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, moduleTop = true).map(_.head)
   HardwareAssertion.release(assertionNode, "hwa", "home")
   assertionNode.foreach(_.hassert.bus.get.ready := true.B)

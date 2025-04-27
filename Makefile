@@ -18,8 +18,13 @@ ifdef PREFIX
 RTL_AGRS += --prefix $(PREFIX)
 endif
 
+MKDIR_CMD = mkdir -p $(RTL_DIR)
+ifeq ($(OS),Windows_NT)
+MKDIR_CMD = powershell 'New-Item -Force -Path $(RTL_DIR) -ItemType Directory | Out-Null'
+endif
+
 build-dir:
-	@mkdir -p $(RTL_DIR)
+	@$(MKDIR_CMD)
 
 tfs-top: build-dir
 	mill -i zhujiang.test.runMain xijiang.TrafficSimTopMain $(RTL_AGRS) -td $(RTL_DIR)

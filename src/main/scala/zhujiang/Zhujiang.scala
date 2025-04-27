@@ -7,7 +7,7 @@ import xijiang.router.base.IcnBundle
 import xijiang.{NodeType, Ring}
 import xs.utils.debug.HardwareAssertionKey
 import xs.utils.mbist.{MbistInterface, MbistPipeline}
-import xs.utils.sram.{SramBroadcastBundle, SramHelper}
+import xs.utils.sram.{SramBroadcastBundle, SramCtrlBundle, SramHelper}
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.axi.{AxiBuffer, AxiBundle, ExtAxiBundle}
 import zhujiang.device.bridge.axi.AxiBridge
@@ -40,6 +40,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
 
   private val ring = Module(new Ring)
   private val dft = Wire(new DftWires)
+  private val ramctl = Wire(new SramCtrlBundle)
   ring.dfx_reset := dft.reset
   ring.clock := clock
 
@@ -86,6 +87,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     hfDevSeq(i).reset := placeResetGen(devName, hfIcnSeq(i)._2.head)
     hfDevSeq(i).clock := clock
     hfDevSeq(i).io.dfx := dft
+    hfDevSeq(i).io.ramctl := ramctl
     hfDevSeq(i).suggestName(devName)
   }
 
@@ -147,11 +149,13 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     val ci = Input(UInt(ciIdBits.W))
     val onReset = Output(Bool())
     val dft = Input(new DftWires)
+    val ramctl = Input(new SramCtrlBundle)
     val resetBypass = Output(AsyncReset())
     val intr = Option.when(p(HardwareAssertionKey).enable)(Output(Bool()))
   })
   io.resetBypass := ResetGen(2, Some(io.dft.reset))
   dft := io.dft
+  ramctl := io.ramctl
   val ddrDrv = memAxiPorts
   val cfgDrv = cfgAxiPorts
   val dmaDrv = dmaAxiPorts
@@ -163,6 +167,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   io.intr.foreach(_ := mnDev.io.intr.get)
 
   MbistInterface("NocMisc", io.dft.func, hasMbist)
+  SramHelper.genSramCtrlBundleTop() := ramctl
   ZhujiangGlobal.addRing(desiredName, this)
 }
 
