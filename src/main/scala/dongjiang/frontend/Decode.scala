@@ -65,8 +65,9 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   dontTouch(code_s3)
   dontTouch(cmt_s3)
   var stateInstVecCf = cf""
-  stateInstVecReg_s3.zipWithIndex.foreach { case (inst, i) => stateInstVecCf = stateInstVecCf + cf"[$i] -> [${inst.asTypeOf(new StateInst)}]\n" }
-  HardwareAssertion.withEn(PopCount(Cat(stateInstVecReg_s3.map(_.asUInt === stateInst_s3.asUInt))) === 1.U, validReg_s3, cf"StateInst Invalid: $stateInst_s3 \nLegal StateInst:\n$stateInstVecReg_s3")
+  stateInstVecReg_s3.zipWithIndex.foreach { case (inst, i) => stateInstVecCf = stateInstVecCf + cf"[$i] -> [$inst]\n" }
+  HardwareAssertion.withEn(PopCount(Cat(stateInstVecReg_s3.map(_.asUInt === stateInst_s3.asUInt))) === 1.U, validReg_s3,
+    cf"\n\nDECODE [StateInst] ERROR\n\nChiInst:\n${taskReg_s3.chi.getChiInst()}\nStateInst Invalid:\n$stateInst_s3\n\nAll Legal StateInsts:\n" + stateInstVecCf + cf"\n")
   HardwareAssertion.withEn(code_s3.valid | cmt_s3.valid, validReg_s3)
 
   /*
