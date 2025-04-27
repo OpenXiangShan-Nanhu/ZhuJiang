@@ -253,7 +253,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
 }
 
 // Top module for unit test only
-class DongJiangTop()(implicit p: Parameters) extends Module {
+class DongJiangTop()(implicit p: Parameters) extends DJModule {
   val hnfNode = Node(nodeType = NodeType.HF)
   val rnfNode = Node(nodeType = NodeType.RF)
   val snNode = Node(nodeType = NodeType.S)
@@ -264,7 +264,6 @@ class DongJiangTop()(implicit p: Parameters) extends Module {
 
   dontTouch(io)
 
-  val zjParams = p(ZJParametersKey)
   val rnfNodes = zjParams.island.filter(_.nodeType == NodeType.CC)
   val rniNodes = zjParams.island.filter(_.nodeType == NodeType.RI)
   val hnfNodes = zjParams.island.filter(_.nodeType == NodeType.HF)
