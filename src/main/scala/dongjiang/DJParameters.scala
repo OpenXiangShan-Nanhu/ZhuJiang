@@ -296,7 +296,9 @@ trait HasDJParam extends HasParseZJParam {
 }
 
 
-abstract class DJModule(implicit val p: Parameters) extends Module with HasDJParam
+abstract class DJModule(implicit val p: Parameters) extends Module with HasDJParam {
+  override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
+}
 
 abstract class DJBundle(implicit val p: Parameters) extends Bundle with HasDJParam
 
