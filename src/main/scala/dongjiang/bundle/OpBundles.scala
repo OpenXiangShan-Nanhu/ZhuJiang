@@ -205,8 +205,6 @@ trait HasChiOp { this: DJBundle with HasChiChannel =>
     // Write
     WriteUniquePtl,
     WriteUniqueFull,
-    WriteUniquePtl,
-    WriteUniqueFull,
     WriteBackFull,
     WriteEvictOrEvict,
   ) | isAtomicLoad | isAtomicSwap | isAtomicCompare
