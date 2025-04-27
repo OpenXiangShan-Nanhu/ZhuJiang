@@ -266,9 +266,11 @@ class DongJiangTop()(implicit p: Parameters) extends Module {
 
   val zjParams = p(ZJParametersKey)
   val rnfNodes = zjParams.island.filter(_.nodeType == NodeType.CC)
+  val rniNodes = zjParams.island.filter(_.nodeType == NodeType.RI)
   val hnfNodes = zjParams.island.filter(_.nodeType == NodeType.HF)
   val snNodes  = zjParams.island.filter(_.nodeType == NodeType.S)
   val rnfIdSeq = rnfNodes.map(_.nodeId)
+  val rniIdSeq = rniNodes.map(_.nodeId)
   val hnfIdSeq = hnfNodes.map(_.nodeId)
   val snIdSeq  = snNodes.map(_.nodeId)
 
@@ -277,7 +279,8 @@ class DongJiangTop()(implicit p: Parameters) extends Module {
   }
 
   def isToRNF(tgtID: UInt) = {
-    Cat(rnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits)).orR
+    Cat(rnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits)).orR ||
+      Cat(rniIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).orR
   }
 
   def isToSN(tgtID: UInt) = {
