@@ -64,7 +64,9 @@ class Decode(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val cmt_s3  = ParallelLookUp(stateInst_s3.asUInt, stateInstVecReg_s3.map(_.asUInt).zip(commitVecReg_s3))
   dontTouch(code_s3)
   dontTouch(cmt_s3)
-  HardwareAssertion.withEn(PopCount(Cat(stateInstVecReg_s3.map(_.asUInt === stateInst_s3.asUInt))) === 1.U, validReg_s3, s"StateInst Invalid: $stateInst_s3 \nLegal StateInst:\n${stateInstVecReg_s3}")
+  var stateInstVecCf = cf""
+  stateInstVecReg_s3.zipWithIndex.foreach { case (inst, i) => stateInstVecCf = stateInstVecCf + cf"[$i] -> [${inst.asTypeOf(new StateInst)}]\n" }
+  HardwareAssertion.withEn(PopCount(Cat(stateInstVecReg_s3.map(_.asUInt === stateInst_s3.asUInt))) === 1.U, validReg_s3, cf"StateInst Invalid: $stateInst_s3 \nLegal StateInst:\n$stateInstVecReg_s3")
   HardwareAssertion.withEn(code_s3.valid | cmt_s3.valid, validReg_s3)
 
   /*
