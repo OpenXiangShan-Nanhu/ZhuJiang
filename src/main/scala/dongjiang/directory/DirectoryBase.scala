@@ -290,8 +290,17 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
           val read        =  shiftReg.read(0) & !shiftReg.write(0) & !shiftReg.repl(0) & hit
           val wriRepl     = !shiftReg.read(0) &  shiftReg.write(0) &  shiftReg.repl(0) & hit
           val clean       = io.unlock.valid & io.unlock.bits.idxMatch(i, j)
+          val readHit     = read & hit_d2
 
-          when((read & hit_d2) | readRepl) {
+          hit.suggestName(f"hit_${i}_${j}")
+          write.suggestName(f"write_${i}_${j}")
+          readRepl.suggestName(f"readRepl_${i}_${j}")
+          read.suggestName(f"read_${i}_${j}")
+          wriRepl.suggestName(f"wriRepl_${i}_${j}")
+          clean.suggestName(f"clean_${i}_${j}")
+          readHit.suggestName(f"readHit_${i}_${j}")
+
+          when(readHit | readRepl) {
             lock.valid  := true.B
             lock.way    := selWay_d2
           }.elsewhen(clean) {
@@ -306,7 +315,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
           // read_miss -> readRepl -> wriRepl -> clean
           //                 ^                     ^
           //                lock                 unlock
-          HardwareAssertion(PopCount(Seq(read & hit_d2, readRepl, clean)) <= 1.U, cf"Lock Table Index[${i.U}][${j.U}]")
+          HardwareAssertion(PopCount(Seq(readHit, readRepl, clean)) <= 1.U, cf"Lock Table Index[${i.U}][${j.U}]")
           HardwareAssertion.withEn(!lock.valid, read, cf"Lock Table Index[${i.U}][${j.U}]")
           HardwareAssertion.withEn( lock.valid, write, cf"Lock Table Index[${i.U}][${j.U}]")
           HardwareAssertion.withEn(!lock.valid, readRepl, cf"Lock Table Index[${i.U}][${j.U}]")
