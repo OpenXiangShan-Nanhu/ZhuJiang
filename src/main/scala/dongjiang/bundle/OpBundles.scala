@@ -203,6 +203,7 @@ trait HasChiOp { this: DJBundle with HasChiChannel =>
     CleanInvalid,
     MakeInvalid,
     // Write
+    WriteNoSnpPtl,
     WriteUniquePtl,
     WriteUniqueFull,
     WriteBackFull,
