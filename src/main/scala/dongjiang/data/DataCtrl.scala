@@ -45,10 +45,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   }))
   // DataBuffer -> db
   val datBuf  = Module(new DualPortSramTemplate(
-    gen       = new DJBundle {
-      val b   = UInt(8.W) // byte
-      val m   = Bool()    // mask
-    },
+    gen       = UInt(8.W),
     set       = djparam.nrDataBuf,
     way       = djparam.BeatByte,
     hasMbist  = hasMbist,
@@ -60,7 +57,6 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   val replQ         = Module(new FastQueue(new DataFlit(), 4, false)) // TODO: parameterization
   val replNumReg    = RegInit(0.U(2.W))
   val datBuf_rData  = Wire(Vec(djparam.BeatByte, UInt(8.W)))
-  val datBuf_rMask  = Wire(Vec(djparam.BeatByte, Bool()))
 
   /*
    * [FREE] Receive Req or Task
@@ -107,13 +103,10 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   val beat_save   = Mux(io.respDs.valid & !repl_rxDs, io.respDs.bits.beat, io.rxDat.bits.Data).asTypeOf(Vec(djparam.BeatByte, UInt(8.W)))
   val mask_save   = Mux(io.respDs.valid & !repl_rxDs, Fill(djparam.BeatByte, 1.U), io.rxDat.bits.BE)
   // sram
-  datBuf.io.wreq.valid      := (io.respDs.valid & !repl_rxDs) | io.rxDat.valid
-  datBuf.io.wreq.bits.addr  := dcid_save
-  datBuf.io.wreq.bits.data.zipWithIndex.foreach { case(data, i) =>
-    data.b := beat_save(i)
-    data.m := mask_save(i)
-  }
-  datBuf.io.wreq.bits.mask.get := mask_save
+  datBuf.io.wreq.valid          := (io.respDs.valid & !repl_rxDs) | io.rxDat.valid
+  datBuf.io.wreq.bits.addr      := dcid_save
+  datBuf.io.wreq.bits.mask.get  := mask_save
+  datBuf.io.wreq.bits.data.zipWithIndex.foreach { case(data, i) => data := beat_save(i) }
   // HardwareAssertion
   HardwareAssertion.withEn(PopCount(dcVec_rxDat) === 1.U, io.rxDat.valid)
   HardwareAssertion.withEn(io.rxDat.bits.DataID === "b00".U | io.rxDat.bits.DataID === "b10".U, io.rxDat.valid)
@@ -173,7 +166,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   txDatQ.io.enq.valid       := RegNext(v_txDat)
   txDatQ.io.enq.bits        := datMsg(RegNext(dcid_txDat)).msg.txDat
   txDatQ.io.enq.bits.Data   := datBuf_rData.asUInt
-  txDatQ.io.enq.bits.BE     := datBuf_rMask.asUInt
+  txDatQ.io.enq.bits.BE     := Fill(djparam.BeatByte, 1.U) // TODO
   txDatQ.io.enq.bits.DataID := Mux(RegNext(v1_txDat), "b10".U, "b00".U)
   HardwareAssertion.withEn(txDatQ.io.enq.ready, txDatQ.io.enq.valid)
   // io.txDat
@@ -193,7 +186,6 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   // wDsQ
   wDsQ.io.enq.valid         := RegNext(v_wDs)
   wDsQ.io.enq.bits.beat     := datBuf_rData.asUInt
-  wDsQ.io.enq.bits.mask     := datBuf_rMask.asUInt
   wDsQ.io.enq.bits.ds       := RegNext(dc_wDS.msg.ds)
   wDsQ.io.enq.bits.beatNum  := RegNext(v1_wDS.asUInt)
   wDsQ.io.enq.bits.dcid     := RegNext(dcid_wDS)
@@ -213,8 +205,7 @@ class DataCtrl(implicit p: Parameters) extends DJModule {
   datBuf.io.rreq.valid  := v_txDat | v_wDs
   datBuf.io.rreq.bits   := Mux(v_txDat, dbid_txDat, dbid_wDS)
   // resp
-  datBuf_rData.zip(datBuf.io.rresp.bits.map(_.b)).foreach { case (a, b) => a := b }
-  datBuf_rMask.zip(datBuf.io.rresp.bits.map(_.m)).foreach { case (a, b) => a := b }
+  datBuf_rData.zip(datBuf.io.rresp.bits).foreach { case (a, b) => a := b }
 
   /*
    * [RESP] Send Resp To Commit

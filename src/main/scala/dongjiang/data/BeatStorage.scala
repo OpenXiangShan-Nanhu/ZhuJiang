@@ -28,14 +28,9 @@ class Shift(implicit p: Parameters) extends DJBundle {
 
 class DsRead(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID
 
-class DsWrite(implicit p: Parameters) extends DJBundle with HasDsIdx {
-  val beat  = UInt(BeatBits.W)
-  val mask  = UInt(MaskBits.W)
-}
+class DsWrite(implicit p: Parameters) extends DJBundle with HasDsIdx { val beat  = UInt(BeatBits.W) }
 
-class DsResp(implicit p: Parameters) extends DJBundle with HasDCID {
-  val beat    = UInt(BeatBits.W)
-}
+class DsResp(implicit p: Parameters) extends DJBundle with HasDCID { val beat    = UInt(BeatBits.W) }
 
 class BeatStorage(implicit p: Parameters) extends DJModule {
   /*
@@ -51,9 +46,8 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
    * SRAM, Reg and Wire declaration
    */
   val array     = Module(new SinglePortSramTemplate(
-    gen         = UInt(8.W),
+    gen         = UInt(BeatBits.W),
     set         = nrDsSet,
-    way         = djparam.BeatByte,
     setup       = djparam.dataRamSetup,
     latency     = djparam.dataRamLatency,
     extraHold   = djparam.dataRamExtraHold,
@@ -76,11 +70,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
   array.io.req.valid          := (readHit | writeHit) & shiftReg.reqReady & rstDoneReg
   array.io.req.bits.addr      := Mux(writeHit, io.write.bits.ds.idx, io.read.bits.ds.idx)
   array.io.req.bits.write     := writeHit
-  array.io.req.bits.mask.get  := io.write.bits.mask
-  array.io.req.bits.data.zipWithIndex.foreach {
-    case(data, j) =>
-      data := io.write.bits.beat.asTypeOf(Vec(djparam.BeatByte, UInt(8.W)))(j)
-  }
+  array.io.req.bits.data.head := io.write.bits.beat
   HardwareAssertion.withEn(array.io.req.ready, array.io.req.valid)
 
   // Set Req Ready
@@ -100,7 +90,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
 
   // Output
   io.resp.valid     := shiftReg.outResp
-  io.resp.bits.beat := array.io.resp.bits.data.asUInt
+  io.resp.bits.beat := array.io.resp.bits.data.head
   io.resp.bits.dcid := dcidPipe.io.deq.bits
 
   HardwareAssertion.withEn(dcidPipe.io.deq.valid, shiftReg.outResp)
