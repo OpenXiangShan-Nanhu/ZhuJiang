@@ -171,10 +171,10 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   /*
    * Send Task & Req
    */
-  val taskVec_s0              = VecInit(entries.map(_.io.chiTask_s0).reverse)
-  val releaseVec              = VecInit(entries.map(_.io.state.release).reverse)
+  val taskVec_s0              = VecInit(entries.map(_.io.chiTask_s0))
+  val releaseVec              = VecInit(entries.map(_.io.state.release))
   // select task by StepRREncoder to send in s0
-  selRREncoder.io.inVec       := VecInit(taskVec_s0.map(_.valid).reverse)
+  selRREncoder.io.inVec       := VecInit(taskVec_s0.map(_.valid))
   selRREncoder.io.enable      := releaseVec(selRREncoder.io.vipIdx)
   val selId_s0                = selRREncoder.io.outIdx
   taskVec_s0.zipWithIndex.foreach { case(t, i) => t.ready := selId_s0 === i.U }
