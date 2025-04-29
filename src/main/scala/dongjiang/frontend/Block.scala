@@ -106,7 +106,7 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
    */
   // needRespReg_s1 is associated with dbid2Rn of Commit.
   needRespReadReg_s1          := io.chiTask_s0.bits.chi.isRead & io.chiTask_s0.bits.chi.isEO
-  needRespDBIDReg_s1          := io.chiTask_s0.bits.chi.needSendDBID()
+  needRespDBIDReg_s1          := io.chiTask_s0.bits.chi.needSendDBID
   val shouldRespRead_s1       = needRespReadReg_s1
   val shouldRespDBID_s1       = needRespDBIDReg_s1 & io.reqDB_s1.ready
   // Send Req To Data
