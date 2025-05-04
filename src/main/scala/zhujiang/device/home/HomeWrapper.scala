@@ -35,12 +35,14 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
 
   private val cg = Module(new xs.utils.ClockGate)
   private val ckCtrl = RegInit(true.B)
-  private val ckenCnt = RegInit(zjParams.hnxCgThreshold.U(log2Ceil(zjParams.hnxCgThreshold + 1).W))
+  private val ckenWindowCnt = RegInit(15.U(4.W))
+  private val idleWindowCnt = RegInit(15.U(4.W))
   private val hnx = Module(new DongJiang(node))
   private val lanPipes = Seq.tabulate(nodes.length, zjParams.hnxPipelineDepth + 1) { case(i, j) =>
     val pipe = Module(new ChiBuffer(nodes(i)))
     pipe.suggestName(s"lan_${i}_pipe_$j")
   }
+  require(zjParams.hnxPipelineDepth < 12)
   private val inbound = io.lans.map({ lan =>
     val rxvs = lan.rx.elements.values.map {
       case chn:DecoupledIO[Data] => chn.valid
@@ -63,15 +65,16 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
   hnx.io.flushCache.req.bits := DontCare
   hnx.io.config.closeLLC := false.B
 
+  ckCtrl := Mux(ckCtrl, ckenWindowCnt.orR || idleWindowCnt.orR, inbound)
   when(inbound) {
-    ckCtrl := true.B
-  }.elsewhen(ckCtrl) {
-    ckCtrl := Mux(ckenCnt.orR, true.B, RegNext(hnx.io.working))
+    ckenWindowCnt := Fill(ckenWindowCnt.getWidth, true.B)
+  }.elsewhen(ckenWindowCnt.orR) {
+    ckenWindowCnt := ckenWindowCnt - 1.U
   }
-  when(inbound) {
-    ckenCnt := zjParams.hnxCgThreshold.U
-  }.elsewhen(ckenCnt.orR) {
-    ckenCnt := ckenCnt - 1.U
+  when(hnx.io.working) {
+    idleWindowCnt := Fill(idleWindowCnt.getWidth, true.B)
+  }.elsewhen(idleWindowCnt.orR) {
+    idleWindowCnt := idleWindowCnt - 1.U
   }
 
   private val hnxLans = for(i <- nodes.indices) yield {

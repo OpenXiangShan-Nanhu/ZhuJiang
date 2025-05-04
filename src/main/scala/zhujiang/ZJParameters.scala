@@ -190,7 +190,6 @@ case class ZJParameters(
   P: Boolean = false,
   clusterIdBits: Int = 8,
   hnxBankOff: Int = 12,
-  hnxCgThreshold: Int = 32,
   cpuSpaceBits: Int = 20,
   reqEjectBufDepth: Int = 5,
   externalInterruptNum: Int = 32,
