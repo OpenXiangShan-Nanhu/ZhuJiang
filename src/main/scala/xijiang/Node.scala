@@ -151,7 +151,7 @@ case class Node(
     val legalTgtTypeSeq = nodeType match {
       case CC => chn match {
         case "REQ" => Seq(CC, HF, HI)
-        case "RSP" => Seq(CC, HF, HI)
+        case "RSP" => Seq(CC, HF, RI, HI)
         case "DAT" => Seq(CC, RF, RI, HF, HI)
         case "DBG" => Seq(M)
         case _ => Seq[Int]()
