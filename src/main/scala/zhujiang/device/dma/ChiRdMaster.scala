@@ -149,13 +149,14 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   def fromDCT(x: UInt): Bool = {
   require(x.getWidth == niw)
   val fromCC = WireInit(false.B)
+  val rnfAid = (x(zjParams.nodeAidBits - 1, 0) === 1.U)
   if(zjParams.island.exists(_.nodeType == NodeType.CC)){
     fromCC := zjParams.island.filter(_.nodeType == NodeType.CC).map(_.nodeId.asUInt >> nodeAidBits === x >> nodeAidBits).reduce(_ | _)
   }
   else {
     fromCC := false.B
   }
-  fromCC
+  fromCC & rnfAid
   }
 
   rdDBQBdl.rdDBInit(chiEntries(selIdx))
