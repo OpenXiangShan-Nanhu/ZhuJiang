@@ -33,6 +33,7 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
   val implicitClock = clock
   val implicitReset = reset
 
+  private val mbistCgEn = WireInit(false.B)
   private val cg = Module(new xs.utils.ClockGate)
   private val ckCtrl = RegInit(true.B)
   private val ckenWindowCnt = RegInit(15.U(4.W))
@@ -52,9 +53,9 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
   }).reduce(_ | _)
 
   if(zjParams.hnxPipelineDepth == 0) {
-    cg.io.E := ckCtrl | inbound
+    cg.io.E := ckCtrl | inbound | mbistCgEn
   } else {
-    cg.io.E := ckCtrl
+    cg.io.E := ckCtrl | mbistCgEn
   }
   cg.io.CK := clock
   cg.io.TE := io.dfx.func.cgen
@@ -149,7 +150,8 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
 
   hnx.io.lan.tx.debug.foreach(_ := DontCare)
 
-  MbistInterface("NocHome", io.dfx.func, hasMbist)
+  val mbistIntf = MbistInterface("NocHome", io.dfx.func, hasMbist)
+  mbistCgEn := mbistIntf.map(_.toPipeline.head.mbist_req).getOrElse(false.B)
   SramHelper.genSramCtrlBundleTop() := io.ramctl
   private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, moduleTop = true).map(_.head)
   HardwareAssertion.release(assertionNode, "hwa", "home")
