@@ -11,11 +11,11 @@ import xs.utils.sram._
 import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
 
-class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
+class AxiRdSlave(outstanding: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private val rni = zjParams.dmaParams
   private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = rni.idBits)
-  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(rni.chiEntrySize), userBits = axiParams.idBits)
-  require(axiParams.idBits >= log2Ceil(rni.chiEntrySize))
+  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(outstanding), userBits = axiParams.idBits)
+  require(axiParams.idBits >= log2Ceil(outstanding))
 
   private class CirQAxiEntryPtr extends CircularQueuePtr[CirQAxiEntryPtr](rni.axiEntrySize)
   private object CirQAxiEntryPtr {
@@ -26,7 +26,7 @@ class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
         ptr
     }
   }
-  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](rni.chiEntrySize)
+  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](outstanding)
   private object CirQChiEntryPtr {
   def apply(f: Bool, v: UInt): CirQChiEntryPtr = {
         val ptr = Wire(new CirQChiEntryPtr)
@@ -53,12 +53,12 @@ class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   private val uHeadPtr  = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
   private val uTailPtr  = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
 
-  private val dArEntrys = Reg(Vec(rni.chiEntrySize, new AxiRMstEntry))
+  private val dArEntrys = Reg(Vec(outstanding, new AxiRMstEntry))
   private val dHeadPtr  = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val dTailPtr  = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
 
   private val rxArPipe  = Module(new Queue(gen = new AxiRdEntry(isPipe = true), entries = 2, pipe = false, flow = false))
-  private val dataCtrlQ = Module(new SendReg)
+  private val dataCtrlQ = Module(new SendReg(outstanding))
 
   private val rxArBdl   = WireInit(0.U.asTypeOf(new AxiRdEntry(isPipe = true)))
   private val txArBdl   = WireInit(0.U.asTypeOf(io.dAxiAr.bits))

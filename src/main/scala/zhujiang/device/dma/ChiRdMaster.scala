@@ -12,13 +12,13 @@ import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, UIntToMask}
 import dongjiang.utils.StepRREncoder
 
-class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
+class ChiRdMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private val rni = zjParams.dmaParams
   private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = rni.idBits)
-  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(rni.chiEntrySize), userBits = axiParams.idBits)
-  require(axiParams.idBits >= log2Ceil(rni.chiEntrySize))
+  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(outstanding), userBits = axiParams.idBits)
+  require(axiParams.idBits >= log2Ceil(outstanding))
 
-  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](rni.chiEntrySize)
+  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](outstanding)
 
   private object CirQChiEntryPtr {
     def apply(f: Bool, v: UInt): CirQChiEntryPtr = {
@@ -31,19 +31,19 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   val io = IO(new Bundle {
     val axiAr    = Flipped(Decoupled(new ARFlit(axiParamsUser)))
     val reqDB    = Decoupled(Bool())
-    val respDB   = Input(Valid(new DataBufferAlloc(rni.dbEntrySize)))
+    val respDB   = Input(Valid(new DataBufferAlloc(outstanding)))
     val chiReq   = Decoupled(new ReqFlit)
     val chiRxRsp = Flipped(Decoupled(new RespFlit))
     val chiTxRsp = if(rni.readDMT) Some(Decoupled(new RespFlit)) else None
     val chiDat   = Flipped(Decoupled(new DataFlit))
-    val wrDB     = Decoupled(new writeRdDataBuffer(rni.dbEntrySize))
-    val rdDB     = Decoupled(new readRdDataBuffer(rni.dbEntrySize, axiParams))
+    val wrDB     = Decoupled(new writeRdDataBuffer(outstanding))
+    val rdDB     = Decoupled(new readRdDataBuffer(outstanding, axiParams))
     val working  = Output(Bool())
   })
 /* 
  * Reg/Wire Define
  */
-  private val chiEntries     = Reg(Vec(rni.chiEntrySize, new CHIREntry(dmt = rni.readDMT)))
+  private val chiEntries     = Reg(Vec(outstanding, new CHIREntry(dmt = rni.readDMT, outstanding = outstanding)))
   private val chiEntriesNext = WireInit(chiEntries)
   // Pointer
   private val headPtr     = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
@@ -55,21 +55,21 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   private val txDatPtr    = RegInit(0.U(1.W))
   //Wire Define
   private val rcvIsRct   = io.chiRxRsp.fire & io.chiRxRsp.bits.Opcode === RspOpcode.ReadReceipt
-  private val dataTxnid  = io.chiDat.bits.TxnID(log2Ceil(rni.chiEntrySize) - 1, 0)
+  private val dataTxnid  = io.chiDat.bits.TxnID(log2Ceil(outstanding) - 1, 0)
   private val txReqBdl   = WireInit(0.U.asTypeOf(new DmaReqFlit))
   private val txDatBdl   = WireInit(0.U.asTypeOf(io.rdDB.bits))
-  private val rdDBQBdl   = WireInit(0.U.asTypeOf(new RdDBEntry))
+  private val rdDBQBdl   = WireInit(0.U.asTypeOf(new RdDBEntry(outstanding)))
   private val txRspBdl   = WireInit(0.U.asTypeOf(new DmaRspFlit))
   //Pipe Reg
-  private val selIdx     = WireInit(0.U(log2Ceil(rni.chiEntrySize).W))
-  private val rdDBQueue  = Module(new Queue(gen = new RdDBEntry, entries = 2, flow = false, pipe = true))
+  private val selIdx     = WireInit(0.U(log2Ceil(outstanding).W))
+  private val rdDBQueue  = Module(new Queue(gen = new RdDBEntry(outstanding), entries = 2, flow = false, pipe = true))
   // Vec Define
-  private val headPtrMask = UIntToMask(headPtr.value, rni.chiEntrySize)
-  private val tailPtrMask = UIntToMask(tailPtr.value, rni.chiEntrySize)
+  private val headPtrMask = UIntToMask(headPtr.value, outstanding)
+  private val tailPtrMask = UIntToMask(tailPtr.value, outstanding)
   private val headXorTail = headPtrMask ^ tailPtrMask
   private val validVec   = Mux(headPtr.flag ^ tailPtr.flag, ~headXorTail, headXorTail)
-  private val blockVec   = WireInit(VecInit.fill(rni.chiEntrySize){false.B})
-  private val sendDBVec  = WireInit(VecInit.fill(rni.chiEntrySize){false.B})
+  private val blockVec   = WireInit(VecInit.fill(outstanding){false.B})
+  private val sendDBVec  = WireInit(VecInit.fill(outstanding){false.B})
 
 /* 
  * Pointer logic

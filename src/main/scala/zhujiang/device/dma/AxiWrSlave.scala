@@ -11,7 +11,7 @@ import xs.utils.sram._
 import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
 
-class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
+class AxiWrSlave(outstanding: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private val rni = zjParams.dmaParams
   private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = rni.idBits)
 
@@ -24,7 +24,7 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
         ptr
     }
   }
-  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](rni.chiEntrySize)
+  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](outstanding)
   private object CirQChiEntryPtr {
   def apply(f: Bool, v: UInt): CirQChiEntryPtr = {
         val ptr = Wire(new CirQChiEntryPtr)
@@ -53,7 +53,7 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   private val uHeadPtr       = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
   private val uTailPtr       = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
 
-  private val dAwEntrys      = Reg(Vec(rni.chiEntrySize, new AxiWMstEntry))
+  private val dAwEntrys      = Reg(Vec(outstanding, new AxiWMstEntry))
   private val dHeadPtr       = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val dTailPtr       = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val wDataPtr       = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))

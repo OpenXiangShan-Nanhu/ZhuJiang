@@ -12,19 +12,19 @@ import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
 import freechips.rocketchip.diplomacy.BufferParams.pipe
 
-class SendDataIn(implicit p: Parameters) extends ZJBundle {
+class SendDataIn(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   private val rni = zjParams.dmaParams
   val data        = UInt(dw.W)
   val beat        = UInt(1.W)
   val id          = UInt(rni.idBits.W)
-  val idx         = UInt(log2Ceil(rni.chiEntrySize).W)
+  val idx         = UInt(log2Ceil(outstanding).W)
   val last        = Bool()
 }
-class SendDataOut(implicit p: Parameters) extends ZJBundle {
+class SendDataOut(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   private val rni = zjParams.dmaParams
   val data        = UInt(dw.W)
   val id          = UInt(rni.idBits.W)
-  val idx         = UInt(log2Ceil(rni.chiEntrySize).W)
+  val idx         = UInt(log2Ceil(outstanding).W)
   val resp        = UInt(2.W)
 }
 class Pointer(implicit p: Parameters) extends ZJBundle {
@@ -33,25 +33,25 @@ class Pointer(implicit p: Parameters) extends ZJBundle {
   val nextShift   = UInt(rni.offset.W)
   val endShift    = UInt(rni.offset.W)
 }
-class RBundle(implicit p: Parameters) extends  ZJBundle {
+class RBundle(outstanding: Int)(implicit p: Parameters) extends  ZJBundle {
   private val rni = zjParams.dmaParams
   val data        = Vec(2, UInt(dw.W))
-  val idx         = UInt(log2Ceil(rni.chiEntrySize).W)
+  val idx         = UInt(log2Ceil(outstanding).W)
   val id          = UInt(rni.idBits.W)
 }
 
-class SendReg(implicit p: Parameters) extends ZJModule {
+class SendReg(outstanding: Int)(implicit p: Parameters) extends ZJModule {
   private val rni   = zjParams.dmaParams
   val io            = IO(new Bundle {
-    val dataIn      = Flipped(Decoupled(new SendDataIn))
+    val dataIn      = Flipped(Decoupled(new SendDataIn(outstanding)))
     val ptr         = Input(new Pointer)
-    val dataOut     = Decoupled(new SendDataOut)
+    val dataOut     = Decoupled(new SendDataOut(outstanding))
   })
 
 /* 
  * Reg and Wire Define
  */
-  private val sendQueue = Module(new Queue(gen = new RBundle, entries = 2, pipe = true, flow = false))
+  private val sendQueue = Module(new Queue(gen = new RBundle(outstanding), entries = 2, pipe = true, flow = false))
   private val mergeData = RegInit(VecInit.fill(2){0.U(dw.W)})
 
   mergeData.zipWithIndex.foreach {

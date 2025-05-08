@@ -3,7 +3,6 @@ package zhujiang.device.dma
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
-import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
 import zhujiang.{ZJBundle, ZJModule}
 import xs.utils.FastArbiter
@@ -33,9 +32,7 @@ case class DmaParams(
   offset    : Int = 6,
   idBits    : Int = 12,
   nrBeats   : Int = 2,
-  chiEntrySize  : Int = 32,
   axiEntrySize  : Int = 8,
-  dbEntrySize   : Int = 32,
   readDMT       : Boolean = true,
   merWrDatAndAck: Boolean = false,  //Whether NCBWrData and CompAck can be merge
   rniID         : Int = 1,
@@ -187,24 +184,24 @@ class AxiRMstEntry(implicit p: Parameters) extends ZJBundle {
   val finish      = Bool()
 }
 
-class DataCtrl(implicit p: Parameters) extends ZJBundle {
+class DataCtrl(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   private val rni = zjParams.dmaParams
   val data   = UInt(dw.W)
   val id     = UInt(rni.idBits.W)
-  val idx    = UInt(log2Ceil(rni.chiEntrySize).W)
+  val idx    = UInt(log2Ceil(outstanding).W)
   val resp   = UInt(2.W)
 }
 
-class CHIREntry(dmt : Boolean)(implicit p : Parameters) extends ZJBundle {
+class CHIREntry(dmt : Boolean, outstanding: Int)(implicit p : Parameters) extends ZJBundle {
   private val rni    = zjParams.dmaParams
   val arId           = UInt(rni.idBits.W)
-  val idx            = UInt(log2Ceil(rni.chiEntrySize).W)
+  val idx            = UInt(log2Ceil(outstanding).W)
   val double         = Bool()
   val addr           = UInt(raw.W)
   val size           = UInt(3.W)
-  val nid            = UInt(log2Ceil(rni.chiEntrySize).W)
-  val dbSite1        = UInt(log2Ceil(rni.dbEntrySize).W)
-  val dbSite2        = UInt(log2Ceil(rni.dbEntrySize).W)
+  val nid            = UInt(log2Ceil(outstanding).W)
+  val dbSite1        = UInt(log2Ceil(outstanding).W)
+  val dbSite2        = UInt(log2Ceil(outstanding).W)
   val memAttr        = new MemAttr
   val haveWrDB1      = Bool()
   val haveWrDB2      = Bool()
@@ -232,9 +229,9 @@ class CHIREntry(dmt : Boolean)(implicit p : Parameters) extends ZJBundle {
 }
 
 
-class readRdDataBuffer(bufferSize: Int, axiParams: AxiParams)(implicit p: Parameters) extends ZJBundle {
-  val set      = UInt(log2Ceil(bufferSize).W)
-  val id       = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
+class readRdDataBuffer(outstanding: Int, axiParams: AxiParams)(implicit p: Parameters) extends ZJBundle {
+  val set      = UInt(log2Ceil(outstanding).W)
+  val id       = UInt(log2Ceil(outstanding).W)
   val resp     = UInt(2.W)
   val originId = UInt(axiParams.idBits.W)
   val last     = Bool()
@@ -249,35 +246,34 @@ class readRdDataBuffer(bufferSize: Int, axiParams: AxiParams)(implicit p: Parame
   }
 }
 
-class DataBufferAlloc(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
-  private val rni  = zjParams.dmaParams
-  val buf          = Vec(2, UInt(log2Ceil(bufferSize).W))
+class DataBufferAlloc(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
+  val buf          = Vec(2, UInt(log2Ceil(outstanding).W))
   val num          = UInt(2.W)
 }
 
-class DataBufferTxReq(ctrlSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val idxOH = UInt(ctrlSize.W)
-  val flit  = new DataFlit
-}
+// class DataBufferTxReq(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
+//   val idxOH = UInt(outstanding.W)
+//   val flit  = new DataFlit
+// }
 
-class writeRdDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val set    = UInt(log2Ceil(bufferSize).W)
+class writeRdDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
+  val set    = UInt(log2Ceil(outstanding).W)
   val data   = UInt(dw.W)
 }
 
-class writeWrDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val set   = UInt(log2Ceil(bufferSize).W)
+class writeWrDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
+  val set   = UInt(log2Ceil(outstanding).W)
   val data  = UInt(dw.W)
   val mask  = UInt(bew.W)
 }
-class respDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
+class respDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   val data     = UInt(dw.W)
-  val id       = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
+  val id       = UInt(log2Ceil(outstanding).W)
   val resp     = UInt(2.W)
   val last     = Bool()
 }
-class readWrDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
-  val set     = UInt(log2Ceil(bufferSize).W)
+class readWrDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
+  val set     = UInt(log2Ceil(outstanding).W)
   val tgtId   = UInt(niw.W)
   val txnID   = UInt(12.W)
   val dataID  = UInt(2.W)
@@ -338,7 +334,7 @@ class AxiWMstEntry(implicit p: Parameters) extends ZJBundle {
   val fullWrap  = Bool()
 }
 
-class CHIWEntry(implicit p: Parameters) extends ZJBundle {
+class CHIWEntry(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   private val rni    = zjParams.dmaParams
   val awId           = UInt(log2Ceil(rni.axiEntrySize).W)
   val double         = Bool()
@@ -347,8 +343,8 @@ class CHIWEntry(implicit p: Parameters) extends ZJBundle {
   val tgtid          = UInt(niw.W)
   val addr           = UInt(raw.W)
   val dbid           = UInt(12.W)
-  val dbSite1        = UInt(log2Ceil(rni.dbEntrySize).W)
-  val dbSite2        = UInt(log2Ceil(rni.dbEntrySize).W)
+  val dbSite1        = UInt(log2Ceil(outstanding).W)
+  val dbSite2        = UInt(log2Ceil(outstanding).W)
   val haveRcvComp    = Bool()
 
   def awMesInit[T <: AWFlit](aw : T): CHIWEntry = {
@@ -365,13 +361,13 @@ class CHIWEntry(implicit p: Parameters) extends ZJBundle {
   }
 }
 
-class RdDBEntry(implicit p: Parameters) extends ZJBundle {
+class RdDBEntry(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   private val rni   = zjParams.dmaParams
   val arID          = UInt(rni.idBits.W)
-  val idx           = UInt(rni.chiEntrySize.W)
+  val idx           = UInt(log2Ceil(outstanding).W)
   val double        = Bool()
-  val dbSite1       = UInt(log2Ceil(rni.dbEntrySize).W)
-  val dbSite2       = UInt(log2Ceil(rni.dbEntrySize).W)
+  val dbSite1       = UInt(log2Ceil(outstanding).W)
+  val dbSite2       = UInt(log2Ceil(outstanding).W)
 
   def rdDBInit[T <: CHIREntry](b: T): RdDBEntry = {
     this.arID    := b.arId

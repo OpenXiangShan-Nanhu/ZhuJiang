@@ -53,7 +53,7 @@ class ZhujiangTopConfig extends Config((site, here, up) => {
       NodeParam(nodeType = NodeType.CC, outstanding = 8, attr = "nanhu", socket = "async"),
       NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 0),
 
-      NodeParam(nodeType = NodeType.RI, attr = "main"),
+      NodeParam(nodeType = NodeType.RI, attr = "main", outstanding = 32),
       NodeParam(nodeType = NodeType.HI, defaultHni = true, attr = "main", outstanding = 32),
       NodeParam(nodeType = NodeType.M),
       NodeParam(nodeType = NodeType.S,  addrSets = AddrConfig.mem2, outstanding = 32, attr = "2"),

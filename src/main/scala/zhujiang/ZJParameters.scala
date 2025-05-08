@@ -109,7 +109,7 @@ object ZhujiangGlobal {
         clusterId = if(np.nodeType == NodeType.CC) ccId.toInt else 0,
         addrSets = addrSets,
         defaultHni = if(np.nodeType == NodeType.HI) np.defaultHni else false,
-        outstanding = if(np.nodeType == NodeType.HI || np.nodeType == NodeType.CC || np.nodeType == NodeType.S) np.outstanding else 0,
+        outstanding = if(np.nodeType == NodeType.HI || np.nodeType == NodeType.CC || np.nodeType == NodeType.S || np.nodeType == NodeType.RI) np.outstanding else 0,
         socket = np.socket
       )
       if(np.nodeType == NodeType.CC) ccId = ccId + np.cpuNum

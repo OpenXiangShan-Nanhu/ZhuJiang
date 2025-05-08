@@ -71,7 +71,7 @@ object TLUL2ChiBridgeTop extends App {
 object DmaTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new Axi2Chi(Node(nodeType = NodeType.RI))(config))
+    ChiselGeneratorAnnotation(() => new Axi2Chi(Node(nodeType = NodeType.RI, outstanding = 32))(config))
   ))
 }
 
