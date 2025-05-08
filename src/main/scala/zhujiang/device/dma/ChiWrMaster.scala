@@ -37,6 +37,7 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
     val chiTxRsp = Decoupled(new RespFlit)
     val rdDB     = Decoupled(new readWrDataBuffer(rni.dbEntrySize)) 
     val wrDB     = Decoupled(new writeWrDataBuffer(rni.dbEntrySize))
+    val working  = Output(Bool())
   })
 
 /* 
@@ -164,6 +165,7 @@ class ChiWrMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   io.rdDB.valid     := (txDatPtr =/= rxDatPtr) & (txDatPtr =/= rxDBIDPtr)
   io.chiTxRsp.bits  := txAckBdl
   io.chiTxRsp.valid := txAckPtr =/= rxDBIDPtr & !(io.rdDB.fire & io.rdDB.bits.withAck)
+  io.working        := headPtr =/= tailPtr
 
 /* 
  * Assertion

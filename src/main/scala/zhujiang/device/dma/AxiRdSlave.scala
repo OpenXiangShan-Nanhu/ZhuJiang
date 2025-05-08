@@ -43,6 +43,7 @@ class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
     val uAxiR    = Decoupled(new RFlit(axiParams))
     val dAxiAr   = Decoupled(new ARFlit(axiParamsUser))
     val dAxiR    = Flipped(Decoupled(new RFlit(axiParamsUser)))
+    val working  = Output(Bool())
   })
 
 /* 
@@ -155,6 +156,8 @@ class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   io.dAxiAr.bits      := txArBdl
   io.dAxiAr.valid     := uHeadPtr =/= uTailPtr & !isFull(dHeadPtr, dTailPtr)
   io.dAxiR.ready      := dataCtrlQ.io.dataIn.ready
+
+  io.working          := uHeadPtr =/= uTailPtr || dHeadPtr =/= dTailPtr
 
   dataCtrlQ.io.dataIn.valid       := io.dAxiR.valid
   dataCtrlQ.io.dataIn.bits.id     := dArEntrys(io.dAxiR.bits.id).id

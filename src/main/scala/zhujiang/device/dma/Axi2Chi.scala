@@ -21,12 +21,14 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = rni.idBits, attr = node.attr)
   private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(rni.chiEntrySize), userBits = axiParams.idBits)
 
-  val axi = IO(Flipped(new AxiBundle(axiParams)))
-  val icn = IO(new DeviceIcnBundle(node))
+  val axi     = IO(Flipped(new AxiBundle(axiParams)))
+  val icn     = IO(new DeviceIcnBundle(node))
+  val working = IO(Output(Bool()))
 
   if(p(DebugOptionsKey).EnableDebug) {
     dontTouch(axi)
     dontTouch(icn)
+    dontTouch(working)
   }
   //SubModule
   private val axiRdSlave  = Module(new AxiRdSlave)
@@ -65,6 +67,8 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
   FastArbiter(Seq(chiRdMaster.io.chiReq      , chiWrMaster.io.chiReq  ), arbReqOut)
   FastArbiter(Seq(chiRdMaster.io.chiTxRsp.get, chiWrMaster.io.chiTxRsp), arbRspOut)
+
+  working  := axiRdSlave.io.working || axiWrSlave.io.working || chiRdMaster.io.working || chiWrMaster.io.working
 
   connIcn(icn.tx.req.get         , arbReqOut      )
   connIcn(icn.tx.resp.get        , arbRspOut      )

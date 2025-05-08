@@ -38,6 +38,7 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
     val chiDat   = Flipped(Decoupled(new DataFlit))
     val wrDB     = Decoupled(new writeRdDataBuffer(rni.dbEntrySize))
     val rdDB     = Decoupled(new readRdDataBuffer(rni.dbEntrySize, axiParams))
+    val working  = Output(Bool())
   })
 /* 
  * Reg/Wire Define
@@ -176,6 +177,7 @@ class ChiRdMaster(implicit p: Parameters) extends ZJModule with HasCircularQueue
   io.wrDB.bits.set            := Mux(chiEntries(dataTxnid).double & io.chiDat.bits.DataID === 2.U, chiEntries(dataTxnid).dbSite2, chiEntries(dataTxnid).dbSite1)
   io.wrDB.valid               := Mux(chiEntries(dataTxnid).double, io.chiDat.valid, 
                                   Mux(fromDCT(io.chiDat.bits.SrcID), Mux(chiEntries(dataTxnid).addr(rni.offset - 1), io.chiDat.bits.DataID === 2.U & io.chiDat.valid, io.chiDat.valid & io.chiDat.bits.DataID === 0.U), io.chiDat.valid))
+  io.working                  := headPtr =/= tailPtr
   if(rni.readDMT){
     io.chiTxRsp.get.valid         := !chiEntries(txRspPtr.value).haveSendAck.get & (txRspPtr =/= rxRspPtr) & chiEntries(txRspPtr.value).rcvDatComp & validVec(txRspPtr.value)
     io.chiTxRsp.get.bits          := txRspBdl

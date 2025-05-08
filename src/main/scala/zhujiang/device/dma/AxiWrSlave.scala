@@ -37,12 +37,13 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
  * IO Interface Define
  */
   val io = IO(new Bundle {
-    val uAxiAw = Flipped(Decoupled(new AWFlit(axiParams)))
-    val uAxiW  = Flipped(Decoupled(new WFlit(axiParams)))
-    val uAxiB  = Decoupled(new BFlit(axiParams))
-    val dAxiAw = Decoupled(new AWFlit(axiParams))
-    val dAxiW  = Decoupled(new WFlit(axiParams))
-    val dAxiB  = Flipped(Decoupled(new BFlit(axiParams)))
+    val uAxiAw  = Flipped(Decoupled(new AWFlit(axiParams)))
+    val uAxiW   = Flipped(Decoupled(new WFlit(axiParams)))
+    val uAxiB   = Decoupled(new BFlit(axiParams))
+    val dAxiAw  = Decoupled(new AWFlit(axiParams))
+    val dAxiW   = Decoupled(new WFlit(axiParams))
+    val dAxiB   = Flipped(Decoupled(new BFlit(axiParams)))
+    val working = Output(Bool())
   })
 
 /* 
@@ -163,6 +164,8 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   io.dAxiW.bits.last := mergeLastReg & !dAwEntrys(sDataPtr.value).fullWrap
   io.dAxiW.valid     := merComReg || mergeLastReg
   io.dAxiB.ready     := bIdQueue.io.enq.ready
+
+  io.working         := uHeadPtr =/= uTailPtr || dHeadPtr =/= dTailPtr
 
   mergeReg.io.dataIn.valid         := io.uAxiW.fire
   mergeReg.io.dataIn.bits.fixMerge := !dAwEntrys(wDataPtr.value).dontMerge & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
