@@ -30,14 +30,14 @@ import dongjiang.data._
 
 /*
  * Task Inst Description:
- * 1. Channel   : 0 -> REQ; 1 -> DAT; 2 -> RSP; 3 -> SNP; Task must be REQ/SNP
- * 2. fromLAN   : true -> Task from LAN(CC/RNI) NoC; false -> Task from BBN(HNX) NoC
- * 3. toLAN     : true -> Task to LAN(SN) NoC; false -> Task to BBN(HNX) NoC
- * 4. opcode    : REQ/SNP Opcode
- * 5. expCompAck: REQ.ExpCompAck
- * 6. allocate  : REQ.MemAttr.allocate
- * 7. ewa       : REQ.MemAttr.ewa
- * 8. order     : REQ.Order
+ * 1. Channel     : 0 -> REQ; 1 -> DAT; 2 -> RSP; 3 -> SNP; Task must be REQ/SNP
+ * 2. fromLAN     : true -> Task from LAN(CC/RNI) NoC; false -> Task from BBN(HNX) NoC
+ * 3. toLAN       : true -> Task to LAN(SN) NoC; false -> Task to BBN(HNX) NoC
+ * 4. opcode      : REQ/SNP Opcode
+ * 5. expCompAck  : REQ.ExpCompAck
+ * 6. allocate    : REQ.MemAttr.allocate
+ * 7. ewa         : REQ.MemAttr.ewa
+ * 8. order       : REQ.Order
  *
  * Note0: TaskInst comes from the CHI Bundle, and the CHI Bundle is uniformly assigned in ToChiTask.
  * Note1: Please refer to https://saluyk0ac00.feishu.cn/wiki/OHENwBqbeil9VIkkRQacWTAnnFd?from=from_copylink for the concepts of LAN and BBN.
@@ -80,12 +80,18 @@ class StateInst extends Bundle {
 }
 
 class TaskInst extends Bundle {
+  // from TaskCM
   val valid       = Bool()
   val fwdValid    = Bool()
   val channel     = UInt(ChiChannel.width.W)
   val opcode      = UInt(RspOpcode.width.max(DatOpcode.width).W)
   val resp        = UInt(ChiResp.width.W)
   val fwdResp     = UInt(ChiResp.width.W)
+
+  // from ReceiveCM
+  val wrRespIsDat = Bool() // Has been got write resp(XCBWrData)
+  val cbRespIsAck = Bool() // CopyBack Resp is CompAck
+  val cbResp      = UInt(ChiResp.width.W)
 
   override def toPrintable: Printable = {
     var pa = cf""
@@ -96,31 +102,28 @@ class TaskInst extends Bundle {
   }
 }
 
-trait HasPackTaskInst { this: Bundle => val inst = new TaskInst() }
+trait HasPackTaskInst { this: Bundle => val taskInst = new TaskInst() }
 
 object CMID {
   lazy val SNP  = 0
-  lazy val WOA  = 1
+  lazy val WRI  = 1
   lazy val READ = 2
   lazy val DL   = 3
-  lazy val REC  = 4
 }
 
 trait HasOperations { this: Bundle =>
   val snoop       = Bool() // -> Return Valid   TaskInst
   val read        = Bool() // -> Return Valid   TaskInst
   val dataless    = Bool() // -> Return Valid   TaskInst
-  val wriOrAtm    = Bool() // -> Return Invalid TaskInst // Write or Atomic
-  val receive     = Bool() // -> Return Invalid TaskInst // Receive Data From Write
-  def valid       = snoop | read | dataless | wriOrAtm | receive
-  def invalid     = !valid
+  val wriOrAtm    = Bool() // -> Return Invalid TaskInst // Write or Atomic // TODO: del Atomic
+  def opsValid    = snoop | read | dataless | wriOrAtm
+  def opsInvalid  = !opsValid
   def cmid: UInt  = {
     PriorityMux(Seq(
       snoop    -> CMID.SNP.U,
       read     -> CMID.READ.U,
       dataless -> CMID.DL.U,
-      wriOrAtm -> CMID.WOA.U,
-      receive  -> CMID.REC.U,
+      wriOrAtm -> CMID.WRI.U,
     ))
   }
 }
@@ -142,7 +145,9 @@ trait HasSnpTgt { this: Bundle => val snpTgt = UInt(SnpTgt.width.W) }
 trait HasTaskCode { this: Bundle with HasOperations with HasPackDataOp =>
   // Common
   val opcode      = UInt(ReqOpcode.width.max(SnpOpcode.width).W)
-  val canNest     = Bool()
+
+  // Wait ReceiveCM Done
+  val waitRecDone = Bool() // -> Return Valid   TaskInst
 
   // Req
   val expCompAck  = Bool()
@@ -154,11 +159,13 @@ trait HasTaskCode { this: Bundle with HasOperations with HasPackDataOp =>
   def snpAll      = snpTgt(0).asBool
   def snpOne      = snpTgt(1).asBool
   def snpOth      = snpTgt(2).asBool
+
+  def valid: Bool = opsValid | waitRecDone
 }
 
 class TaskCode extends Bundle with HasOperations with HasPackDataOp with HasTaskCode
 
-trait HasPackTaskCode { this: Bundle => val code = new TaskCode() }
+trait HasPackTaskCode { this: Bundle => val taskCode = new TaskCode() }
 
 trait HasWriDirCode { this: Bundle =>
   // Write Directory
@@ -171,24 +178,18 @@ trait HasWriDirCode { this: Bundle =>
   def wriDir      = wriSF | wriLLC
 }
 
-class WriDirCode  extends Bundle with HasWriDirCode
-
-trait HasPackWriDirCode { this: Bundle => val code = new WriDirCode() }
-
 trait HasCommitCode { this: Bundle with HasWriDirCode with HasPackDataOp =>
-  // Need wait second task done
-  val waitSecDone = Bool()
+  val waitSecDone = Bool() // Need wait second task done
 
-  // Commit
-  val commit      = Bool()
-  val fwdCommit   = Bool()
+  val sendResp    = Bool()
+  val sendfwdResp = Bool() // CompData to RN in DCT
   val channel     = UInt(ChiChannel.width.W)
   val commitOp    = UInt(RspOpcode.width.max(DatOpcode.width).W)
   val resp        = UInt(ChiResp.width.W)
   val fwdResp     = UInt(ChiResp.width.W)
 
   // def
-  def valid       = commit | wriDir | dataOp.valid
+  def valid       = sendResp | wriDir | dataOp.valid
   def invalid     = !valid
 }
 
@@ -233,7 +234,6 @@ object DecodeCHI {
   }
 }
 
-
 object Inst {
   // Chi Inst
   def chiValid          : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.valid         := true.B;  temp.asUInt }
@@ -265,12 +265,16 @@ object Inst {
   // Task Inst
   def taskValid         : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.valid        := true.B;    temp.asUInt }
   def fwdValid          : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.fwdValid     := true.B;    temp.asUInt }
-  def isRsp             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.channel      := RSP;       temp.asUInt | taskValid}
-  def isDat             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.channel      := DAT;       temp.asUInt | taskValid}
+  def isRsp             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.channel      := RSP;       temp.asUInt | taskValid }
+  def isDat             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.channel      := DAT;       temp.asUInt | taskValid }
   def rspIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.opcode       := x;         require(x.getWidth == RspOpcode.width); temp.asUInt | isRsp }
   def datIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.opcode       := x;         require(x.getWidth == DatOpcode.width); temp.asUInt | isDat }
-  def respIs  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.resp         := toResp(x); require(x.getWidth == DecodeCHI.width);   temp.asUInt }
-  def fwdIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.fwdResp      := toResp(x); require(x.getWidth == DecodeCHI.width);   temp.asUInt | fwdValid}
+  def respIs  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.resp         := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt }
+  def fwdIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.fwdResp      := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | fwdValid }
+  def xCBWrDataValid    : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.wrRespIsDat  := true.B;    temp.asUInt }
+  def cbRespIsCompAck   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbRespIsAck  := true.B;    temp.asUInt }
+  def cbRespIs(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | taskValid | xCBWrDataValid  }
+  def hasGotNCBWrData   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(I); temp.asUInt | taskValid | xCBWrDataValid }
   def noResp            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst()));                                 temp.asUInt }
 }
 
@@ -284,30 +288,29 @@ object Code {
   def read    (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.read     := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
   def dataless(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.dataless := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
   def wriOrAtm(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.wriOrAtm := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
-  def receive (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.receive  := true.B; require(x.getWidth == RspOpcode.width); temp.asUInt }
 
   // Task Code DataOp
-  // note0: only cant set reqs expect of WriOrAtm
+  // note0: cant set reqs expect of WriOrAtm
   // note1: cant set clean when commit will use DataBuffer
   def tdop(x: String*): UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // Task Code Other
-  def canNest           : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.canNest    := true.B; temp.asUInt }
-  def taskECA           : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.expCompAck := true.B; temp.asUInt }
-  def doDMT             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.doDMT      := true.B; temp.asUInt }
-  def retToSrc          : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.retToSrc   := true.B; temp.asUInt }
-  def noTask            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode()));                            temp.asUInt }
+  def waitRecDone       : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.waitRecDone  := true.B; temp.asUInt }
+  def taskECA           : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.expCompAck   := true.B; temp.asUInt }
+  def doDMT             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.doDMT        := true.B; temp.asUInt }
+  def retToSrc          : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.retToSrc     := true.B; temp.asUInt }
+  def noTask            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode()));                              temp.asUInt }
 
   // Commit Code Need Wait Second Task Done
-  def waitSecDone       : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.waitSecDone := true.B;   temp.asUInt }
+  def waitSecDone       : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.waitSecDone  := true.B;   temp.asUInt }
 
-  // Commit Code Commit
-  def commit            : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.commit     := true.B;    temp.asUInt }
-  def fwdCommit         : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.fwdCommit  := true.B;    temp.asUInt }
-  def cmtRsp  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel    := RSP;       temp.commitOp := x; require(x.getWidth == RspOpcode.width); temp.asUInt | commit }
-  def cmtDat  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel    := DAT;       temp.commitOp := x; require(x.getWidth == DatOpcode.width); temp.asUInt | commit }
-  def resp    (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.resp       := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt }
-  def fwdResp (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.fwdCommit  := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | fwdCommit }
+  // Commit Code
+  def sendResp          : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.sendResp     := true.B;    temp.asUInt }
+  def sendFwdResp       : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.sendfwdResp  := true.B;    temp.asUInt }
+  def cmtRsp  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel      := RSP;       temp.commitOp := x; require(x.getWidth == RspOpcode.width); temp.asUInt | sendResp }
+  def cmtDat  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel      := DAT;       temp.commitOp := x; require(x.getWidth == DatOpcode.width); temp.asUInt | sendResp }
+  def resp    (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.resp         := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt }
+  def fwdResp (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.fwdResp      := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | sendFwdResp }
 
   // Commit Code Write SF/LLC
   def wriSRC  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.srcValid  := x.asBool;    temp.wriSF := true.B;   temp.asUInt }
@@ -315,12 +318,11 @@ object Code {
   def wriLLC  (x: UInt)    : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.llcState  := toState(x);  temp.wriLLC := true.B;  require(x.getWidth == DecodeCHI.width); temp.asUInt }
 
   // Commit Code DataOp
-  // If wriDIR(valid) and not hit, the save and clean operation will be delayed until the repl completes.
-  // note: cant set repl
+  // If need write llc(valid) and not hit in llc, the save and clean operation will be handed over to ReplaceCM for execution.
   def cdop(x: String*): UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // CommitCode NoCMT or ERROR
-  def noCmt             : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.asUInt }
+  def noCmt : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.asUInt }
 
   // Use In Decode Table
   def first(commitCode: UInt): (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]) = (noTask, Seq(Inst.noResp -> (noTask, Seq(Inst.noResp -> commitCode))))
@@ -336,6 +338,8 @@ object Code {
 
 
 object Decode {
+  type DecodeType = (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])
+
   private val table = Read_LAN_DCT_DMT.table ++ Dataless_LAN.table ++ Write_LAN.table
 
   // ChiInst length

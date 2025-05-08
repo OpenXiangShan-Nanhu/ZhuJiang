@@ -2,7 +2,9 @@ package dongjiang
 
 import chisel3._
 import chisel3.util._
+import dongjiang.data.DsIdx
 import org.chipsalliance.cde.config._
+
 import scala.math.{log, max, min}
 import zhujiang.{HasZJParams, ZJParametersKey}
 import xijiang.NodeType
@@ -21,21 +23,20 @@ case class DJParam(
                   nrPoS:              Int = 64, // The number of outstanding
                   // ------------------------ Memblock ----------------------- //
                   dataBufSizeInByte:  Int = 64 * 32,
-                  nrDataCM:           Int = 32,
                   // Data SRAM
                   nrDSBank:           Int = 4,
-                  dataRamSetup:          Int = 2,
-                  dataRamExtraHold:      Boolean = false,
-                  dataRamLatency:        Int = 2,
+                  dataRamSetup:       Int = 2,
+                  dataRamExtraHold:   Boolean = false,
+                  dataRamLatency:     Int = 2,
                   // ------------------------ Directory  ----------------------- //
                   // Replace Policy is PLRU
                   llcWays:            Int = 16, // self llc ways
                   sfWays:             Int = 16, // snoop filter ways
                   // Dir SRAM
                   nrDirBank:          Int = 2,
-                  dirRamSetup:           Int = 1,
-                  dirRamExtraHold:       Boolean = false,
-                  dirRamLatency:         Int = 2,
+                  dirRamSetup:        Int = 1,
+                  dirRamExtraHold:    Boolean = false,
+                  dirRamLatency:      Int = 2,
                 ) {
   lazy val hasLLC    = llcSizeInB != 0
   lazy val CacheLine = 64 // Bytes
@@ -58,6 +59,7 @@ case class DJParam(
   require(llcSets > nrDirBank, s"illegal llc sets: llcSets($llcSets) = llcSizeInB($llcSizeInB) / CacheLine($CacheLine) / llcWays($llcWays) > nrDirBank = $nrDirBank")
   require(sfSets  > nrDirBank, s"illegal sf sets : sfSets($sfSets)   = sfSizeInB($sfSizeInB)   / CacheLine($CacheLine) / llcWays($llcWays) > nrDirBank = $nrDirBank")
   require(dsSets  > nrDSBank,  s"illegal ds sets : dsSets($dsSets)   = llcSets($llcSets) * llcWays($llcWays) > nrDirBank = $nrDirBank")
+  require(posWays >= 4)
   require(nrReqTaskBuf > 0)
   require(nrSnpTaskBuf >= 0)
   require(isPow2(dataBufSizeInByte))
@@ -222,14 +224,18 @@ trait HasDJParam extends HasParseZJParam {
   // pos
   def getPosTag   (a: UInt) = getUseAddr(a)(posTag_ua_hi, posTag_ua_lo)
   def getPosSet   (a: UInt) = getUseAddr(a)(posSet_ua_hi, posSet_ua_lo)
-  // ds
-  def getDS       (a: UInt, way: UInt) = {
-    require(way.getWidth == llcWayBits)
-    val temp = Cat(getLlcSet(a), way, getDirBank(a))
-    val bank = temp(dsBank_ds_hi, dsBank_ds_lo)
-    val idx  = temp(dsIdx_ds_hi,  dsIdx_ds_lo)
-    (bank, idx)
-  }
+
+  // HnTxnID
+  lazy val hnTxnIDBits      = dirBankBits + posSetBits + posWayBits
+  // dirBank
+  lazy val dirBank_hn_hi    = hnTxnIDBits - 1
+  lazy val dirBank_hn_lo    = hnTxnIDBits - dirBankBits
+  // posSet
+  lazy val posSet_hn_hi     = posWayBits + posSetBits - 1
+  lazy val posSet_hn_lo     = posWayBits
+  // posWay
+  lazy val posWay_hn_hi     = posWayBits - 1
+  lazy val posWay_hn_lo     = 0
 
   // Data Parameters
   lazy val DataBits         = djparam.CacheLine * 8
@@ -238,7 +244,6 @@ trait HasDJParam extends HasParseZJParam {
   lazy val ChiFullSize      = log2Ceil(djparam.CacheLine) // 6
   lazy val ChiHalfSize      = log2Ceil(djparam.BeatByte) // 5
   require(MaskBits == zjParams.beBits)
-
 
   // Frontend(Per dirBank) and Directory Parameters
   lazy val nrReqTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
@@ -252,14 +257,12 @@ trait HasDJParam extends HasParseZJParam {
   // [S1(PoS/Block)] + [S2(ReadDir)] + [S3(Decode)] + Reserve for snp
   lazy val nrIssueBuf       = 4
   lazy val issueBufBits     = log2Ceil(nrIssueBuf)
-  // (LAN + BBN) * (Req + Snp) + wriLLC + wriSF
-  lazy val nrGetAddr        = nrIcn * 2 + 2
-
 
   // DataBlock Parameters
   // dc/db
+  lazy val nrDataCM         = djparam.nrDataBuf / djparam.nrBeat
   lazy val dbIdBits         = log2Ceil(djparam.nrDataBuf)
-  lazy val dcIdBits         = log2Ceil(djparam.nrDataCM)
+  lazy val dcIdBits         = log2Ceil(nrDataCM)
   //ds
   lazy val dsBank           = djparam.nrDSBank
   lazy val nrDsSet          = djparam.dsSets / dsBank
@@ -273,7 +276,7 @@ trait HasDJParam extends HasParseZJParam {
 
   // Backend Parameters
   lazy val nrReplaceCM      = (djparam.nrPoS / 2).max(2)
-  lazy val nrTaskCM         = 5
+  lazy val nrTaskCM         = 4 // SnoopCM + ReadCM + DatalessCM + WriOrAtmCM
   lazy val nrSnoopCM        = (djparam.nrPoS / 4).max(2)
   lazy val nrReadCM         = (djparam.nrPoS / 2).max(2)
   lazy val nrDatalessCM     = (djparam.nrPoS / 4).max(2)

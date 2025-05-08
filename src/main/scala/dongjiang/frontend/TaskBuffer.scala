@@ -35,7 +35,6 @@ class TaskState(implicit p: Parameters) extends DJBundle {
 // ----------------------------------------------------------------------------------------------------- //
 // ------------------------------------------ Task Buffer Entry ---------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-// TODO: can receive device
 class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
@@ -88,7 +87,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
       nidReg.get := io.initNid.get
     }.elsewhen(taskReg.isValid) {
       nidReg.get := nidReg.get - io.othRel.get
-      HardwareAssertion.withEn(nidReg.get > 0.U, io.othRel.get)
+      HAssert.withEn(nidReg.get > 0.U, io.othRel.get)
     }
   }
   // Output State
@@ -96,7 +95,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   io.state.release := RegNext(taskReg.isValid) & taskReg.isFree
   io.state.addr    := taskReg.addr
   io.state.value   := taskReg.state
-  HardwareAssertion(!(io.state.valid & io.state.release))
+  HAssert(!(io.state.valid & io.state.release))
 
   /*
    * State Transfer:
@@ -145,7 +144,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
     // task
     val chiTaskIn   = Flipped(Decoupled(new PackChi with HasAddr))
     val chiTask_s0  = Valid(new PackChi with HasAddr)
-    val req2Pos_s0  = Valid(new Addr with HasChiChannel)
+    val allocPos_s0 = Valid(new Addr with HasChiChannel)
     // ctrl
     val retry_s1    = Input(Bool()) // Reject Task by Block or PoS Full
     val sleep_s1    = Input(Bool()) // Reject Task by PoS Match
@@ -156,7 +155,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
 
 
   /*
-   * Module declaration
+   * Module and Wire declaration
    */
   val entries       = Seq.fill(nrEntries) { Module(new TaskEntry(log2Ceil(nrEntries), sort)) }
   val selRREncoder  = Module(new StepRREncoder(nrEntries))
@@ -180,9 +179,9 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   taskVec_s0.zipWithIndex.foreach { case(t, i) => t.ready := selId_s0 === i.U }
   // connect
   io.chiTask_s0               := taskVec_s0(selId_s0)
-  io.req2Pos_s0.valid         := io.chiTask_s0.valid
-  io.req2Pos_s0.bits.addr     := io.chiTask_s0.bits.addr
-  io.req2Pos_s0.bits.channel  := io.chiTask_s0.bits.chi.channel
+  io.allocPos_s0.valid        := io.chiTask_s0.valid
+  io.allocPos_s0.bits.addr    := io.chiTask_s0.bits.addr
+  io.allocPos_s0.bits.channel := io.chiTask_s0.bits.chi.channel
 
   /*
    * Connect Ctrl Signals
@@ -201,7 +200,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
       self.io.initNid.get  := PopCount(Cat(entries.map(other => other.io.state.valid & other.io.state.Addr.useAddr === io.chiTaskIn.bits.Addr.useAddr)))
       self.io.othRel.get   := Cat(entries.map(other => other.io.state.release & other.io.state.Addr.useAddr === self.io.state.Addr.useAddr)).orR
     }
-    HardwareAssertion(PopCount(Cat(entries.map(e => e.io.state.release))) <= 1.U)
+    HAssert(PopCount(Cat(entries.map(e => e.io.state.release))) <= 1.U)
   }
 
   /*
@@ -210,7 +209,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   io.working := Cat(entries.map(_.io.state.valid)).orR
 
   /*
-   * HardwareAssertion placePipe
+   * HAssert placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue - 2)
+  HAssert.placePipe(1)
 }

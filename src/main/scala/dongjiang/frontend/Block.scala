@@ -5,6 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
+import dongjiang.backend.{CMTask, FastResp}
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
@@ -13,7 +14,7 @@ import zhujiang.chi.RspOpcode._
 import zhujiang.chi.SnpOpcode._
 import dongjiang.data._
 
-class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
+class Block(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
@@ -21,18 +22,18 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val config        = new DJConfigIO()
     // Task
     val chiTask_s0    = Flipped(Valid(new PackChi with HasAddr))
-    val task_s1       = Valid(new PackChi with HasAddr with HasPackPosIndex with HasAlready)
+    val task_s1       = Valid(new PackChi with HasAddr with HasPackHnIdx with HasAlready)
     // Read Directory
-    val readDir_s1    = Decoupled(new Addr with HasPackPosIndex)
+    val readDir_s1    = Decoupled(new Addr with HasPackHnIdx)
     // Message from PoS
     val posBlock_s1   = Input(Bool())
-    val posIdx_s1     = Input(new PosIndex())
+    val hnIdx_s1      = Input(new HnIndex())
     // Return to TaskBuf
     val retry_s1      = Output(Bool())
     // Send Req To Data
-    val reqDB_s1      = Decoupled(new PackLLCTxnID with HasDataVec)
-    // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
-    val fastResp_s1   = Decoupled(new RespFlit())
+    val reqDB_s1      = Decoupled(new HnTxnID with HasDataVec)
+    // Resp to RN: ReadReceipt, DBIDResp, CompDBIDResp
+    val fastResp_s1   = Decoupled(new FastResp())
     // Block Message(The number of resources already used)
     val alrUseBuf     = Input(UInt((issueBufBits+1).W))
   })
@@ -43,9 +44,11 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
    */
   val validReg_s1         = RegInit(false.B)
   val taskReg_s1          = Reg(new PackChi with HasAddr)
-  val needRespReadReg_s1  = RegInit(false.B)
-  val needRespDBIDReg_s1  = RegInit(false.B)
-  val needRsvdReg_s1      = RegInit(false.B)
+  val sReceiptReg_s1      = RegInit(false.B)  // need send ReadReceipt in s1
+  val sDBIDReg_s1         = RegInit(false.B)  // need send XDBIDResp in s1
+  val reqIsWEOEReg_s1     = RegInit(false.B)  // Req is WriteEvictOrEvict
+  val shouldResp_s1       = Wire(Bool())      // shouled send fast resp to Backend
+  val rsvdReg_s1          = RegInit(false.B)  // block by issue
   val block_s1            = Wire(new Bundle {
     val rsvd              = Bool()
     val pos               = Bool()
@@ -59,7 +62,9 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
    * Receive Task
    */
   validReg_s1     := io.chiTask_s0.valid
-  taskReg_s1      := io.chiTask_s0.bits
+  when(io.chiTask_s0.valid) {
+    taskReg_s1    := io.chiTask_s0.bits
+  }
 
   /*
    * Block logic
@@ -69,16 +74,12 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val freeBufNum_s0 = nrIssueBuf.U - alrUseBuf_s0; dontTouch(freeBufNum_s0)
   HardwareAssertion(alrUseBuf_s0 <= nrIssueBuf.U)
   // Reserve an extra entry for the snp task
-  needRsvdReg_s1    := Mux(io.chiTask_s0.bits.chi.isSnp, freeBufNum_s0 === 0.U, freeBufNum_s0 <= 1.U)
+  rsvdReg_s1        := Mux(io.chiTask_s0.bits.chi.isSnp, freeBufNum_s0 === 0.U, freeBufNum_s0 <= 1.U)
   // block
-  block_s1.rsvd     := needRsvdReg_s1
+  block_s1.rsvd     := rsvdReg_s1
   block_s1.pos      := io.posBlock_s1
-  block_s1.dir      := !io.readDir_s1.ready & taskReg_s1.chi.memAttr.cacheable
-  block_s1.resp     := PriorityMux(Seq(
-    needRespReadReg_s1 ->  !io.fastResp_s1.ready,
-    needRespDBIDReg_s1 -> (!io.fastResp_s1.ready | !io.reqDB_s1.ready),
-    true.B             ->  false.B
-  ))
+  block_s1.dir      := !io.readDir_s1.ready // TODO: nocache no need wait dir.read.ready
+  block_s1.resp     := shouldResp_s1 & !io.fastResp_s1.ready
   io.retry_s1       := validReg_s1 & block_s1.all
 
   /*
@@ -87,51 +88,48 @@ class Block(dirBank: Int)(implicit p: Parameters) extends DJModule {
   io.task_s1.valid          := validReg_s1 & !block_s1.all
   io.task_s1.bits.chi       := taskReg_s1.chi
   io.task_s1.bits.addr      := taskReg_s1.addr
-  io.task_s1.bits.pos       := io.posIdx_s1
+  io.task_s1.bits.hnIdx     := io.hnIdx_s1
   io.task_s1.bits.alr.reqs  := io.reqDB_s1.fire
-  io.task_s1.bits.alr.sRepl := false.B
-  io.task_s1.bits.alr.sDBID := io.fastResp_s1.fire & taskReg_s1.chi.isWrite
   io.task_s1.bits.alr.sData := false.B
-  HardwareAssertion.withEn(io.task_s1.bits.alr.reqs, validReg_s1 & io.task_s1.bits.alr.sDBID)
 
   /*
    * Read Directory
    */
   io.readDir_s1.valid       := validReg_s1 & taskReg_s1.chi.memAttr.cacheable & !(block_s1.rsvd | block_s1.pos | block_s1.resp)
   io.readDir_s1.bits.addr   := taskReg_s1.addr
-  io.readDir_s1.bits.pos    := io.posIdx_s1
+  io.readDir_s1.bits.hnIdx  := io.hnIdx_s1
 
   /*
    * Resp to Node
    */
   // needRespReg_s1 is associated with dbid2Rn of Commit.
-  needRespReadReg_s1          := io.chiTask_s0.bits.chi.isRead & io.chiTask_s0.bits.chi.isEO
-  needRespDBIDReg_s1          := io.chiTask_s0.bits.chi.needSendDBID
-  val shouldRespRead_s1       = needRespReadReg_s1
-  val shouldRespDBID_s1       = needRespDBIDReg_s1 & io.reqDB_s1.ready
+  sReceiptReg_s1              := io.chiTask_s0.bits.chi.isRead  & io.chiTask_s0.bits.chi.isEO
+  sDBIDReg_s1                 := io.chiTask_s0.bits.chi.needSendDBID
+  reqIsWEOEReg_s1             := io.chiTask_s0.bits.chi.reqIs(WriteEvictOrEvict)
+  shouldResp_s1               := sReceiptReg_s1 | reqIsWEOEReg_s1 | sDBIDReg_s1 & io.reqDB_s1.ready
   // Send Req To Data
-  io.reqDB_s1.valid                 := validReg_s1 & needRespDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
-  io.reqDB_s1.bits.dataVec          := taskReg_s1.chi.dataVec
-  io.reqDB_s1.bits.llcTxnID.pos     := io.posIdx_s1
-  io.reqDB_s1.bits.llcTxnID.dirBank := dirBank.U
+  io.reqDB_s1.valid           := validReg_s1 & sDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
+  io.reqDB_s1.bits.dataVec    := DataVec.Full
+  io.reqDB_s1.bits.hnTxnID    := io.hnIdx_s1.getTxnID
   // Send Fast Resp To CHI
-  io.fastResp_s1.valid        := validReg_s1 & (shouldRespRead_s1 | shouldRespDBID_s1) & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
-  io.fastResp_s1.bits         := DontCare
-  io.fastResp_s1.bits.SrcID   := taskReg_s1.chi.getNoC(io.config.ci)
-  io.fastResp_s1.bits.TgtID   := taskReg_s1.chi.nodeId
-  io.fastResp_s1.bits.TxnID   := taskReg_s1.chi.txnID
-  io.fastResp_s1.bits.Opcode  := PriorityMux(Seq(
-    (taskReg_s1.chi.isRead  & taskReg_s1.chi.isEO)        -> ReadReceipt,
-    (taskReg_s1.chi.isWrite & taskReg_s1.chi.isOWO)       -> DBIDResp,
-    (taskReg_s1.chi.isWrite & taskReg_s1.chi.memAttr.ewa) -> CompDBIDResp
+  io.fastResp_s1.valid              := validReg_s1 & shouldResp_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
+  io.fastResp_s1.bits.dataVec       := taskReg_s1.chi.dataVec
+  io.fastResp_s1.bits.rsp           := DontCare
+  io.fastResp_s1.bits.rsp .SrcID    := taskReg_s1.chi.getNoC(io.config.ci)
+  io.fastResp_s1.bits.rsp .TgtID    := taskReg_s1.chi.nodeId
+  io.fastResp_s1.bits.rsp .TxnID    := taskReg_s1.chi.txnID
+  io.fastResp_s1.bits.rsp .DBID     := io.hnIdx_s1.getTxnID
+  io.fastResp_s1.bits.rsp .RespErr  := RespErr.NormalOkay
+  io.fastResp_s1.bits.rsp .Opcode   := PriorityMux(Seq(
+    sReceiptReg_s1                              -> ReadReceipt,
+    reqIsWEOEReg_s1                             -> Comp,
+    (sDBIDReg_s1 & taskReg_s1.chi.isOWO)        -> DBIDResp,
+    (sDBIDReg_s1 & taskReg_s1.chi.memAttr.ewa)  -> CompDBIDResp
   ))
   HardwareAssertion.withEn(taskReg_s1.chi.isOWO | taskReg_s1.chi.memAttr.ewa, validReg_s1 && taskReg_s1.chi.isWrite)
-  io.fastResp_s1.bits.RespErr := RespErr.NormalOkay
-  io.fastResp_s1.bits.DBID    := io.posIdx_s1.getLLCTxnID(dirBank)
-
 
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue-2)
+  HardwareAssertion.placePipe(1)
 }

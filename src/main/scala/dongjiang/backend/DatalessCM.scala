@@ -1,4 +1,4 @@
-package dongjiang.backend.dataless
+package dongjiang.backend
 
 import chisel3._
 import chisel3.util._
@@ -13,8 +13,6 @@ import dongjiang.frontend._
 import dongjiang.frontend.decode._
 import zhujiang.chi.RspOpcode._
 import dongjiang.backend._
-import dongjiang.backend.read.State._
-
 
 class DatalessCM(implicit p: Parameters) extends DJModule {
   /*
@@ -22,14 +20,15 @@ class DatalessCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config        = new DJConfigIO()
-    // Commit Task In
+    // Task
     val alloc         = Flipped(Decoupled(new CMTask))
+    val resp          = Decoupled(new CMResp)
     // CHI
     val txReq         = Decoupled(new ReqFlit(true))
     val txRsp         = Decoupled(new RespFlit())
     val rxRsp         = Flipped(Valid(new RespFlit()))
-    // Resp To Commit
-    val respCmt       = Decoupled(new RespToCmt)
+    // Update PoS
+    val updPosNest    = Decoupled(new PosCanNest)
   })
   HardwareAssertion(!io.alloc.valid)
   io <> DontCare
@@ -37,5 +36,5 @@ class DatalessCM(implicit p: Parameters) extends DJModule {
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue-2)
+  HardwareAssertion.placePipe(1)
 }

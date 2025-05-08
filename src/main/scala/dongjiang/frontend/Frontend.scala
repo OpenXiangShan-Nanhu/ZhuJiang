@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.{CMTask, CommitTask}
+import dongjiang.backend.{CMTask, CommitTask, FastResp, ReqPoS, RespComp}
 import dongjiang.utils._
 import dongjiang.bundle._
 import dongjiang.data.DataTask
@@ -14,7 +14,7 @@ import dongjiang.directory.{DirEntry, DirMsg, PackDirMsg}
 import dongjiang.frontend.decode.{CommitCode, Operations}
 import xs.utils.queue.FastQueue
 
-class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
+class Frontend(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
@@ -26,22 +26,24 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
     val rxReq         = Flipped(Decoupled(new ReqFlit(false)))
     val rxSnp         = Flipped(Decoupled(new SnoopFlit()))
     // To Data
-    val reqDB_s1      = Decoupled(new PackLLCTxnID with HasDataVec)
+    val reqDB_s1      = Decoupled(new HnTxnID with HasDataVec)
     val fastData_s3   = Decoupled(new DataTask)
     // DIR Read/Resp
-    val readDir_s1    = Decoupled(new Addr with HasPackPosIndex)
+    val readDir_s1    = Decoupled(new Addr with HasPackHnIdx)
     val respDir_s3    = Flipped(Valid(new PackDirMsg))
     // To Backend
-    val cmtAlloc_s3   = Valid(new CommitTask())
-    val cmAllocVec_s4 = Vec(nrTaskCM, Decoupled(new CMTask()))
-    // Get Full Addr In PoS
-    val getAddrVec    = Vec(nrGetAddr, Flipped(new GetAddr(true)))
+    val cmtTask_s3    = Valid(new CommitTask with HasHnTxnID)
+    val cmTaskVec     = Vec(nrTaskCM, Decoupled(new CMTask))
+    // Get addr from PoS
+    val getAddrVec    = Vec(3, Flipped(new GetAddr())) // txReq + txSnp + writeDir
     // Update PoS Message
-    val updPosNest    = Flipped(Decoupled(new PackPosIndex with HasNest))
-    val updPosTag     = Flipped(Valid(new PackPosIndex with HasAddr))
-    val cleanPos      = Flipped(Valid(new PackPosIndex with HasChiChannel))
+    val reqPoS        = Flipped(new ReqPoS())
+    val updPosTag     = Flipped(Valid(new Addr with HasPackHnIdx))
+    val updPosNest    = Flipped(Valid(new PosCanNest))
+    val cleanPos      = Flipped(Valid(new PosClean))
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
-    val fastResp      = Decoupled(new RespFlit())
+    val fastResp_s1   = Decoupled(new FastResp())
+    val respComp_s3   = Valid(new RespComp)
     // PoS Busy Signal
     val alrUsePoS     = Output(UInt(log2Ceil(nrPoS + 1).W))
     //  system is working
@@ -59,14 +61,14 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   val snpTaskBuf  = Module(new TaskBuffer(nrSnpTaskBuf, sort = false))
   // S1
   val posTable    = Module(new PosTable())
-  val block       = Module(new Block(dirBank))
+  val block       = Module(new Block())
   // S2: Wait Directory Response
   val bufReg_s2   = RegInit(0.U.asTypeOf(block.io.task_s1.bits))
   val shiftReg_s2 = RegInit(0.U.asTypeOf(new Shift(readDirLatency-1)))
   // S3: Receive DirResp and Decode
-  val decode      = Module(new Decode(dirBank))
+  val decode      = Module(new Decode())
   // S4: Issue Task to Backend
-  val issue       = Module(new Issue(dirBank))
+  val issue       = Module(new Issue())
 
   /*
    * Connect
@@ -84,12 +86,13 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   // io
   io.getAddrVec.zip(posTable.io.getAddrVec).foreach { case(a, b) => a <> b }
   io.reqDB_s1               <> block.io.reqDB_s1
-  io.fastData_s3            <> decode.io.fastData_s3
   io.readDir_s1             <> block.io.readDir_s1
-  io.fastResp               <> FastQueue(block.io.fastResp_s1, djparam.nrDirBank.max(2))
+  io.fastResp_s1            <> FastQueue(block.io.fastResp_s1, djparam.nrDirBank.max(2))
   io.alrUsePoS              := posTable.io.alrUsePoS
-  io.cmtAlloc_s3            := issue.io.cmtAlloc_s3
-  io.cmAllocVec_s4          <> issue.io.cmAllocVec_s4
+  io.respComp_s3            := decode.io.respComp_s3
+  io.fastData_s3            <> decode.io.fastData_s3
+  io.cmtTask_s3             := decode.io.cmtTask_s3
+  io.cmTaskVec              <> issue.io.cmTaskVec
   io.working                := reqTaskBuf.io.working | snpTaskBuf.io.working | posTable.io.working
 
   // req2Task
@@ -119,18 +122,20 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   }
 
   // posTable [S1]
-  posTable.io.req_s0        := fastRRArb(Seq(snpTaskBuf.io.req2Pos_s0, reqTaskBuf.io.req2Pos_s0)) 
+  posTable.io.alloc_s0      := fastArb(Seq(snpTaskBuf.io.allocPos_s0, reqTaskBuf.io.allocPos_s0))
   posTable.io.retry_s1      := block.io.retry_s1
-  posTable.io.updNest       := fastArb.validOut(Seq(decode.io.updNest_s3, io.updPosNest))
-  posTable.io.updTag        := io.updPosTag
+  posTable.io.updNest       := io.updPosNest
   posTable.io.clean         := io.cleanPos
+  posTable.io.updTag        := io.updPosTag
+  posTable.io.reqPoS        <> io.reqPoS
+  posTable.io.reqPoS.req.valid := io.reqPoS.req.valid & io.reqPoS.req.bits.dirBank === io.dirBank
 
   // block [S1]
-  block.io.chiTask_s0       := fastRRArb(Seq(snpTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0))
+  block.io.chiTask_s0       := fastArb(Seq(snpTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0))
   block.io.posBlock_s1      := posTable.io.block_s1
-  block.io.posIdx_s1        := posTable.io.posIdx_s1
-  block.io.alrUseBuf        := shiftReg_s2.s.orR +& decode.io.task_s3.valid + issue.io.alrUseBuf
-  HardwareAssertion((shiftReg_s2.s.orR +& decode.io.task_s3.valid + issue.io.alrUseBuf) <= nrIssueBuf.U)
+  block.io.hnIdx_s1         := posTable.io.hnIdx_s1
+  block.io.alrUseBuf        := shiftReg_s2.s.orR +& decode.io.cmtTask_s3.valid + issue.io.alrUseBuf
+  HardwareAssertion((shiftReg_s2.s.orR +& decode.io.cmtTask_s3.valid + issue.io.alrUseBuf) <= nrIssueBuf.U)
 
   // buffer [S2]
   bufReg_s2                 := Mux(block.io.task_s1.valid, block.io.task_s1.bits, bufReg_s2)
@@ -143,10 +148,10 @@ class Frontend(dirBank: Int)(implicit p: Parameters) extends DJModule {
   decode.io.respDir_s3      := io.respDir_s3
 
   // issue [S4]
-  issue.io.task_s3          := decode.io.task_s3
+  issue.io.cmTask_s3        := decode.io.cmTask_s3
 
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue-1)
+  HardwareAssertion.placePipe(2)
 }

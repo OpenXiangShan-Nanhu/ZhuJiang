@@ -2,6 +2,7 @@ package dongjiang.frontend.decode
 
 import dongjiang._
 import dongjiang.frontend._
+import dongjiang.frontend.decode.Decode.DecodeType
 import dongjiang.frontend.decode.Inst._
 import dongjiang.frontend.decode.Code._
 import dongjiang.frontend.decode.DecodeCHI._
@@ -15,11 +16,9 @@ import zhujiang.chi._
 import chisel3._
 import chisel3.util._
 
-
-
 object Dataless_LAN {
   // MakeUnique
-  def makeUnique: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(MakeUnique) | expCompAck, Seq(
+  def makeUnique: DecodeType = (fromLAN | toLAN | reqIs(MakeUnique) | expCompAck, Seq(
     // I I I  -> UD I I
     (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(UC) | wriSRC(true)),
     // I I SC -> UD I I
@@ -38,7 +37,7 @@ object Dataless_LAN {
 
 
   // Evict
-  def evict: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(Evict), Seq(
+  def evict: DecodeType = (fromLAN | toLAN | reqIs(Evict), Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(I)),
     // I I SC -> I I SC
@@ -57,5 +56,5 @@ object Dataless_LAN {
 
 
   // makeUnique ++ evict ++ cleanShared ++ cleanInvalid ++ makeInvalid
-  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(makeUnique, evict)
+  def table: Seq[DecodeType] = Seq(makeUnique, evict)
 }

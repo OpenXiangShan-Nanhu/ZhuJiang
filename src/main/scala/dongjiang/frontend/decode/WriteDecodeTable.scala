@@ -2,6 +2,7 @@ package dongjiang.frontend.decode
 
 import dongjiang._
 import dongjiang.frontend._
+import dongjiang.frontend.decode.Decode.DecodeType
 import dongjiang.frontend.decode.Inst._
 import dongjiang.frontend.decode.Code._
 import dongjiang.frontend.decode.DecodeCHI._
@@ -17,106 +18,103 @@ import chisel3.util._
 
 object Write_LAN {
   // WriteNoSnpPtl With EWA
-  def writeNoSnpPtl_ewa: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | expCompAck | isOWO, Seq(
-    (srcMiss | othMiss | llcIs(I)) -> (tdop("reqs") | receive(CompDBIDResp), Seq(
-      (datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), noCmt)
-    ))
+  def writeNoSnpPtl_ewa: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | expCompAck | isOWO, Seq(
+    (sfMiss | llcIs(I)) -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), noCmt)))
   ))
 
   // WriteNoSnpPtl Without EWA
-  def writeNoSnpPtl_noEwa: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | expCompAck | isOWO, Seq(
-    (srcMiss | othMiss | llcIs(I)) -> (tdop("reqs") | receive(DBIDResp), Seq(
-      (datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp))
-    ))
+  def writeNoSnpPtl_noEwa: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | expCompAck | isOWO, Seq(
+    (sfMiss | llcIs(I)) -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp))))
   ))
 
   // WriteUniquePtl With Allocate
-  def writeUniquePtl_alloc: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(WriteUniquePtl) | allocate | ewa | isOWO, Seq(
-    // I I I  -> I I UD
-    (sfMiss | llcIs(I))   -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp) | wriLLC(UD)))),
+  def writeUniquePtl_alloc: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | allocate | ewa | isOWO, Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp)))),
     // I I SC -> I I UD
-    (sfMiss | llcIs(SC))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp) | wriLLC(UD)))),
+    (sfMiss | llcIs(SC))  -> first(waitRecDone, cbRespIs(I), cdop("read", "save", "clean") | cmtRsp(Comp) | wriLLC(UD)),
     // I I UC -> I I UD
-    (sfMiss | llcIs(UC))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp)  | wriLLC(UD)))),
+    (sfMiss | llcIs(UC))  -> first(waitRecDone, cbRespIs(I), cdop("read", "save", "clean") | cmtRsp(Comp) | wriLLC(UD)),
     // I I UD -> I I UD
-    (sfMiss | llcIs(UD))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(cdop("save", "clean") | cmtRsp(Comp)  | wriLLC(UD)))),
+    (sfMiss | llcIs(UD))  -> first(waitRecDone, cbRespIs(I), cdop("read", "save", "clean") | cmtRsp(Comp) | wriLLC(UD)),
     // I V I
-    // TODO: reqs twice because dataVec = 2
-    // TODO: dataBuffer auto merge data
     (srcMiss | othHit | llcIs(I)) -> (tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
-      (datIs(SnpRespData) | respIs(I_PD)) -> (receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> (cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)))), // I I UD
-      (datIs(SnpRespData) | respIs(I))    -> (receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> (cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)))), // I I UD
-      (rspIs(SnpResp)     | respIs(I))    -> (receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> (cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)))), // I I UD
+      (cbRespIs(I) | datIs(SnpRespData) | respIs(I_PD)) -> second(cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
+      (cbRespIs(I) | datIs(SnpRespData) | respIs(I))    -> second(cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
+      (cbRespIs(I) | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl),  cmtRsp(Comp) | wriSNP(false)) // I I I
     ))
   ))
 
   // WriteUnique Without Allocate
-  // TODO: receive can send dataTask
-  def writeUniquePtl_noAlloc: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(WriteUniquePtl) | ewa | isOWO, Seq(
+  def writeUniquePtl_noAlloc: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | ewa | isOWO, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)))),
+    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)))),
     // I I SC -> I I UD
-    (sfMiss | llcIs(SC))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I I UC -> I I UD
-    (sfMiss | llcIs(UC))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I I UD -> I I UD
-    (sfMiss | llcIs(UD))  -> (tdop("reqs") | receive(DBIDResp), Seq((datIs(NonCopyBackWriteData) | respIs(I)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("read", "send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I V I
-    // TODO: decode 3 times
+    (srcMiss | othHit | llcIs(I)) -> (tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
+      (cbRespIs(I) | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
+      (cbRespIs(I) | datIs(SnpRespData) | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
+      (cbRespIs(I) | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false))  // I I I
+    ))
   ))
 
 
   // WriteBackFull
-  def writeBackFull: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(WriteBackFull) | allocate | ewa | noOrder, Seq(
+  def writeBackFull: DecodeType = (fromLAN | toLAN | reqIs(WriteBackFull) | allocate | ewa | noOrder, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (receive(CompDBIDResp), Seq((datIs(CopyBackWriteData) | respIs(I)) -> second(noCmt))),
+    (sfMiss | llcIs(I))   -> first(waitRecDone, cbRespIs(I), cdop("clean")),
     // I I SC -> I I SC
-    (sfMiss | llcIs(SC))  -> (receive(CompDBIDResp), Seq((datIs(CopyBackWriteData) | respIs(I)) -> second(noCmt))),
+    (sfMiss | llcIs(SC))  -> first(waitRecDone, cbRespIs(I), cdop("clean")),
     // I I UC -> I I UC
-    (sfMiss | llcIs(UC))  -> (receive(CompDBIDResp), Seq((datIs(CopyBackWriteData) | respIs(I)) -> second(noCmt))),
+    (sfMiss | llcIs(UC))  -> first(waitRecDone, cbRespIs(I), cdop("clean")),
     // I I UD -> I I UD
-    (sfMiss | llcIs(UD))  -> (receive(CompDBIDResp), Seq((datIs(CopyBackWriteData) | respIs(I)) -> second(noCmt))),
+    (sfMiss | llcIs(UD))  -> first(waitRecDone, cbRespIs(I), cdop("clean")),
     // I V I  -> I V I
-    (srcMiss | othHit | llcIs(I)) -> (receive(CompDBIDResp), Seq((datIs(CopyBackWriteData) | respIs(I)) -> second(noCmt))),
+    (srcMiss | othHit | llcIs(I)) -> first(waitRecDone, cbRespIs(I), cdop("clean")),
     // V I I
-    (srcHit | othMiss | llcIs(I)) -> (tdop("reqs") | receive(CompDBIDResp), Seq(
-      (datIs(CopyBackWriteData) | respIs(UD_PD))  -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UD)), // I I UD
-      (datIs(CopyBackWriteData) | respIs(UC))     -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UC)), // I I UC
-      (datIs(CopyBackWriteData) | respIs(SC))     -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UC)), // I I UC
-      (datIs(CopyBackWriteData) | respIs(I))      -> second(cdop("clean") | wriSRC(false)), // I I I
+    (srcHit | othMiss | llcIs(I)) -> (waitRecDone, Seq(
+      cbRespIs(UD_PD) -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UD)), // I I UD
+      cbRespIs(UC)    -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UC)), // I I UC
+      cbRespIs(SC)    -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UC)), // I I UC
+      cbRespIs(I)     -> second(cdop("clean")         | wriSRC(false)), // I I I
     )),
     // V V I  -> I V I
-    (srcHit | othHit | llcIs(I)) -> (receive(CompDBIDResp), Seq(
-      (datIs(CopyBackWriteData) | respIs(SC))     -> second(wriSRC(false)),
-      (datIs(CopyBackWriteData) | respIs(I))      -> second(wriSRC(false)),
+    (srcHit | othHit | llcIs(I)) -> (waitRecDone, Seq(
+      cbRespIs(SC)    -> second(cdop("clean") | wriSRC(false)),
+      cbRespIs(I)     -> second(cdop("clean") | wriSRC(false)),
     )),
   ))
 
 
   // WriteEvictOrEvict
-  def writeEvictOrEvict: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(WriteEvictOrEvict) | expCompAck | allocate | ewa | noOrder, Seq(
+  def writeEvictOrEvict: DecodeType = (fromLAN | toLAN | reqIs(WriteEvictOrEvict) | expCompAck | allocate | ewa | noOrder, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))  -> (receive(Comp), Seq((rspIs(CompAck) | respIs(I)) -> second(noCmt))),
+    (sfMiss | llcIs(I))  -> first(waitRecDone, cbRespIsCompAck, noCmt),
     // I I SC -> I I SC
-    (sfMiss | llcIs(SC)) -> (receive(Comp), Seq((rspIs(CompAck) | respIs(I)) -> second(noCmt))),
+    (sfMiss | llcIs(SC)) -> first(waitRecDone, cbRespIsCompAck, noCmt),
     // I I UC -> I I UC
-    (sfMiss | llcIs(UC)) -> (receive(Comp), Seq((rspIs(CompAck) | respIs(I)) -> second(noCmt))),
+    (sfMiss | llcIs(UC)) -> first(waitRecDone, cbRespIsCompAck, noCmt),
     // I I UD -> I I UD
-    (sfMiss | llcIs(UD)) -> (receive(Comp), Seq((rspIs(CompAck) | respIs(I)) -> second(noCmt))),
+    (sfMiss | llcIs(UD)) -> first(waitRecDone, cbRespIsCompAck, noCmt),
     // I V I  -> I V I
-    (srcMiss | othHit  | llcIs(I)) -> (receive(Comp), Seq((rspIs(CompAck) | respIs(I)) -> second(noCmt))),
+    (srcMiss | othHit  | llcIs(I)) -> first(waitRecDone, cbRespIsCompAck, noCmt),
     // V I I
-    (srcHit  | othMiss | llcIs(I)) -> (tdop("reqs") | receive(CompDBIDResp), Seq(
-      (datIs(CopyBackWriteData) | respIs(UD_PD))  -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UD)), // I I UD
-      (datIs(CopyBackWriteData) | respIs(UC))     -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UC)), // I I UC
-      (datIs(CopyBackWriteData) | respIs(SC))     -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UC)), // I I UC
-      (datIs(CopyBackWriteData) | respIs(I))      -> second(cdop("clean") | wriSRC(false)), // I I I
+    (srcHit  | othMiss | llcIs(I)) -> (waitRecDone, Seq(
+      cbRespIs(UD_PD) -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UD)), // I I UD
+      cbRespIs(UC)    -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UC)), // I I UC
+      cbRespIs(SC)    -> second(cdop("save", "clean") | wriSRC(false) | wriLLC(UC)), // I I UC
+      cbRespIs(I)     -> second(cdop("clean")         | wriSRC(false)), // I I I
     )),
     // V V I  -> I V I
-    (srcHit  | othHit  | llcIs(I)) -> (receive(Comp), Seq((rspIs(CompAck) | respIs(I)) -> second(wriSRC(false)))),
+    (srcHit  | othHit  | llcIs(I)) -> first(waitRecDone, cbRespIsCompAck, wriSRC(false)),
   ))
 
 
   // writeNoSnpPtl ++ writeUniquePtl ++ writeBackFull ++ writeCleanFull ++ writeEvictOrEvict
-  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(writeNoSnpPtl_ewa, writeNoSnpPtl_noEwa, writeUniquePtl_alloc, writeUniquePtl_noAlloc, writeEvictOrEvict, writeBackFull)
+  def table: Seq[DecodeType] = Seq(writeNoSnpPtl_ewa, writeNoSnpPtl_noEwa, writeUniquePtl_alloc, writeUniquePtl_noAlloc, writeEvictOrEvict, writeBackFull)
 }

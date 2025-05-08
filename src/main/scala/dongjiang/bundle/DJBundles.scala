@@ -74,57 +74,67 @@ class Addr(dirType: String = "llc")(implicit p: Parameters) extends DJBundle wit
 }
 
 /*
- * PoS:
- * HasPosIndex -> PosIndex -> HasPackPosIndex ->
+ * HnIdx:
+ * HasHnIdx -> HnIndex
  */
-trait HasPosIndex extends DJBundle { this: DJBundle =>
-  val set = UInt(posSetBits.W)
-  val way = UInt(posWayBits.W)
-
-  def idxMatch(i: Int, j: Int) = set === i.U & way === j.U
-  def getLLCTxnID(dirBank: Int) = Cat(dirBank.U, set, way)
-  def getLLCTxnID(dirBank: UInt) = Cat(dirBank, set, way)
+trait HasHnIdx extends DJBundle { this: DJBundle =>
+  val dirBank   = UInt(dirBankBits.W)
+  val pos       = new DJBundle {
+    val set     = UInt(posSetBits.W)
+    val way     = UInt(posWayBits.W)
+  }
+  def getTxnID  = Cat(dirBank, pos.set, pos.way)
 }
 
-class PosIndex(implicit p: Parameters) extends DJBundle with HasPosIndex
+class HnIndex(implicit p: Parameters) extends DJBundle with HasHnIdx
 
-trait HasPackPosIndex extends DJBundle { this: DJBundle =>
-  val pos = new PosIndex()
-}
+trait HasPackHnIdx extends DJBundle { this: DJBundle => val hnIdx = new HnIndex() }
 
-class PackPosIndex(implicit p: Parameters) extends DJBundle with HasPackPosIndex
+class PackHnIdx(implicit p: Parameters) extends DJBundle with HasPackHnIdx
+
 
 /*
- * LLCTxnID:
- * HasLLCTxnID -> LLCTxnID -> HasPackLLCTxnID -> PackLLCTxnID
+ * HnTxnID:
+ * HasHnTxnID -> HnTxnID
  */
-trait HasLLCTxnID extends DJBundle { this: DJBundle =>
-  val dirBank = UInt(dirBankBits.W)
-  val pos     = new PosIndex()
-  def get     = pos.getLLCTxnID(dirBank)
+trait HasHnTxnID extends DJBundle { this: DJBundle =>
+  val hnTxnID = UInt(hnTxnIDBits.W)
+
+  def dirBank = if(dirBankBits == 0) 0.U else hnTxnID(dirBank_hn_hi, dirBank_hn_lo)
+  def posSet  = if(posSetBits == 0) 0.U else hnTxnID(posSet_hn_hi, posSet_hn_lo)
+  def posWay  = hnTxnID(posWay_hn_hi, posWay_hn_lo)
+
+  def getHnIdx  = {
+    val idx     = Wire(new HnIndex)
+    idx.dirBank := dirBank
+    idx.pos.set := posSet
+    idx.pos.way := posWay
+    idx
+  }
+
   // Note: only set pos.set and dirBank
   def getAddr = {
     val a = Wire(new Addr())
-    a.Addr.catPoS(0.U(bankBits.W), 0.U(posTagBits.W), pos.set, dirBank)
+    a.Addr.catPoS(0.U(bankBits.W), 0.U(posTagBits.W), posSet, dirBank)
     a.addr
   }
 }
 
-class LLCTxnID(implicit p: Parameters) extends DJBundle with HasLLCTxnID
-
-trait HasPackLLCTxnID extends DJBundle { this: DJBundle =>
-  val llcTxnID = new LLCTxnID()
-}
-
-class PackLLCTxnID(implicit p: Parameters) extends DJBundle with HasPackLLCTxnID
+class HnTxnID(implicit p: Parameters) extends DJBundle with HasHnTxnID
 
 /*
  * HasDataVec
  */
+object DataVec {
+  def Full = VecInit(Seq(true.B, true.B))
+  def Zero = VecInit(Seq(false.B, false.B))
+}
+
 trait HasDataVec extends DJBundle { this: DJBundle =>
   val dataVec = Vec(djparam.nrBeat, Bool())
+  def isZero = PopCount(dataVec) === 0.U
   def isFullSize = dataVec.asUInt.andR
-  def isHalfSize = PopCount(dataVec) === 1.U
+  def isHalfSize = !isZero & !isFullSize
   def getSize = Mux(isFullSize, 6.U, Mux(isHalfSize, 5.U, 0.U))
 }
 
@@ -144,6 +154,7 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
   val retToSrc  = Bool()
   // Flag
   val toLAN     = Bool() // TODO: It should be in CommitTask?
+  def toBBN     = !toLAN
 
 
   def needSendDBID = isAtomic | (isWrite & !reqIs(WriteEvictOrEvict))
@@ -176,9 +187,17 @@ class PackChi(implicit p: Parameters) extends DJBundle with HasPackChi
  * GetAddr
  */
 class GetAddr(frontend: Boolean = false)(implicit p: Parameters) extends DJBundle {
-  val llcTxnIdOpt = if(!frontend) Some(Output(new LLCTxnID())) else None
-  val posOpt      = if(frontend)  Some(Output(new PosIndex())) else None
-  val result      = Input(new Addr())
-  def llcTxnID    = llcTxnIdOpt.get
-  def pos         = posOpt.get
+  val hnIdx   = new HnIndex
+  val result  = Input(new Addr)
 }
+
+/*
+ * HasAlready
+ */
+trait HasAlready { this: DJBundle =>
+  val alr     = new DJBundle {
+    val reqs  = Bool() // Already request DataCM and DataBuf. If set it, commit will clean when done all
+    val sData = Bool() // Already Send Task[reqs+read+send+clean] to DataBlock
+  }
+}
+

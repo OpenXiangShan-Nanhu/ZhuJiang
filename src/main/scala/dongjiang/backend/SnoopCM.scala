@@ -1,4 +1,4 @@
-package dongjiang.backend.snoop
+package dongjiang.backend
 
 import chisel3._
 import chisel3.util._
@@ -15,25 +15,25 @@ import zhujiang.chi.RspOpcode._
 import zhujiang.chi.DatOpcode._
 import dongjiang.bundle.ChiChannel._
 import dongjiang.backend._
-import dongjiang.backend.snoop.State._
+import dongjiang.backend.SNPSTARE._
 import dongjiang.data.DataTask
 import chisel3.experimental.BundleLiterals._
 
 // ----------------------------------------------------------------------------------------------------- //
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-object State {
+object SNPSTARE {
   val width       = 5
   val FREE        = "b00001".U // 0x1
   val REQDB       = "b00010".U // 0x2
   val SENDSNP     = "b00100".U // 0x4
   val WAITRESP    = "b01000".U // 0x8
-  val RESP        = "b10000".U // 0x10
+  val RESPCMT     = "b10000".U // 0x10
 }
 
-class CMState(implicit p: Parameters) extends DJBundle {
-  // CHI: Free --> ReqDB --> SendSnp --> WaitResp0 --> WaitResp1 --> RespCmt --> Free
-  val state       = UInt(State.width.W)
+class SnpMes(implicit p: Parameters) extends DJBundle {
+  // CHI: Free --> ReqDB --> SendSnp --> WaitResp --> RespCmt --> Free
+  val state       = UInt(SNPSTARE.width.W)
   val alrSendVec  = Vec(nrSfMetas, Bool())
   val getRespVec  = Vec(nrSfMetas, Bool())
   val getDataVec  = Vec(2, Bool())
@@ -55,31 +55,35 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config      = new DJConfigIO()
-    // Commit Task In
+    // Task
     val alloc       = Flipped(Decoupled(new CMTask))
+    val resp        = Decoupled(new CMResp)
     // CHI
     val txSnp       = Decoupled(new SnoopFlit())
     val rxRsp       = Flipped(Valid(new RespFlit()))
     val rxDat       = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
-    // Resp To Commit
-    val respCmt     = Decoupled(new RespToCmt)
     // Req To Data
-    val reqDB       = Decoupled(new PackLLCTxnID with HasDataVec)
-    // Resp To Replace
-    val respRepl    = Decoupled(new PackLLCTxnID() with HasChiChannel with HasChiResp)
+    val reqDB       = Decoupled(new HnTxnID with HasDataVec)
     // For Debug
-    val state       = UInt(State.width.W)
+    val dbg         = Valid(new ReadState with HasHnTxnID)
   })
 
 
   /*
    * Reg and Wire declaration
    */
-  val cmReg       = RegInit((new CMState with HasPackCMTask with HasPackTaskInst).Lit(_.state -> FREE))
-  val nodeId_sSnp = Wire(new NodeId())
+  val reg         = RegInit((new SnpMes with HasPackCMTask with HasPackTaskInst).Lit(_.state -> FREE))
+  val next        = WireInit(reg)
+  val snpNodeId   = Wire(new NodeId())
   val rspNodeId   = WireInit(0.U.asTypeOf(new NodeId()))
   val datNodeId   =  WireInit(0.U.asTypeOf(new NodeId()))
-  io.state        := cmReg.state
+
+  /*
+   * Output for debug
+   */
+  io.dbg.valid        := reg.isValid
+  io.dbg.bits.state   := reg.state
+  io.dbg.bits.hnTxnID := reg.task.hnTxnID
 
   /*
    * Get metaId
@@ -88,163 +92,167 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   datNodeId.fromLAN := NocType.rxIs(io.rxDat.bits, LAN)
   rspNodeId.nodeId  := io.rxRsp.bits.SrcID
   datNodeId.nodeId  := io.rxDat.bits.SrcID
-  val rspFire       = io.rxRsp.fire & (io.rxRsp.bits.Opcode === SnpResp     | io.rxRsp.bits.Opcode === SnpRespFwded)
-  val datFire       = io.rxDat.fire & (io.rxDat.bits.Opcode === SnpRespData | io.rxDat.bits.Opcode === SnpRespDataFwded)
+  val rspHit        = io.rxRsp.fire & reg.task.hnTxnID === io.rxRsp.bits.TxnID & (io.rxRsp.bits.Opcode === SnpResp     | io.rxRsp.bits.Opcode === SnpRespFwded)
+  val datHit        = io.rxDat.fire & reg.task.hnTxnID === io.rxRsp.bits.TxnID & (io.rxDat.bits.Opcode === SnpRespData | io.rxDat.bits.Opcode === SnpRespDataFwded)
   val rspMetaId     = OHToUInt(rspNodeId.metaIdOH)
   val datMetaId     = OHToUInt(datNodeId.metaIdOH)
-  HardwareAssertion.withEn(rspNodeId.metaIdOH.orR, rspFire)
-  HardwareAssertion.withEn(datNodeId.metaIdOH.orR, datFire)
+  HardwareAssertion.withEn(rspNodeId.metaIdOH.orR, rspHit)
+  HardwareAssertion.withEn(datNodeId.metaIdOH.orR, datHit)
 
   /*
-   * Receive Task IO
+   * Receive Task
    */
-  io.alloc.ready  := cmReg.isFree
+  io.alloc.ready  := reg.isFree
   HardwareAssertion.withEn(io.alloc.bits.snpVec.asUInt.orR, io.alloc.valid)
 
   /*
-   * Req DB
+   * ReqDB
    */
-  io.reqDB.valid  := cmReg.isReqDB
-  io.reqDB.bits.llcTxnID  := cmReg.task.llcTxnID
-  io.reqDB.bits.dataVec   := cmReg.task.chi.dataVec
+  io.reqDB.valid        := reg.isReqDB
+  io.reqDB.bits.hnTxnID := reg.task.hnTxnID
+  io.reqDB.bits.dataVec := reg.task.chi.dataVec
+  HAssert.withEn(io.reqDB.bits.dataVec === DataVec.Full, io.reqDB.valid )
 
   /*
-   * Send Snp
+   * Send Snoop
    */
-  val metaId_sSnp = OHToUInt(cmReg.task.snpVec.asUInt ^ cmReg.alrSendVec.asUInt)
-  val snpIsFst    = cmReg.alrSendVec.asUInt === 0.U
-  nodeId_sSnp.setSnpNodeId(metaId_sSnp)
+  val snpMetaId   = OHToUInt(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt)
+  val snpIsFst    = reg.alrSendVec.asUInt === 0.U
+  snpNodeId.setSnpNodeId(snpMetaId)
   // valid
-  io.txSnp.valid            := cmReg.isSendSnp
+  io.txSnp.valid            := reg.isSendSnp
   // bits
   io.txSnp.bits             := DontCare
-  io.txSnp.bits.RetToSrc    := Mux(snpIsFst, cmReg.task.chi.retToSrc, false.B)
+  io.txSnp.bits.RetToSrc    := Mux(snpIsFst, reg.task.chi.retToSrc, false.B)
   io.txSnp.bits.DoNotGoToSD := true.B
   io.txSnp.bits.Addr        := DontCare // remap in chi xbar
-  io.txSnp.bits.Opcode      := Mux(snpIsFst, cmReg.task.chi.opcode, cmReg.task.chi.getNoFwdSnpOp)
-  io.txSnp.bits.FwdTxnID    := cmReg.task.chi.txnID
-  io.txSnp.bits.FwdNID      := cmReg.task.chi.nodeId
-  io.txSnp.bits.TxnID       := cmReg.task.llcTxnID.get
-  io.txSnp.bits.SrcID       := Mux(nodeId_sSnp.fromLAN, LAN.U, BBN.U)
-  io.txSnp.bits.TgtID       := nodeId_sSnp.nodeId
+  io.txSnp.bits.Opcode      := Mux(snpIsFst, reg.task.chi.opcode, reg.task.chi.getNoFwdSnpOp)
+  io.txSnp.bits.FwdTxnID    := reg.task.chi.txnID
+  io.txSnp.bits.FwdNID      := reg.task.chi.nodeId
+  io.txSnp.bits.TxnID       := reg.task.hnTxnID
+  io.txSnp.bits.SrcID       := Mux(snpNodeId.fromLAN, LAN.U, BBN.U)
+  io.txSnp.bits.TgtID       := snpNodeId.nodeId
   
 
   /*
    * Send Resp To Commit
    */
   // valid
-  io.respCmt.valid  := cmReg.isResp & !cmReg.task.fromRepl
-  io.respRepl.valid := cmReg.isResp &  cmReg.task.fromRepl
-  // bits respCmt
-  io.respCmt.bits.llcTxnID    := cmReg.task.llcTxnID
-  io.respCmt.bits.inst        := cmReg.inst
-  io.respCmt.bits.inst.valid  := true.B
-  io.respCmt.bits.alr         := cmReg.task.alr
-  // bits respCmt
-  io.respRepl.bits.channel    := cmReg.inst.channel
-  io.respRepl.bits.llcTxnID   := cmReg.task.llcTxnID
-  io.respRepl.bits.resp       := cmReg.inst.resp
-
+  io.resp.valid         := reg.isResp
+  // bits
+  io.resp.bits.hnTxnID  := reg.task.hnTxnID
+  io.resp.bits.taskInst := reg.taskInst
+  io.resp.bits.alr      := reg.task.alr
+  io.resp.bits.fromRec  := false.B
+  io.resp.bits.toRepl   := reg.task.fromRepl
 
   /*
    * Modify Ctrl Machine Table
    */
-  // Hit Message
-  val allocHit    = io.alloc.fire
-  val reqDBHit    = io.reqDB.fire
-  val sendSnpHit  = io.txSnp.fire
-  val recRespHit  = rspFire & cmReg.task.llcTxnID.get === io.rxRsp.bits.TxnID & cmReg.isValid
-  val recDataHit  = datFire & cmReg.task.llcTxnID.get === io.rxDat.bits.TxnID & cmReg.isValid
-  val respCmtHit  = io.respCmt.fire | io.respRepl.fire
-
-  // Store Msg From Frontend
-  val rspIsFwd = io.rxRsp.bits.Opcode === SnpRespFwded      & recRespHit
-  val datIsFwd = io.rxDat.bits.Opcode === SnpRespDataFwded  & recDataHit
-  when(allocHit) {
-    cmReg      := 0.U.asTypeOf(cmReg)
-    cmReg.task := io.alloc.bits
-  // Store AlrReqDB
-  }.elsewhen(reqDBHit) {
-    cmReg.task.alr.reqs := true.B
-  // Store Message
-  }.elsewhen(recDataHit | recRespHit) {
+  val rspIsFwd              = io.rxRsp.bits.Opcode === SnpRespFwded     & rspHit
+  val datIsFwd              = io.rxDat.bits.Opcode === SnpRespDataFwded & datHit
+  // Store message from Frontend
+  when(io.alloc.fire) {
+    next.task               := io.alloc.bits
+    next.taskInst           := 0.U.asTypeOf(new TaskInst)
+  // Store already ReqDB
+  }.elsewhen(io.reqDB.fire) {
+    next.task.alr.reqs      := true.B
+    HAssert(!reg.task.alr.reqs)
+  // Store message from CHI
+  }.elsewhen(rspHit | datHit) {
     // inst
-    cmReg.inst.valid    := true.B
-    cmReg.inst.fwdValid := cmReg.inst.fwdValid | rspIsFwd | datIsFwd
-    cmReg.inst.fwdResp  := PriorityMux(Seq(
+    next.taskInst.valid     := true.B
+    next.taskInst.fwdValid  := reg.taskInst.fwdValid | rspIsFwd | datIsFwd
+    next.taskInst.fwdResp   := PriorityMux(Seq(
       rspIsFwd -> io.rxRsp.bits.FwdState,
       datIsFwd -> io.rxDat.bits.FwdState,
-      true.B   -> cmReg.inst.fwdResp,
+      true.B   -> reg.taskInst.fwdResp,
     ))
-    cmReg.inst.channel := PriorityMux(Seq(
-      recDataHit -> DAT,
-      recRespHit -> Mux(cmReg.inst.channel === DAT, DAT, RSP),
-      true.B     -> cmReg.inst.channel,
+    next.taskInst.channel   := PriorityMux(Seq(
+      datHit -> DAT,
+      rspHit -> Mux(reg.taskInst.channel === DAT, DAT, RSP),
+      true.B -> reg.taskInst.channel,
     ))
-    cmReg.inst.opcode := PriorityMux(Seq(
-      recDataHit -> io.rxDat.bits.Opcode,
-      recRespHit -> Mux(cmReg.inst.channel === DAT, cmReg.inst.opcode, io.rxRsp.bits.Opcode),
-      true.B     -> cmReg.inst.opcode,
+    next.taskInst.opcode    := PriorityMux(Seq(
+      datHit -> io.rxDat.bits.Opcode,
+      rspHit -> Mux(reg.taskInst.channel === DAT, reg.taskInst.opcode, io.rxRsp.bits.Opcode),
+      true.B -> reg.taskInst.opcode,
     ))
-    cmReg.inst.resp := PriorityMux(Seq(
-      recDataHit -> io.rxDat.bits.Resp,
-      recRespHit -> Mux(cmReg.inst.channel === DAT, cmReg.inst.resp, io.rxRsp.bits.Resp),
-      true.B     -> cmReg.inst.resp,
+    next.taskInst.resp      := PriorityMux(Seq(
+      datHit -> io.rxDat.bits.Resp,
+      rspHit -> Mux(reg.taskInst.channel === DAT, reg.taskInst.resp, io.rxRsp.bits.Resp),
+      true.B -> reg.taskInst.resp,
     ))
-  // Release
-  }.elsewhen(respCmtHit) {
-    cmReg := 0.U.asTypeOf(cmReg)
   }
 
   // Release or alloc
-  when(respCmtHit | allocHit){
-    cmReg.alrSendVec := 0.U.asTypeOf(cmReg.alrSendVec)
-    cmReg.getRespVec := 0.U.asTypeOf(cmReg.getRespVec)
-    cmReg.getDataVec := 0.U.asTypeOf(cmReg.getDataVec)
+  when(io.alloc.fire){
+    next.alrSendVec := 0.U.asTypeOf(reg.alrSendVec)
+    next.getRespVec := 0.U.asTypeOf(reg.getRespVec)
+    next.getDataVec := 0.U.asTypeOf(reg.getDataVec)
   // Update
   }.otherwise {
     // alrSendVec
-    cmReg.alrSendVec(metaId_sSnp) := cmReg.alrSendVec(metaId_sSnp) | sendSnpHit
-    HardwareAssertion.withEn(!cmReg.alrSendVec(metaId_sSnp), sendSnpHit)
+    next.alrSendVec(snpMetaId) := reg.alrSendVec(snpMetaId) | io.txSnp.fire
+    HardwareAssertion.withEn(!reg.alrSendVec(snpMetaId), io.txSnp.fire)
     // getDataVec
     val beatId = Mux(io.rxDat.bits.DataID === "b10".U, 1.U, 0.U)
-    cmReg.getDataVec(beatId) := cmReg.getDataVec(beatId) | recDataHit
-    HardwareAssertion.withEn(!cmReg.getDataVec(beatId), recDataHit)
+    next.getDataVec(beatId) := reg.getDataVec(beatId) | datHit
+    HardwareAssertion.withEn(!reg.getDataVec(beatId), datHit)
     // getRespVec
-    cmReg.getRespVec.zipWithIndex.foreach { case(get, i) =>
-      val rspHit = recRespHit & rspMetaId === i.U
-      val datHit = recDataHit & datMetaId === i.U
-      get := get | rspHit | datHit
-      HardwareAssertion(PopCount(Seq(rspHit, datHit)) <= 1.U)
-      HardwareAssertion.withEn(!rspHit, get)
+    next.getRespVec.zipWithIndex.foreach { case(get, i) =>
+      val getRspHit = rspHit & rspMetaId === i.U
+      val getDatHit = datHit & datMetaId === i.U
+      get := reg.getRespVec(i) | getRspHit | getDatHit
+      HardwareAssertion(PopCount(Seq(getRspHit, getDatHit)) <= 1.U)
+      HardwareAssertion.withEn(!getRspHit, get)
     }
   }
 
 
   // Check send or wait
-  val alrSnpAll     = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.alrSendVec.asUInt) === 1.U & sendSnpHit
-  val alrGetRspAll  = PopCount(cmReg.task.snpVec.asUInt ^ cmReg.getRespVec.asUInt) === 0.U
-  val alrGetDatAll  = !cmReg.getDataOne
-  val alrGetAll     = alrGetRspAll & alrGetDatAll & cmReg.isWaitResp
+  val alrSnpAll     = PopCount(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt) === 1.U & io.txSnp.fire
+  val alrGetRspAll  = PopCount(reg.task.snpVec.asUInt ^ reg.getRespVec.asUInt) === 0.U
+  val alrGetDatAll  = !reg.getDataOne
+  val alrGetAll     = alrGetRspAll & alrGetDatAll
 
   // Get Next State
-  cmReg.state   := PriorityMux(Seq(
-    allocHit    -> Mux(io.alloc.bits.needReqDB, REQDB, SENDSNP),
-    reqDBHit    -> SENDSNP,
-    alrSnpAll   -> WAITRESP,
-    alrGetAll   -> RESP,
-    respCmtHit  -> FREE,
-    true.B      -> cmReg.state,
-  ))
+  switch(reg.state) {
+    is(FREE) {
+      when(io.alloc.fire) { next.state := Mux(io.alloc.bits.needReqDB, REQDB, SENDSNP) }
+    }
+    is(REQDB) {
+      when(io.reqDB.fire) { next.state := SENDSNP }
+    }
+    is(SENDSNP) {
+      when(alrSnpAll)     { next.state := WAITRESP }
+    }
+    is(WAITRESP) {
+      when(alrGetAll)     { next.state := RESPCMT }
+    }
+    is(RESPCMT) {
+      when(io.resp.fire)  { next.state := FREE }
+    }
+  }
+
+  /*
+   * HAssert
+   */
+  HAssert.withEn(reg.isFree,    io.alloc.fire)
+  HAssert.withEn(reg.isReqDB,   reg.isValid & io.reqDB.fire)
+  HAssert.withEn(reg.isSendSnp, reg.isValid & io.txSnp.fire)
+  HAssert.withEn(reg.isResp,    reg.isValid & io.resp.fire)
+  HAssert.withEn(reg.isSendSnp | reg.isWaitResp, reg.isValid & rspHit | datHit)
+
+  /*
+   * Set new task
+   */
+  val set = io.alloc.fire | reg.isValid; dontTouch(set)
+  when(set) { reg := next }
 
   // HardwareAssertion
-  HardwareAssertion.withEn(cmReg.isFree,    allocHit)
-  HardwareAssertion.withEn(cmReg.isReqDB,   reqDBHit)
-  HardwareAssertion.withEn(cmReg.isSendSnp, sendSnpHit)
-  HardwareAssertion.withEn(cmReg.isSendSnp | cmReg.isWaitResp, recRespHit)
-  HardwareAssertion.withEn(cmReg.isSendSnp | cmReg.isWaitResp, recDataHit)
-  HardwareAssertion.withEn(cmReg.isResp,    respCmtHit)
-  HardwareAssertion.checkTimeout(cmReg.isFree, TIMEOUT_SNP, cf"TIMEOUT: Snoop State[${cmReg.state}]")
+  HardwareAssertion.checkTimeout(reg.isFree, TIMEOUT_SNP, cf"TIMEOUT: Snoop State[${reg.state}]")
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -256,31 +264,23 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     val config      = new DJConfigIO()
-    // Commit Task In
+    // Task
     val alloc       = Flipped(Decoupled(new CMTask))
+    val resp        = Decoupled(new CMResp)
     // CHI
     val txSnp       = Decoupled(new SnoopFlit())
     val rxRsp       = Flipped(Valid(new RespFlit()))
     val rxDat       = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
-    // Resp To Commit
-    val respCmt     = Decoupled(new RespToCmt)
     // Req To Data
-    val reqDB       = Decoupled(new PackLLCTxnID with HasDataVec)
-    // Resp To Replace
-    val respRepl    = Decoupled(new PackLLCTxnID() with HasChiChannel with HasChiResp)
+    val reqDB       = Decoupled(new HnTxnID with HasDataVec)
   })
 
   /*
    * Module declaration
    */
-  val entries = Seq.fill(nrSnoopCM) { Module(new SnoopEntry()) }
-
-  /*
-   * For debug
-   */
-  val stateVec = Wire(Vec(nrSnoopCM, UInt(State.width.W)))
-  stateVec.zip(entries.map(_.io.state)).foreach { case(a, b) => a := b }
-  dontTouch(stateVec)
+  val entries = Seq.fill(nrSnoopCM) { Module(new SnoopEntry()) } // TODO: reserve for toLAN
+  val dbgVec  = VecInit(entries.map(_.io.dbg))
+  dontTouch(dbgVec)
 
   /*
    * Connect CM <- IO
@@ -294,12 +294,11 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
    * Connect IO <- CM
    */
   io.txSnp    <> fastRRArb(entries.map(_.io.txSnp)) // TODO: split to LAN and BBN
-  io.respCmt  <> fastRRArb(entries.map(_.io.respCmt))
-  io.respRepl <> fastRRArb(entries.map(_.io.respRepl))
+  io.resp     <> fastRRArb(entries.map(_.io.resp))
   io.reqDB    <> fastRRArb(entries.map(_.io.reqDB))
 
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue - 2)
+  HardwareAssertion.placePipe(1)
 }

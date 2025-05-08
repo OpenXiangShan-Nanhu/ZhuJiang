@@ -7,7 +7,7 @@ import zhujiang.chi._
 import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
-import xs.utils.debug.HardwareAssertion
+import xs.utils.debug._
 import xs.utils.mbist.MbistPipeline
 
 class Directory(implicit p: Parameters) extends DJModule {
@@ -17,41 +17,35 @@ class Directory(implicit p: Parameters) extends DJModule {
   val io = IO(new Bundle {
     val config      = Input(new DJConfigIO())
     // Read from frontends
-    val readVec     = Vec(djparam.nrDirBank, Flipped(Decoupled(new Addr with HasPackPosIndex)))
+    val readVec     = Vec(djparam.nrDirBank, Flipped(Decoupled(new Addr with HasPackHnIdx)))
     // Resp to frontends
     val rRespVec    = Vec(djparam.nrDirBank, Valid(new PackDirMsg))
     // Write From backend
-    val write       = new DJBundle {
-      val llc       = Flipped(Decoupled(new DirEntry("llc") with HasPackPosIndex))
-      val sf        = Flipped(Decoupled(new DirEntry("sf")  with HasPackPosIndex))
-    }
+    val write       = Flipped(Decoupled(new DJBundle {
+      val llc       = Valid(new DirEntry("llc") with HasPackHnIdx)
+      val sf        = Valid(new DirEntry("sf") with HasPackHnIdx)
+    }))
     // Resp to backend
     val wResp       = new DJBundle {
-      val llc       = Valid(new DirEntry("llc"))
-      val sf        = Valid(new DirEntry("sf"))
+      val llc       = Valid(new DirEntry("llc") with HasHnTxnID)
+      val sf        = Valid(new DirEntry("sf")  with HasHnTxnID)
     }
     // Clean Signal from backend(Replace CM and Commit CM)
-    val unlockVec   = Vec(djparam.nrDirBank, Flipped(Valid(new PosIndex())))
+    val unlock      = Flipped(Valid(new PackHnIdx)) // broadcast signal
   })
 
   /*
    * Module declaration
    */
-  val llcs              = Seq.tabulate(djparam.nrDirBank)(i => Module(new DirectoryBase("llc")))
-  val sfs               = Seq.tabulate(djparam.nrDirBank)(i => Module(new DirectoryBase("sf")))
-  val wriLLCBankPipe    = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
-  val wriSFBankPipe     = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
+  val llcs            = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("llc")))
+  val sfs             = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("sf")))
+  val wriLLCBankPipe  = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
+  val wriSFBankPipe   = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
   MbistPipeline.PlaceMbistPipeline(2, "HomeDirectory", hasMbist)
 
   /*
    * Connect llcs and sfs
    */
-  val llcWReadyVec    = Wire(UInt(djparam.nrDirBank.W))
-  val sfWReadyVec     = Wire(UInt(djparam.nrDirBank.W))
-  llcWReadyVec        := Cat(llcs.map(_.io.write.ready).reverse)
-  sfWReadyVec         := Cat(sfs.map(_.io.write.ready).reverse)
-  io.write.llc.ready  := llcWReadyVec(io.write.llc.bits.Addr.dirBank)
-  io.write.sf.ready   := sfWReadyVec(io.write.sf.bits.Addr.dirBank)
   llcs.zip(sfs).zipWithIndex.foreach {
     case((llc, sf), i) =>
       // config
@@ -70,16 +64,20 @@ class Directory(implicit p: Parameters) extends DJModule {
       io.readVec(i).ready   := llc.io.read.ready & sf.io.read.ready
 
       // write valid
-      llc.io.write.valid    := io.write.llc.valid & io.write.llc.bits.Addr.dirBank === i.U
-      sf.io.write.valid     := io.write.sf.valid  & io.write.sf.bits.Addr.dirBank === i.U
+      llc.io.write.valid    := io.write.fire & io.write.bits.llc.valid & io.write.bits.llc.bits.Addr.dirBank === i.U
+      sf.io.write.valid     := io.write.fire & io.write.bits.sf.valid  & io.write.bits.sf.bits.Addr.dirBank === i.U
       // write bits
-      llc.io.write.bits     := io.write.llc.bits
-      sf.io.write.bits      := io.write.sf.bits
+      llc.io.write.bits     := io.write.bits.llc.bits
+      sf.io.write.bits      := io.write.bits.sf.bits
 
       // Clean Lock Table
-      llc.io.unlock         := io.unlockVec(i)
-      sf.io.unlock          := io.unlockVec(i)
+      llc.io.unlock         := io.unlock
+      sf.io.unlock          := io.unlock
   }
+  val llcWReady             = VecInit(llcs.map(_.io.write.ready))(io.write.bits.llc.bits.Addr.dirBank)
+  val sfWReady              = VecInit(sfs.map (_.io.write.ready))(io.write.bits.sf.bits.Addr.dirBank)
+  io.write.ready            := (llcWReady | !io.write.bits.llc.valid) & (sfWReady | !io.write.bits.sf.valid)
+  HAssert.withEn(io.write.bits.llc.valid | io.write.bits.sf.valid, io.write.valid)
 
   /*
    * Connect IO
@@ -90,30 +88,28 @@ class Directory(implicit p: Parameters) extends DJModule {
   io.rRespVec.map(_.bits.dir.sf ).zip( sfs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
 
   // Store Write LLC Resp DirBank
-  wriLLCBankPipe.io.enq.valid := io.write.llc.fire & !io.write.llc.bits.hit
-  wriLLCBankPipe.io.enq.bits  := io.write.llc.bits.Addr.dirBank
+  wriLLCBankPipe.io.enq.valid := io.write.fire & io.write.bits.llc.valid & !io.write.bits.llc.bits.hit
+  wriLLCBankPipe.io.enq.bits  := io.write.bits.llc.bits.hnIdx.dirBank
 
   // Store Write SF Resp DirBank
-  wriSFBankPipe.io.enq.valid  := io.write.sf.fire & !io.write.sf.bits.hit
-  wriSFBankPipe.io.enq.bits   := io.write.sf.bits.Addr.dirBank
+  wriSFBankPipe.io.enq.valid  := io.write.fire & io.write.bits.sf.valid & !io.write.bits.sf.bits.hit
+  wriSFBankPipe.io.enq.bits   := io.write.bits.sf.bits.hnIdx.dirBank
 
   // Output wResp and rHitMesVec
-  val llcWRespVec = Wire(Vec(djparam.nrDirBank, Valid(new DirEntry("llc"))))
-  val sfWRespVec  = Wire(Vec(djparam.nrDirBank, Valid(new DirEntry("sf"))))
-  llcWRespVec     := llcs.map(_.io.resp)
-  sfWRespVec      := sfs.map(_.io.resp)
+  val llcRespVec      = VecInit(llcs.map(_.io.resp))
+  val sfRespVec       = VecInit(sfs.map(_.io.resp))
   // llc
   io.wResp.llc.valid  := wriLLCBankPipe.io.deq.valid
-  io.wResp.llc.bits   := llcWRespVec(wriLLCBankPipe.io.deq.bits).bits
+  io.wResp.llc.bits   := llcRespVec(wriLLCBankPipe.io.deq.bits).bits
   // sf
   io.wResp.sf.valid   := wriSFBankPipe.io.deq.valid
-  io.wResp.sf.bits    := sfWRespVec(wriSFBankPipe.io.deq.bits).bits
+  io.wResp.sf.bits    := sfRespVec(wriSFBankPipe.io.deq.bits).bits
   // HardwareAssertion
-  HardwareAssertion.withEn(llcWRespVec(wriLLCBankPipe.io.deq.bits).valid, wriLLCBankPipe.io.deq.valid)
-  HardwareAssertion.withEn(sfWRespVec(wriSFBankPipe.io.deq.bits).valid,   wriSFBankPipe.io.deq.valid)
+  HardwareAssertion.withEn(llcRespVec(wriLLCBankPipe.io.deq.bits).valid, wriLLCBankPipe.io.deq.valid)
+  HardwareAssertion.withEn(sfRespVec(wriSFBankPipe.io.deq.bits).valid,   wriSFBankPipe.io.deq.valid)
 
   /*
    * HardwareAssertion placePipe
    */
-   HardwareAssertion.placePipe(Int.MaxValue-1)
+   HardwareAssertion.placePipe(2)
 }

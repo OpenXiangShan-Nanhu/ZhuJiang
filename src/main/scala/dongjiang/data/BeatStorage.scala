@@ -26,11 +26,11 @@ class Shift(implicit p: Parameters) extends DJBundle {
   def outResp    = read(0).asBool
 }
 
-class DsRead(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID
+class DsRead(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDBID with HasDCID
 
 class DsWrite(implicit p: Parameters) extends DJBundle with HasDsIdx { val beat  = UInt(BeatBits.W) }
 
-class DsResp(implicit p: Parameters) extends DJBundle with HasDCID { val beat    = UInt(BeatBits.W) }
+class DsResp(implicit p: Parameters) extends DJBundle with HasDBID with HasDCID { val beat = UInt(BeatBits.W) }
 
 class BeatStorage(implicit p: Parameters) extends DJModule {
   /*
@@ -56,6 +56,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
     suffix      = "_llc_dat"
   ))
   val dcidPipe    = Module(new Pipe(UInt(dcIdBits.W), readDsLatency))
+  val dbidPipe    = Module(new Pipe(UInt(dcIdBits.W), readDsLatency))
   val shiftReg    = RegInit(0.U.asTypeOf(new Shift))
   val rstDoneReg  = RegEnable(true.B, false.B, array.io.req.ready)
   HardwareAssertion.withEn(!(array.io.req.ready ^ io.write.ready), rstDoneReg) // Check Shift Reg logic
@@ -81,7 +82,11 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
 
   // dcidPipe
   dcidPipe.io.enq.valid := io.read.fire
-  dcidPipe.io.enq.bits  := io.read.bits.dcid
+  dcidPipe.io.enq.bits  := io.read.bits.dbid
+
+  // dbidPipe
+  dbidPipe.io.enq.valid := io.read.fire
+  dbidPipe.io.enq.bits  := io.read.bits.dcid
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -92,6 +97,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
   io.resp.valid     := shiftReg.outResp
   io.resp.bits.beat := array.io.resp.bits.data.head
   io.resp.bits.dcid := dcidPipe.io.deq.bits
+  io.resp.bits.dbid := dbidPipe.io.deq.bits
 
   HardwareAssertion.withEn(dcidPipe.io.deq.valid, shiftReg.outResp)
   HardwareAssertion.withEn(array.io.resp.valid, shiftReg.outResp)
@@ -99,5 +105,5 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue - 2)
+  HardwareAssertion.placePipe(1)
 }

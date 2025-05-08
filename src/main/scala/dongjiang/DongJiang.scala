@@ -15,6 +15,7 @@ import xijiang._
 import xijiang.router.base.DeviceIcnBundle
 import zhujiang.chi.FlitHelper.connIcn
 import dongjiang.frontend.decode.Decode._
+import xs.utils.debug.HardwareAssertion
 import zhujiang.ZJParametersKey
 
 
@@ -109,7 +110,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |                     = [sfTag(${sfTag_ua_hi}:${sfTag_ua_lo})] + [sfSet(${sfSet_ua_hi}:${sfSet_ua_lo})] + [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]
        |                     = [posTag(${posTag_ua_hi}:${posTag_ua_lo})] + [posSet(${posSet_ua_hi}:${posSet_ua_lo})] + [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]
        |                     = [ci(${ci_ua_hi}:${ci_ua_lo})] + [unUse(${ci_ua_lo-1}:0)]
-       | decodeTableSize: ${l_ci*l_si*l_ti} = ChiInst($l_ci) x StateInst($l_si) x TaskInst($l_ti) x SecTaskInst($l_sti)
+       |  HnTxnID slice:
+       |     [hnTxnID(${hnTxnIDBits-1}:0)] = [dirBank(${dirBank_hn_hi}:${dirBank_hn_lo})] + [posSet(${posSet_hn_hi}:${posSet_hn_lo})] + [posWay(${posWay_hn_hi}:${posWay_hn_lo})]
+       |  decodeTableSize: ${l_ci*l_si*l_ti} = ChiInst($l_ci) x StateInst($l_si) x TaskInst($l_ti) x SecTaskInst($l_sti)
        |}
        |""".stripMargin)
 
@@ -117,7 +120,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    * Module declaration
    */
   val level     = 0
-  val frontends = Seq.tabulate(djparam.nrDirBank)(i => Module(new Frontend(i)))
+  val frontends = Seq.fill(djparam.nrDirBank)(Module(new Frontend()))
   val backend   = Module(new Backend())
   val directory = Module(new Directory())
   val dataBlock = Module(new DataBlock())
@@ -130,14 +133,13 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   workSftReg := Cat(frontends.map(_.io.working).reduce(_ | _), workSftReg(workSftReg.getWidth-1, 1))
   io.working := workSftReg.orR
 
-
   /*
    * Connect DirBank and Config
    */
   frontends.zipWithIndex.foreach { case(a, b) => a.io.dirBank := b.U }
   frontends.foreach(_.io.config := io.config)
   directory.io.config := io.config
-  backend.io.config := io.config
+  backend.io.config   := io.config
 
   /*
    * Connect IO CHI
@@ -191,65 +193,59 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   chiXbar.io.cBusy := RegNext(Cat(0.U(1.W), posBusy))
 
   /*
-   * Get addr from PoS logic
-   */
-  // wriDirGetVec
-  val wriDirGetVec = Wire(Vec(2, new GetAddr))
-  // sf/llc dirBank
-  wriDirGetVec.head.llcTxnID.dirBank := backend.io.writeDir.sf.bits.Addr.dirBank
-  wriDirGetVec.last.llcTxnID.dirBank := backend.io.writeDir.llc.bits.Addr.dirBank
-  // sf/llc pos
-  wriDirGetVec.head.llcTxnID.pos := backend.io.writeDir.sf.bits.pos
-  wriDirGetVec.last.llcTxnID.pos := backend.io.writeDir.llc.bits.pos
-  // modsGetVec
-  val modsGetVec = chiXbar.io.addrVec ++ wriDirGetVec
-  // getAddrVec2
-  val getAddrVec2 = Wire(Vec(djparam.nrDirBank, Vec(nrGetAddr, new GetAddr(true))))
-  getAddrVec2.transpose.zip(modsGetVec).foreach { case (get, mods) =>
-    val addrVec = Wire(Vec(djparam.nrDirBank, new Addr()))
-    addrVec.zip(get.map(_.result)).foreach { case (a, b) => a.addr := b.addr }
-    // get pos index
-    get.foreach(_.pos := mods.llcTxnID.pos)
-    // get result
-    mods.result := addrVec(mods.llcTxnID.dirBank)
-  }
-
-  /*
    * Connect frontends
    */
   frontends.zipWithIndex.foreach {
     case(f, i) =>
-      f.io.respDir_s3   := directory.io.rRespVec(i)
-      f.io.updPosNest   <> backend.io.updPosNestVec(i)
-      f.io.updPosTag    := backend.io.updPosTagVec(i)
-      f.io.cleanPos     := backend.io.cleanPosVec(i)
-      f.io.getAddrVec.zip(getAddrVec2(i)).foreach { case(a, b) => a <> b }
+      f.io.respDir_s3       := directory.io.rRespVec(i)
+      f.io.reqPoS           <> backend.io.reqPosVec(i)
+      f.io.updPosTag        := backend.io.updPosTag
+      f.io.updPosNest       := backend.io.updPosNest
+      f.io.cleanPos         := backend.io.cleanPos
+      f.io.getAddrVec.zip(backend.io.getAddrVec).foreach { case(a, b) => a.hnIdx := b.hnIdx }
   }
 
   /*
    * Connect Directory
    */
   directory.io.readVec.zip(frontends.map(_.io.readDir_s1)).foreach { case(a, b) => a <> b }
-  directory.io.unlockVec.zipWithIndex.foreach { case(vec, i) => vec := backend.io.unlockVec(i) }
-  directory.io.write.sf  <> backend.io.writeDir.sf
-  directory.io.write.llc <> backend.io.writeDir.llc
-  directory.io.write.sf.bits.addr  := wriDirGetVec.head.result.addr
-  directory.io.write.llc.bits.addr := wriDirGetVec.last.result.addr
+  directory.io.write        <> backend.io.writeDir
+  directory.io.unlock       := backend.io.unlock
 
   /*
    * Connect backend
    */
-  backend.io.fastResp <> fastRRArb(frontends.map(_.io.fastResp))
-  backend.io.respDir  := directory.io.wResp
-  backend.io.cmtAllocVec.zip(frontends.map(_.io.cmtAlloc_s3)).foreach    { case(a, b) => a <> b }
-  backend.io.cmAllocVec2.zip(frontends.map(_.io.cmAllocVec_s4)).foreach  { case(a, b) => a <> b }
-  backend.io.dataResp := dataBlock.io.resp
+  backend.io.respDir        := directory.io.wResp
+  backend.io.fastResp       <> fastRRArb(frontends.map(_.io.fastResp_s1))
+  backend.io.dataResp       := dataBlock.io.resp
+  backend.io.cmtTaskVec.zip(frontends.map(_.io.cmtTask_s3)).foreach           { case(a, b) => a <> b }
+  backend.io.cmTaskVec.zip(frontends.map(_.io.cmTaskVec).transpose).foreach   { case(a, b) => a <> fastRRArb(b) }
+  backend.io.respCompVec.zip(frontends.map(_.io.respComp_s3)).foreach         { case(a, b) => a := b }
+  backend.io.getAddrVec.zip(frontends.map(_.io.getAddrVec).transpose).foreach { case(a, b) =>
+    a.result := VecInit(b.map(_.result))(a.hnIdx.dirBank)
+  }
 
   /*
    * Connect dataBlock
    */
-  dataBlock.io.reqDB <> fastArb(Seq(backend.io.reqDB) ++ frontends.map(_.io.reqDB_s1))
-  dataBlock.io.task  <> fastArb(Seq(backend.io.dataTask) ++ frontends.map(_.io.fastData_s3))
+  dataBlock.io.replHnTxnID  := backend.io.replHnTxnID
+  dataBlock.io.reqDB        <> fastRRArb(Seq(backend.io.reqDB) ++ frontends.map(_.io.reqDB_s1))
+  val onlyCleanVec          = VecInit(frontends.map(_.io.fastData_s3).map(task => task.valid & task.bits.dataOp.onlyClean))
+  val onlyCleanId           = PriorityEncoder(onlyCleanVec)
+  val frontendDataVec       = VecInit(frontends.map(_.io.fastData_s3))
+  when(onlyCleanVec.asUInt.orR) {
+    frontendDataVec.foreach(_.ready := false.B) // init
+    backend.io.dataTask.ready       := false.B  // init
+    dataBlock.io.task       <> frontendDataVec(onlyCleanId)
+  }.otherwise {
+    dataBlock.io.task       <> fastRRArb(Seq(backend.io.dataTask) ++ frontendDataVec)
+  }
+  HardwareAssertion(PopCount(onlyCleanVec) <= 1.U)
+
+  /*
+   * HardwareAssertion placePipe
+   */
+  HardwareAssertion.placePipe(3)
 }
 
 // Top module for unit test only

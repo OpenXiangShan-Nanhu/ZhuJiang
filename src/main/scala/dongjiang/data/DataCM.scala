@@ -1,0 +1,450 @@
+package dongjiang.data
+
+import chisel3._
+import chisel3.util._
+import org.chipsalliance.cde.config._
+import zhujiang.chi._
+import dongjiang._
+import dongjiang.backend.ReplHnTxnID
+import dongjiang.utils._
+import dongjiang.bundle._
+import xs.utils.debug._
+import xs.utils.queue.FastQueue
+import dongjiang.data.CTRLSTATE._
+import chisel3.experimental.BundleLiterals._
+
+// ----------------------------------------------------------------------------------------------------- //
+// ---------------------------------------- Ctrl Machine State ----------------------------------------- //
+// ----------------------------------------------------------------------------------------------------- //
+object CTRLSTATE {
+  val width   = 4
+  val FREE    = 0x0.U // -> ALLOC
+  val ALLOC   = 0x1.U // *
+  val REPL    = 0x2.U // * // Read DS and DB at the same time to replace
+  val READ    = 0x3.U // * // Read DS and save in DB
+  val WAIT    = 0x4.U // * // Wait data from DS to DB
+  val SEND    = 0x5.U // * // Read DB and send to CHI
+  val SAVE    = 0x6.U // * // Read DB adn send to DS
+  val CLEAN   = 0x7.U // * // Clean DB mask and DBIDPool
+  val RESP    = 0x8.U // * // Send resp to Backend
+  val TOFREE  = 0x9.U // -> FREE // Can be free when sending is all false
+
+  // Note: with * must use dataOp.getNextState
+}
+
+trait HasCtrlMes { this: DJBundle =>
+  // Without repl flag:
+  //    Free -> Alloc -> Read -> Wait -> Send -> Save -> Clean -> Resp --> ToFree -> Free
+  // With repl flag:
+  //    Free -> Alloc -> Replace -> Wait -> Send -> Clean -> Resp -> ToFree -> Free
+  // Without clean:
+  //    Free -> Alloc -> Read -> Wait -> Send -> Save -> Resp -> Alloc
+
+  val state     = UInt(CTRLSTATE.width.W)
+  val opBeat    = UInt(log2Ceil(djparam.nrBeat).W)    // The beat block being operate (read/send/save/send)
+  val wRBeat    = UInt(log2Ceil(djparam.nrBeat+1).W)  // Wait read DS data to DB
+  val wSBeat    = UInt(log2Ceil(djparam.nrBeat+1).W)  // Wait read DB data to CHI
+
+  def isCritical= opBeat === (djparam.nrBeat-1).U
+  def waiting   = wRBeat.asUInt =/= 0.U
+  def waitall   = wRBeat.asUInt === 0.U
+  def sending   = wSBeat.asUInt =/= 0.U
+  def sendall   = wSBeat.asUInt === 0.U
+
+  def isFree    = state === FREE
+  def isValid   = !isFree
+  def isAlloc   = state === ALLOC
+  def isRepl    = state === REPL
+  def isRead    = state === READ
+  def isWait    = state === WAIT
+  def isSend    = state === SEND
+  def isSave    = state === SAVE
+  def isClean   = state === CLEAN
+  def isResp    = state === RESP
+  def isToFree  = state === TOFREE
+}
+
+// ----------------------------------------------------------------------------------------------------- //
+// ----------------------------------------- Ctrl Machine Entry ---------------------------------------- //
+// ----------------------------------------------------------------------------------------------------- //
+class DataCtrlEntry(implicit p: Parameters) extends DJModule {
+  /*
+   * IO declaration
+   */
+  val io = IO(new Bundle {
+    val dcid        = Input(UInt(dcIdBits.W))
+    // From/To Backend
+    val replHnTxnID = Flipped(Valid(new ReplHnTxnID))
+    val alloc       = Flipped(Decoupled(new HnTxnID))
+    val task        = Flipped(Valid(new DataTask)) // broadcast signal
+    val resp        = Decoupled(new HnTxnID)
+    // To DS/DB
+    val readForRepl = Output(Bool())
+    val readToDB    = Decoupled(new ReadDS)
+    val readToDS    = Decoupled(new ReadDB)
+    val readToCHI   = Decoupled(new ReadDB)
+    // To DBID Pool
+    val releaseDB   = Decoupled(new HnTxnID with HasDataVec)
+    // Other
+    val dsWriDB     = Flipped(Valid(new DCID)) // broadcast signal
+    val txDatFire   = Flipped(Valid(new DCID)) // broadcast signal
+    val txDatBits   = Output(new DataFlit)
+    // State
+    val state       = Valid(new HnTxnID)
+  })
+
+  /*
+   * Reg and Wire declaration
+   */
+  require(djparam.nrBeat == 2)
+  val reg = RegInit(new PackDataTask with HasCtrlMes {
+    def getBeatNum = Mux(opBeat === 0.U, PriorityEncoder(task.dataVec), 1.U)
+    def opAll = Mux(task.isFullSize, opBeat === 1.U, opBeat === 0.U)  // The beat block is operate all (read/send/save/send)
+  }.Lit(_.state -> FREE))
+  val next = WireInit(reg)
+
+  /*
+    * Connect io
+   */
+  io.txDatBits          := reg.task.txDat
+  io.txDatBits.DataID   := PriorityMux(Seq( // TODO:
+    reg.task.isFullSize -> Mux(reg.wSBeat === 2.U, "b00".U, "b10".U),
+    reg.task.dataVec(1) -> "b10".U,
+    reg.task.dataVec(0) -> "b00".U
+  ))
+  io.state.valid        := reg.isValid
+  io.state.bits.hnTxnID := reg.task.hnTxnID
+
+  /*
+   * Receive Req
+   */
+  io.alloc.ready := reg.isFree
+
+  /*
+   * Read DS / DB
+   */
+  io.readForRepl              := reg.isRepl
+  // read DS to DB
+  io.readToDB.valid           := reg.isRepl | reg.isRead
+  io.readToDB.bits.ds         := reg.task.ds
+  io.readToDB.bits.dcid       := io.dcid
+  io.readToDB.bits.dbid       := DontCare // remap in DataCM
+  io.readToDB.bits.beatNum    := reg.getBeatNum
+  io.readToDB.bits.critical   := reg.isCritical
+  // to DB to DS
+  io.readToDS.valid           := reg.isRepl | reg.isSave
+  io.readToDS.bits.ds         := reg.task.ds
+  io.readToDS.bits.dcid       := io.dcid
+  io.readToDS.bits.dbid       := DontCare // remap in DataCM
+  io.readToDS.bits.beatNum    := reg.getBeatNum
+  io.readToDS.bits.critical   := reg.isCritical
+  io.readToDS.bits.repl       := reg.isRepl
+  // to DB to CHI
+  io.readToCHI.valid          := reg.isSend
+  io.readToCHI.bits.ds        := DontCare
+  io.readToCHI.bits.dcid      := io.dcid
+  io.readToCHI.bits.dbid      := DontCare // remap in DataCM
+  io.readToCHI.bits.beatNum   := reg.getBeatNum
+  io.readToCHI.bits.critical  := reg.isCritical
+  io.readToCHI.bits.repl      := false.B
+  HAssert.withEn(!(io.readToDB.fire ^ io.readToDS.fire), reg.isRepl)
+
+  /*
+   * Clean DBIDPool
+   */
+  io.releaseDB.valid          := reg.isClean
+  io.releaseDB.bits.hnTxnID   := reg.task.hnTxnID
+  io.releaseDB.bits.dataVec   := reg.task.dataVec
+
+  /*
+   * Send response to Bankend
+   */
+  io.resp.valid               := reg.isResp
+  io.resp.bits.hnTxnID        := reg.task.hnTxnID
+
+  /*
+   * Modify Ctrl Machine
+   */
+  // Get next task
+  val taskHit = io.task.valid & io.task.bits.hnTxnID === reg.task.hnTxnID
+  when(io.alloc.fire) {
+    next.task := 0.U.asTypeOf(new DataTask)
+    HAssert.withEn(io.task.bits.hnTxnID =/= io.alloc.bits.hnTxnID, io.task.valid)
+  }.elsewhen(taskHit) {
+    next.task := io.task.bits
+    HAssert(reg.isAlloc)
+  }
+
+  // Get next wait read beat
+  val dsWriDBHit  = io.dsWriDB.valid & io.dsWriDB.bits.dcid === io.dcid & reg.isValid
+  when(io.alloc.fire) {
+    next.wRBeat   := 0.U
+  }.elsewhen(taskHit) {
+    next.wRBeat   := Mux(io.task.bits.dataOp.read, PopCount(io.task.bits.dataVec), 0.U)
+    HAssert(reg.wRBeat === 0.U)
+  }.elsewhen(dsWriDBHit) {
+    next.wRBeat   := reg.wRBeat - 1.U
+    HAssert(reg.wRBeat > 1.U)
+    HAssert(reg.isWait)
+  }
+
+  // Get next wait send beat
+  val txDatHit    = io.txDatFire.valid & io.txDatFire.bits.dcid === io.dcid & reg.isValid
+  when(io.alloc.fire) {
+    next.wSBeat   := 0.U
+  }.elsewhen(taskHit) {
+    next.wSBeat   := Mux(io.task.bits.dataOp.send, PopCount(io.task.bits.dataVec), 0.U)
+    HAssert(reg.wSBeat === 0.U)
+  }.elsewhen(txDatHit) {
+    next.wSBeat   := reg.wSBeat - 1.U
+    HAssert(reg.wSBeat > 1.U)
+    HAssert(reg.isSend | reg.isSave | reg.isClean | reg.isResp)
+  }
+
+  // Get next opBeat
+  when(io.alloc.fire) {
+    next.opBeat   := 0.U
+  }.elsewhen(io.readToDB.fire | io.readToDS.fire | io.readToCHI.fire) {
+    next.opBeat   := reg.opBeat + reg.task.isFullSize
+    HAssert.withEn(next.opBeat === 0.U, next.state =/= reg.state)
+    HAssert.withEn(next.opBeat === 1.U, next.state === reg.state)
+    require(djparam.nrBeat == 2)
+  }
+  HAssert.withEn(reg.opBeat === 0.U, taskHit)
+
+  // Get next hnTxnID
+  val repIdHit = io.replHnTxnID.valid & io.replHnTxnID.bits.before === reg.task.hnTxnID
+  when(io.alloc.fire) {
+    next.task.hnTxnID := io.alloc.bits.hnTxnID
+  }.elsewhen(repIdHit) {
+    next.task.hnTxnID := io.replHnTxnID.bits.next
+    HAssert(reg.isAlloc)
+  }.elsewhen(taskHit) {
+    next.task.hnTxnID := io.task.bits.hnTxnID
+  }
+
+  // Get next state
+  val replFire = io.readToDB.fire & io.readToDS.fire
+  switch(reg.state) {
+    is(FREE) {
+      when(io.alloc.fire)                 { next.state := ALLOC }
+    }
+    is(ALLOC) {
+      when(taskHit)                       { next.state := io.task.bits.dataOp.getNextState(ALLOC) }
+    }
+    is(REPL) {
+      when(replFire & reg.opAll)          { next.state := reg.task.dataOp.getNextState(REPL) }
+    }
+    is(READ) {
+      when(io.readToDB.fire & reg.opAll)  { next.state := reg.task.dataOp.getNextState(READ) }
+    }
+    is(WAIT) {
+      when(reg.waitall)                   { next.state := reg.task.dataOp.getNextState(WAIT) }
+    }
+    is(SEND) {
+      when(io.readToCHI.fire & reg.opAll) { next.state := reg.task.dataOp.getNextState(SEND) }
+    }
+    is(SAVE) {
+      when(io.readToDS.fire & reg.opAll)  { next.state := reg.task.dataOp.getNextState(SAVE) }
+    }
+    is(CLEAN) {
+      when(io.releaseDB.fire)             { next.state := reg.task.dataOp.getNextState(CLEAN) }
+    }
+    is(RESP) {
+      when(io.resp.fire)                  { next.state := reg.task.dataOp.getNextState(RESP) }
+    }
+    is(TOFREE) {
+      when(reg.sendall)                   { next.state := FREE }
+    }
+  }
+  val ioTaskOp = io.task.bits.dataOp
+  HAssert.withEn(ioTaskOp.read & ioTaskOp.send & ioTaskOp.save & ioTaskOp.clean, taskHit & ioTaskOp.repl)
+  HAssert.withEn(next.isFree | next.isAlloc, (next.state < reg.state) & reg.isValid)
+
+
+  /*
+   * Set new task
+   */
+  val set = io.alloc.fire | reg.isValid; dontTouch(set)
+  when(set) { reg := next }
+
+  /*
+   * Check timeout
+   */
+  HAssert.checkTimeout(reg.isFree, TIMEOUT_DATACM, cf"TIMEOUT: DataCM State[${reg.state}]")
+}
+
+// ----------------------------------------------------------------------------------------------------- //
+// -------------------------------------------- Ctrl Machine ------------------------------------------- //
+// ----------------------------------------------------------------------------------------------------- //
+class DataCM(implicit p: Parameters) extends DJModule {
+  /*
+   * IO declaration
+   */
+  val io = IO(new Bundle {
+    // From Backend
+    val replHnTxnID   = Flipped(Valid(new ReplHnTxnID))
+    val reqDBIn       = Flipped(Decoupled(new HnTxnID with HasDataVec))
+    val task          = Flipped(Decoupled(new DataTask)) // broadcast signal
+    val resp          = Valid(new HnTxnID)
+    // To DS/DB
+    val readToDB      = Decoupled(new ReadDS)
+    val readToDS      = Decoupled(new ReadDB)
+    val readToCHI     = Decoupled(new ReadDB)
+    val cleanMaskVec  = Vec(djparam.nrBeat, Valid(new DBID))
+    // From/To DBID Pool
+    val reqDBOut      = Decoupled(new HnTxnID with HasDataVec)
+    val releaseDB     = Valid(new HnTxnID with HasDataVec)
+    val getDBIDVec    = Vec(4, new GetDBID)
+    // From/To CHI
+    val txDataDCID    = Input(UInt(dcIdBits.W))
+    val txDatBits     = Output(new DataFlit)
+    // Other
+    val dsWriDB       = Flipped(Valid(new DCID)) // broadcast signal
+    val txDatFire     = Flipped(Valid(new DCID)) // broadcast signal
+  })
+
+  /*
+   * Module declaration
+   */
+  val entries = Seq.fill(nrDataCM) { Module(new DataCtrlEntry()) }
+  val dbgVec  = VecInit(entries.map(_.io.state))
+  dontTouch(dbgVec)
+
+  entries.foreach { e =>
+    e.io.dcid := DontCare
+    e.io.replHnTxnID := DontCare
+    e.io.alloc := DontCare
+    e.io.task := DontCare
+    e.io.resp := DontCare
+  }
+
+  /*
+   * Receive and send ReqDB
+   */
+  val freeDCVec             = VecInit(entries.map(_.io.alloc.ready))
+  val hasFreeDC             = freeDCVec.asUInt.orR
+  val freeDCID              = PriorityEncoder(hasFreeDC)
+  val taskReqDB             = io.task.valid & io.task.bits.dataOp.reqs
+  // reqDBOut
+  io.reqDBOut.valid         := (io.reqDBIn.valid | taskReqDB) & hasFreeDC
+  io.reqDBOut.bits.hnTxnID  := Mux(taskReqDB, io.task.bits.hnTxnID, io.reqDBIn.bits.hnTxnID)
+  io.reqDBOut.bits.dataVec  := Mux(taskReqDB, io.task.bits.dataVec, io.reqDBIn.bits.dataVec)
+  // ready
+  io.task.ready             := (io.reqDBOut.ready & hasFreeDC) | !taskReqDB
+  io.reqDBIn.ready          :=  io.reqDBOut.ready & hasFreeDC  & !taskReqDB
+
+  /*
+   * Send alloc and task to entries
+   */
+  entries.zipWithIndex.foreach { case (e, i) =>
+    e.io.dcid               := i.U
+    // Alloc
+    e.io.alloc.valid        := (io.reqDBIn.valid | taskReqDB) & io.reqDBOut.ready & freeDCID === i.U
+    e.io.alloc.bits.hnTxnID := Mux(taskReqDB, io.task.bits.hnTxnID, io.reqDBIn.bits.hnTxnID)
+    HAssert.withEn(io.reqDBOut.fire, e.io.alloc.fire, cf"DCID[${i.U}]")
+    // Task
+    e.io.task.valid         := RegNext(io.task.fire)
+    e.io.task.bits          := RegEnable(io.task.bits, io.task.fire)
+  }
+
+  /*
+   * Connect CM <- IO
+   */
+  entries.foreach(_.io.replHnTxnID  := io.replHnTxnID)
+  entries.foreach(_.io.dsWriDB      := io.dsWriDB)
+  entries.foreach(_.io.txDatFire    := io.txDatFire)
+
+  /*
+   * Connect IO <- IO
+   */
+  io.resp      := fastRRArb.validOut(entries.map(_.io.resp))
+  io.txDatBits := VecInit(entries.map(_.io.txDatBits))(io.txDataDCID)
+
+  /*
+   * Connect ReadToX
+   */
+  def connectReadToX[T <: Data with HasCritical](inVec: Vec[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
+    val criticalVec   = VecInit(inVec.map(e => e.valid & e.bits.critical))
+    val hasCritical   = criticalVec.asUInt.orR
+    val criticalId    = PriorityEncoder(criticalVec)
+    when(hasCritical) {
+      inVec.foreach(_.ready := false.B) // init
+      out <> inVec(criticalId)
+    }.otherwise {
+      out <> fastRRArb(inVec)
+    }
+    HAssert(PopCount(criticalVec) <= 1.U)
+  }
+  // Get replace vector
+  val replVec     = VecInit(entries.map(_.io.readForRepl))
+  val replDCID    = PriorityEncoder(replVec)
+  val hasRepl     = replVec.asUInt.orR
+  val readToDBVec = VecInit(entries.map(_.io.readToDB))
+  val readToDSVec = VecInit(entries.map(_.io.readToDS))
+  // Has replace
+  when(hasRepl) {
+    readToDBVec.foreach(_.ready := false.B)   // init
+    readToDSVec.foreach(_.ready := false.B)   // init
+    io.readToDB.valid := io.readToDS.ready    // Read to DB valid
+    io.readToDS.valid := io.readToDB.ready    // Read to DS valid
+    io.readToDB.bits  := readToDBVec(replDCID).bits // Read to DS bits
+    io.readToDS.bits  := readToDSVec(replDCID).bits // Read to DS bits
+    HAssert(readToDBVec(replDCID).valid)
+    HAssert(readToDSVec(replDCID).valid)
+  // No Replace
+  }.otherwise {
+    connectReadToX(readToDBVec, io.readToDB)  // Read to DB
+    connectReadToX(readToDSVec, io.readToDS)  // Read to DS
+  }
+  // Read to CHI
+  connectReadToX(VecInit(entries.map(_.io.readToCHI)), io.readToCHI)
+
+  /*
+   * Release DBID
+   */
+  io.releaseDB  := fastRRArb.validOut(entries.map(_.io.releaseDB))
+  io.cleanMaskVec.zipWithIndex.foreach { case(c, i) =>
+    c.valid     := io.releaseDB.valid & io.releaseDB.bits.dataVec(i)
+    c.bits.dbid := io.getDBIDVec(3).dbidVec(i) // Set dbid
+  }
+
+  /*
+   * Get DBID from DBIDPool
+   */
+  // Get dbid
+  val hnTxnIDVec  = VecInit(entries.map(_.io.state.bits.hnTxnID))
+  io.getDBIDVec(0).hnTxnID  := hnTxnIDVec(io.readToDB.bits.dcid)
+  io.getDBIDVec(1).hnTxnID  := hnTxnIDVec(io.readToDS.bits.dcid)
+  io.getDBIDVec(2).hnTxnID  := hnTxnIDVec(io.readToCHI.bits.dcid)
+  io.getDBIDVec(3).hnTxnID  := hnTxnIDVec(PriorityEncoder(entries.map(_.io.releaseDB.fire)))
+  // Set dbid
+  io.readToDB.bits.dbid     := io.getDBIDVec(0).dbidVec(io.readToDB.bits.beatNum)
+  io.readToDS.bits.dbid     := io.getDBIDVec(1).dbidVec(io.readToDS.bits.beatNum)
+  io.readToCHI.bits.dbid    := io.getDBIDVec(2).dbidVec(io.readToCHI.bits.beatNum)
+
+  /*
+   * HardwareAssertion placePipe
+   */
+  HardwareAssertion.placePipe(1)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

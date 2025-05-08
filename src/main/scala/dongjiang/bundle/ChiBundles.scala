@@ -104,7 +104,6 @@ object ChiChannel {
   val DAT = "b01".U
   val RSP = "b10".U
   val SNP = "b11".U
-
 }
 
 trait HasChiChannel { this: Bundle =>
@@ -115,6 +114,8 @@ trait HasChiChannel { this: Bundle =>
   def isRsp = channel === ChiChannel.RSP
   def isSnp = channel === ChiChannel.SNP
 }
+
+class ChiChnlBundle extends Bundle with HasChiChannel
 
 
 /*

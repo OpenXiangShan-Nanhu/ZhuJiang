@@ -27,10 +27,15 @@ class DirParam(dirType: String)(implicit p: Parameters) extends DJBundle with Ha
  * HasDirBaseMsg -> DirEntry/HasDirMsg -> DirMsg -> PackDirMsg -> HasPackDirMsg
  */
 trait HasDirBaseMsg extends DJBundle { this: DJBundle with HasDirParam =>
-  val wayOH   = UInt(ways.W)
-  val hit     = Bool()
-  val metaVec = Vec(nrMetas, new ChiState(paramType))
-  def way     = OHToUInt(wayOH)
+  val wayOH     = UInt(ways.W) // TODO: dont use OneHot
+  val hit       = Bool()
+  val metaVec   = Vec(nrMetas, new ChiState(paramType))
+
+  def way       = OHToUInt(wayOH)
+  def meta      = metaVec.head // Only use in LLC
+
+  def metaIsVal = Cat(metaVec.map(_.isValid)).orR
+  def metaIsInv = !metaIsVal
 
   def allVec: Seq[Bool] = metaVec.map(_.state.asBool)
   def othVec(metaIdOH: UInt): Seq[Bool] = metaVec.map(_.state.asBool).zipWithIndex.map { case (m, i) => m & !metaIdOH(i.U) }

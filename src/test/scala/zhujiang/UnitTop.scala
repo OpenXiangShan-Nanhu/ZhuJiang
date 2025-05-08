@@ -146,7 +146,7 @@ object BackendTop extends App {
 object FrontendTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new Frontend(0)(config))
+    ChiselGeneratorAnnotation(() => new Frontend()(config))
   ))
 }
 

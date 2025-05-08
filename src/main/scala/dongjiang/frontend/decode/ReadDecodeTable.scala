@@ -2,6 +2,7 @@ package dongjiang.frontend.decode
 
 import dongjiang._
 import dongjiang.frontend._
+import dongjiang.frontend.decode.Decode.DecodeType
 import dongjiang.frontend.decode.Inst._
 import dongjiang.frontend.decode.Code._
 import dongjiang.frontend.decode.DecodeCHI._
@@ -19,22 +20,22 @@ import chisel3.util._
 
 object Read_LAN_DCT_DMT {
   // ReadNoSnp With ExpCompAck And EO
-  def readNoSnp0: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck | isEO, Seq(
+  def readNoSnp0: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck | isEO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I)) -> first(read(ReadNoSnp) | doDMT, noCmt)
   ))
 
   // ReadNoSnp Without ExpCompAck And EO
-  def readNoSnp1: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadNoSnp) | isEO, Seq(
+  def readNoSnp1: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | isEO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I)) -> (tdop("reqs") | read(ReadNoSnp), Seq((datIs(CompData) | respIs(UC)) -> second(cdop("send", "clean") | cmtDat(CompData) | resp(UC))))
   ))
 
   // ReadNoSnp With ExpCompAck And NoOrder
-  def readNoSnp2: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck | noOrder, readNoSnp0._2)
+  def readNoSnp2: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck | noOrder, readNoSnp0._2)
 
   // ReadOnce
-  def readOnce: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | noOrder, Seq(
+  def readOnce: DecodeType = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | noOrder, Seq(
     // I I I  -> UC I I
     (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | doDMT, wriSRC(true)),
     // I I SC -> UC I I
@@ -59,7 +60,7 @@ object Read_LAN_DCT_DMT {
   ))
 
   // ReadNotSharedDirty
-  def readNotSharedDirty: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadNotSharedDirty) | expCompAck | noOrder, Seq(
+  def readNotSharedDirty: DecodeType = (fromLAN | toLAN | reqIs(ReadNotSharedDirty) | expCompAck | noOrder, Seq(
     // I I I  -> UC I I
     (sfMiss | llcIs(I))  -> first(read(ReadNoSnp) | doDMT, wriSRC(true)),
     // I I SC -> UC I I
@@ -91,7 +92,7 @@ object Read_LAN_DCT_DMT {
   ))
 
   // ReadUnique
-  def readUnique: (UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))]) = (fromLAN | toLAN | reqIs(ReadUnique) | expCompAck | noOrder, Seq(
+  def readUnique: DecodeType = (fromLAN | toLAN | reqIs(ReadUnique) | expCompAck | noOrder, Seq(
     // I I I  -> UC I I
     (sfMiss | llcIs(I))  -> first(read(ReadNoSnp) | doDMT, wriSRC(true)),
     // I I SC -> UC I I
@@ -117,5 +118,5 @@ object Read_LAN_DCT_DMT {
   ))
 
   // readNoSnp ++ readOnce ++ readNotSharedDirty ++ readUnique
-  def table: Seq[(UInt, Seq[(UInt, (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]))])] = Seq(readNoSnp0, readNoSnp1, readNoSnp2, readOnce, readNotSharedDirty, readUnique)
+  def table: Seq[DecodeType] = Seq(readNoSnp0, readNoSnp1, readNoSnp2, readOnce, readNotSharedDirty, readUnique)
 }

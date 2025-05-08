@@ -45,10 +45,10 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   val io = IO(new Bundle {
     val config    = Input(new DJConfigIO())
     val dirBank   = Input(UInt(dirBankBits.W))
-    val read      = Flipped(Decoupled(new Addr(dirType) with HasPackPosIndex))
-    val write     = Flipped(Decoupled(new DirEntry(dirType) with HasPackPosIndex))
-    val resp      = Valid(new DirEntry(dirType))
-    val unlock    = Flipped(Valid(new PosIndex()))
+    val read      = Flipped(Decoupled(new Addr(dirType) with HasPackHnIdx))
+    val write     = Flipped(Decoupled(new DirEntry(dirType) with HasPackHnIdx))
+    val resp      = Valid(new DirEntry(dirType) with HasHnTxnID)
+    val unlock    = Flipped(Valid(new PackHnIdx))
   })
   dontTouch(io)
 
@@ -110,7 +110,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   // [D0]: Receive Req and Read/Write SRAM
 
   // [D1]: Get SRAM Resp
-  val reqSftReg_d1    = RegInit(VecInit(Seq.fill(readDirLatency) { 0.U.asTypeOf(new DJBundle with HasAddr with HasPackPosIndex {
+  val reqSftReg_d1    = RegInit(VecInit(Seq.fill(readDirLatency) { 0.U.asTypeOf(new DJBundle with HasAddr with HasPackHnIdx {
     override def addrType: String = dirType
     val metaVec       = Vec(param.nrMetas, new ChiState(dirType))
     val wriWayOH      = UInt(param.ways.W)
@@ -203,7 +203,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   // reqSftReg_d1
   when(io.write.fire | io.read.fire) {
     reqSftReg_d1.last.addr      := Mux(io.write.valid, io.write.bits.addr,    io.read.bits.addr)
-    reqSftReg_d1.last.pos       := Mux(io.write.valid, io.write.bits.pos,     io.read.bits.pos)
+    reqSftReg_d1.last.hnIdx     := Mux(io.write.valid, io.write.bits.hnIdx,   io.read.bits.hnIdx)
     reqSftReg_d1.last.wriWayOH  := Mux(io.write.valid, io.write.bits.wayOH,   0.U)
     reqSftReg_d1.last.metaVec   := Mux(io.write.valid, io.write.bits.metaVec, 0.U.asTypeOf(reqSftReg_d1.last.metaVec))
   }
@@ -247,7 +247,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(PopCount(hitVec_d2) <= 1.U, shiftReg.read(0))
 
   // Select Way
-  useWayVec_d2      := lockTable(req_d2.pos.set).map(lock => Mux(lock.valid & lock.set === reqSet_d2, UIntToOH(lock.way), 0.U)).reduce(_ | _)
+  useWayVec_d2      := lockTable(req_d2.hnIdx.pos.set).map(lock => Mux(lock.valid & lock.set === reqSet_d2, UIntToOH(lock.way), 0.U)).reduce(_ | _)
   val unuseWay_d2   = PriorityEncoder(~useWayVec_d2.asUInt)
   val replWay_d2    = repl.get_replace_way(replMes_d2)
   val hitWay_d2     = PriorityEncoder(hitVec_d2)
@@ -275,6 +275,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   io.resp.bits.wayOH   := selWayOH_d2
   io.resp.bits.hit     := hit_d2
   io.resp.bits.metaVec := metaResp_d2(selWay_d2)
+  io.resp.bits.hnTxnID := req_d2.hnIdx.getTxnID
 
   // Get New replace message
   newReplMes_d2 := repl.get_next_state(replMes_d2,  OHToUInt(Mux(shiftReg.wriUpdRepl_d2, req_d2.wriWayOH, selWayOH_d2)))
@@ -284,27 +285,33 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     case(lockSet, i) =>
       lockSet.zipWithIndex.foreach {
         case(lock, j) =>
-          val hit         = req_d2.pos.idxMatch(i, j)
-          val write       = !shiftReg.read(0) &  shiftReg.write(0) & !shiftReg.repl(0) & hit
-          val readRepl    =  shiftReg.read(0) & !shiftReg.write(0) &  shiftReg.repl(0) & hit
-          val read        =  shiftReg.read(0) & !shiftReg.write(0) & !shiftReg.repl(0) & hit
-          val wriRepl     = !shiftReg.read(0) &  shiftReg.write(0) &  shiftReg.repl(0) & hit
-          val clean       = io.unlock.valid & io.unlock.bits.idxMatch(i, j)
-          val readHit     = read & hit_d2
+          // hnIdx
+          val hnIdx       = Wire(new HnIndex)
+          hnIdx.dirBank   := io.dirBank
+          hnIdx.pos.set   := i.U
+          hnIdx.pos.way   := j.U
 
-          hit.suggestName(f"hit_${i}_${j}")
-          write.suggestName(f"write_${i}_${j}")
-          readRepl.suggestName(f"readRepl_${i}_${j}")
-          read.suggestName(f"read_${i}_${j}")
-          wriRepl.suggestName(f"wriRepl_${i}_${j}")
-          clean.suggestName(f"clean_${i}_${j}")
-          readHit.suggestName(f"readHit_${i}_${j}")
+          // hit message
+          val reqHit      = req_d2.hnIdx.asUInt === hnIdx.asUInt
+          val write       = !shiftReg.read(0) &  shiftReg.write(0) & !shiftReg.repl(0) & reqHit
+          val readRepl    =  shiftReg.read(0) & !shiftReg.write(0) &  shiftReg.repl(0) & reqHit
+          val read        =  shiftReg.read(0) & !shiftReg.write(0) & !shiftReg.repl(0) & reqHit
+          val wriRepl     = !shiftReg.read(0) &  shiftReg.write(0) &  shiftReg.repl(0) & reqHit
+          val unLockHit   = io.unlock.valid   & io.unlock.bits.hnIdx.asUInt === hnIdx.asUInt
 
-          when(readHit | readRepl) {
-            lock.valid  := true.B
-            lock.way    := selWay_d2
-          }.elsewhen(clean) {
+          reqHit.suggestName(f"reqHit_${i}_${j}")
+          reqHit.suggestName(f"write_${i}_${j}")
+          reqHit.suggestName(f"readRepl_${i}_${j}")
+          reqHit.suggestName(f"read_${i}_${j}")
+          reqHit.suggestName(f"wriRepl_${i}_${j}")
+          reqHit.suggestName(f"unLockHit_${i}_${j}")
+
+          // modify lock
+          when(unLockHit) {
             lock.valid  := false.B
+            lock.way    := selWay_d2
+          }.elsewhen((read & hit_d2) | readRepl) {
+            lock.valid  := true.B
             lock.way    := selWay_d2
           }
 
@@ -315,19 +322,15 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
           // read_miss -> readRepl -> wriRepl -> clean
           //                 ^                     ^
           //                lock                 unlock
-          HardwareAssertion(PopCount(Seq(readHit, readRepl, clean)) <= 1.U, cf"Lock Table Index[${i.U}][${j.U}]")
+          HardwareAssertion(PopCount(Seq(read & hit_d2, readRepl, unLockHit)) <= 1.U, cf"Lock Table Index[${i.U}][${j.U}]")
           HardwareAssertion.withEn(!lock.valid, read, cf"Lock Table Index[${i.U}][${j.U}]")
-          HardwareAssertion.withEn( lock.valid, write, cf"Lock Table Index[${i.U}][${j.U}]")
           HardwareAssertion.withEn(!lock.valid, readRepl, cf"Lock Table Index[${i.U}][${j.U}]")
-          // HardwareAssertion.withEn( lock.valid, wriRepl, cf"Lock Table Index[${i.U}][${j.U}]") // clean may occur before wriRepl
-          // HardwareAssertion.withEn( lock.valid, clean, cf"Lock Table Index[${i.U}][${j.U}]")   // It is possible to execute clean without lock
           HardwareAssertion.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i.U}][${j.U}]")
       }
   }
 
-
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue-2)
+  HardwareAssertion.placePipe(1)
 }

@@ -101,7 +101,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue-2)
+  HardwareAssertion.placePipe(1)
 }
 
 
@@ -183,5 +183,5 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
   /*
    * HardwareAssertion placePipe
    */
-  HardwareAssertion.placePipe(Int.MaxValue-2)
+  HardwareAssertion.placePipe(1)
 }
