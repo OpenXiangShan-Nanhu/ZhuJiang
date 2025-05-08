@@ -157,7 +157,7 @@ class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   io.dAxiAr.valid     := uHeadPtr =/= uTailPtr & !isFull(dHeadPtr, dTailPtr)
   io.dAxiR.ready      := dataCtrlQ.io.dataIn.ready
 
-  io.working          := uHeadPtr =/= uTailPtr || dHeadPtr =/= dTailPtr
+  io.working          := uHeadPtr =/= uTailPtr || dHeadPtr =/= dTailPtr || rxArPipe.io.count =/= 0.U
 
   dataCtrlQ.io.dataIn.valid       := io.dAxiR.valid
   dataCtrlQ.io.dataIn.bits.id     := dArEntrys(io.dAxiR.bits.id).id

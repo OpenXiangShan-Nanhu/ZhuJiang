@@ -165,7 +165,7 @@ class AxiWrSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
   io.dAxiW.valid     := merComReg || mergeLastReg
   io.dAxiB.ready     := bIdQueue.io.enq.ready
 
-  io.working         := uHeadPtr =/= uTailPtr || dHeadPtr =/= dTailPtr
+  io.working         := uHeadPtr =/= uTailPtr || dHeadPtr =/= dTailPtr || rxAwPipe.io.count =/= 0.U
 
   mergeReg.io.dataIn.valid         := io.uAxiW.fire
   mergeReg.io.dataIn.bits.fixMerge := !dAwEntrys(wDataPtr.value).dontMerge & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
