@@ -103,6 +103,7 @@ class AxiRdSlave(implicit p: Parameters) extends ZJModule with HasCircularQueueP
         e.shift      := uTailE.exAddr(rni.offset - 1, 0)
         e.byteMask   := uTailE.byteMask(rni.offset - 1, 0)
         e.nextShift  := nextAddr
+        e.finish     := false.B
         val notModify  = !uTailE.cache(1)
         val lastEntry  = (uTailE.cnt.get + 1.U) === uTailE.num.get
         val specWrap   = Burst.isWrap(uTailE.burst) & !uTailE.byteMask(rni.offset)
