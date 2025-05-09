@@ -76,7 +76,7 @@ class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
     tailPtr := tailPtr + relNum
     availableSlots := (availableSlots +& relNum) - allocNum
   }
-  private val releaseMatchSeq = for(i <- io.release.bits.buf.indices) yield (io.release.valid, (tailPtr + i.U).value)
+  private val releaseMatchSeq = for(i <- io.release.bits.buf.indices) yield (io.release.valid && i.U < relNum, (tailPtr + i.U).value)
   private val releaseEntrySeq = for(i <- io.release.bits.buf.indices) yield io.release.bits.buf(i)
   for(idx <- freelist.indices) {
     val releaseMatch = releaseMatchSeq.map(elm => elm._1 && elm._2 === idx.U)
