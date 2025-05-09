@@ -24,7 +24,7 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
     val cleanMaskVec  = Vec(djparam.nrBeat, Flipped(Valid(new DBID)))
     // Data In
     val respDS        = Flipped(Valid(new DsResp))
-    val fromCHI       = Flipped(Decoupled(new PackDataFilt with HasDBID)) // Only use rxDat.Data/DataID/BE in DataCtrl
+    val fromCHI       = Flipped(Decoupled(new PackDataFilt with HasDBID)) // Only use rxDat.Data/DataID/BE in DataBlock
     // Data Out
     val writeDS       = Decoupled(new DsWrite with HasBeatNum)
     val toCHI         = Decoupled(new PackDataFilt with HasDCID)
