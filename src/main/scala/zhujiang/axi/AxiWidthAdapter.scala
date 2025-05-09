@@ -61,7 +61,7 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
 
   //W Channel Connection
   private val strb = Wire(Vec(seg, UInt((mdw / 8).W)))
-  private val waddrcvt = if(sdw > mdw) awq.io.deq.bits.addr(log2Ceil(sdw) - 1, log2Ceil(mdw)) else 0.U
+  private val waddrcvt = if(sdw > mdw) awq.io.deq.bits.addr(log2Ceil(sdw/8) - 1, log2Ceil(mdw/8)) else 0.U
   strb.zipWithIndex.foreach({case(s, i) => s := Mux(waddrcvt === i.U, wq.io.deq.bits.strb, 0.U)})
 
   wq.io.enq <> io.mst.w
