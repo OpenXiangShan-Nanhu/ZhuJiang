@@ -9,6 +9,7 @@ import xs.utils.{PickOneLow, ResetRRArbiter}
 import zhujiang.ZJModule
 import zhujiang.axi._
 import zhujiang.chi.{DatOpcode, DataFlit, ReqFlit, RespFlit}
+import zhujiang.utils.ConditionRRArbiter
 
 class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Parameters) extends ZJModule {
   private val compareTagBits = 16
@@ -29,10 +30,11 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
   private val icnRspArb = Module(new ResetRRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
   icn.tx.resp.get <> icnRspArb.io.out
 
-  private val awArb = Module(new ResetRRArbiter(axi.aw.bits.cloneType, node.outstanding))
+  private def axSelFunc(self:AXFlit, other:AXFlit):Bool = self.qos >= other.qos
+  private val awArb = Module(new ConditionRRArbiter(new AXFlit(axiParams), node.outstanding, axSelFunc))
   axi.aw <> awArb.io.out
 
-  private val arArb = Module(new ResetRRArbiter(axi.ar.bits.cloneType, node.outstanding))
+  private val arArb = Module(new ConditionRRArbiter(new AXFlit(axiParams), node.outstanding, axSelFunc))
   axi.ar <> arArb.io.out
 
   private val cms = for(idx <- 0 until node.outstanding) yield {

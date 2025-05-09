@@ -18,8 +18,8 @@ class Flit(implicit p: Parameters) extends Bundle {
   lazy val niw = zjParams.nodeIdBits
   lazy val dw = zjParams.dataBits
   lazy val bew = zjParams.beBits
-  def src = elements("SrcID")
-  def tgt = elements("TgtID")
+  def src:UInt = elements("SrcID").asUInt
+  def tgt:UInt = elements("TgtID").asUInt
 }
 
 class ReqFlit(dmt:Boolean = false)(implicit p: Parameters) extends Flit {
@@ -143,6 +143,26 @@ class DataFlit(implicit p: Parameters) extends Flit {
   def FwdState = DataSource
 }
 
+object FlitType {
+  val encodings = Seq(
+    "REQ" -> 0,
+    "RSP" -> 1,
+    "DAT" -> 2,
+    "SNP" -> 3,
+    "ERQ" -> 4,
+    "DBG" -> 6,
+    "HPR" -> 7
+  ).toMap
+  val req = encodings("REQ")
+  val rsp = encodings("RSP")
+  val dat = encodings("DAT")
+  val snp = encodings("SNP")
+  val erq = encodings("ERQ")
+  val dbg = encodings("DBG")
+  val hpr = encodings("HPR")
+  val cppDefines = encodings.map(e => s"#define ${e._1} ${e._2}\n").reduce(_ + _)
+}
+
 class RingFlit(width:Int)(implicit p: Parameters) extends ZJBundle {
   val Payload = UInt((width - niw - niw - 12).W)
   val TxnID = UInt(12.W)
@@ -154,28 +174,6 @@ class RingFlit(width:Int)(implicit p: Parameters) extends ZJBundle {
   def src:UInt = SrcID
   def txn:UInt = TxnID
   def did:UInt = this.asTypeOf(new DataFlit).DataID
-}
-
-object ChannelEncodings {
-  def REQ: Int = 0
-  def RSP: Int = 1
-  def DAT: Int = 2
-  def SNP: Int = 3
-  def ERQ: Int = 4
-  def DBG: Int = 5
-  def HRQ: Int = 6
-
-  def MAX_LEGAL_PORT_CHN: Int = DBG
-
-  val encodingsMap = Map[String, Int](
-    "REQ" -> REQ,
-    "RSP" -> RSP,
-    "DAT" -> DAT,
-    "SNP" -> SNP,
-    "ERQ" -> ERQ,
-    "DBG" -> DBG,
-    "HRQ" -> HRQ,
-  )
 }
 
 class ReqAddrBundle(implicit p: Parameters) extends ZJBundle {
@@ -217,8 +215,8 @@ class NodeIdBundle(implicit p: Parameters) extends ZJBundle {
 }
 
 object FlitHelper {
-  def connIcn(sink:DecoupledIO[Data], src:DecoupledIO[Data]):Unit = {
-    require(sink.getWidth == src.getWidth)
+  def connIcn(sink:DecoupledIO[Data], src:DecoupledIO[Data], checkWidth:Boolean = true):Unit = {
+    if(checkWidth) require(sink.getWidth == src.getWidth)
     sink.valid := src.valid
     src.ready := sink.ready
     sink.bits := src.bits.asTypeOf(sink.bits)

@@ -9,18 +9,34 @@ import xs.utils.debug.HardwareAssertionKey
 import zhujiang.chi.{MemAttr, NodeIdBundle, ReqAddrBundle}
 
 object NodeType {
-  val CC: Int = 0
-  val RF: Int = 1
-  val RI: Int = 2
-  val HF: Int = 3
-  val HI: Int = 4
-  val S: Int = 5
-  val M: Int = 6
-  val P: Int = 7
+  val encodingsMap = Seq(
+    "CC" -> 0,
+    "RF" -> 1,
+    "RI" -> 2,
+    "HF" -> 3,
+    "HI" -> 4,
+    "S" -> 5,
+    "M" -> 6,
+    "RH" -> 7,
+    "P" -> 8
+  ).toMap
+
+  val strMap = encodingsMap.map(elm => elm._2 -> elm._1)
+  val CC: Int = encodingsMap("CC")
+  val RF: Int = encodingsMap("RF")
+  val RI: Int = encodingsMap("RI")
+  val HF: Int = encodingsMap("HF")
+  val HI: Int = encodingsMap("HI")
+  val S: Int = encodingsMap("S")
+  val M: Int = encodingsMap("M")
+  val RH: Int = encodingsMap("RH")
+  val P: Int = encodingsMap("P")
+  val min: Int = 0
+  val max: Int = encodingsMap.values.max
   def HX: Int = HF
-  def width: Int = log2Ceil(P)
-  def min: Int = 0
-  def max: Int = P
+  def width: Int = log2Ceil(max)
+
+  val cppDefines:String = encodingsMap.filterNot(_._1 == "P").map(elm => s"#define ${elm._1}_TYPE ${elm._2}\n").reduce(_ + _)
 }
 
 case class NodeParam(
@@ -118,15 +134,16 @@ case class Node(
       case NodeType.CC => (Seq("REQ", "RSP", "DAT", "SNP"), Seq("REQ", "RSP", "DAT"))
       case NodeType.RF => (Seq("RSP", "DAT", "SNP"), Seq("REQ", "RSP", "DAT"))
       case NodeType.RI => (Seq("RSP", "DAT"), Seq("REQ", "RSP", "DAT"))
-      case NodeType.HF => (Seq("REQ", "RSP", "DAT"), Seq("RSP", "DAT", "SNP", "ERQ"))
+      case NodeType.HF => (Seq("REQ", "RSP", "DAT", "HPR"), Seq("RSP", "DAT", "SNP", "ERQ"))
       case NodeType.HI => (Seq("REQ", "RSP", "DAT"), Seq("RSP", "DAT", "ERQ"))
       case NodeType.S => (Seq("ERQ", "DAT"), Seq("RSP", "DAT"))
+      case NodeType.RH => (Seq("RSP", "DAT"), Seq("HPR", "RSP", "DAT"))
       case _ => (Seq(), Seq())
     }
-    val illegal1 = res._1.contains("REQ") && res._1.contains("ERQ")
-    val illegal2 = res._2.contains("REQ") && res._2.contains("ERQ")
-    require(!illegal1, "Cannot eject from both REQ and ERQ")
-    require(!illegal2, "Cannot inject to both REQ and ERQ")
+    val illegal1 = res._1.contains("REQ") && res._1.contains("ERQ") || res._1.contains("HPR") && res._1.contains("ERQ")
+    val illegal2 = res._2.contains("REQ") && res._2.contains("ERQ") || res._2.contains("ERQ") && res._2.contains("HPR")
+    require(!illegal1)
+    require(!illegal2)
     res
   }
 
@@ -150,16 +167,16 @@ case class Node(
     import NodeType._
     val legalTgtTypeSeq = nodeType match {
       case CC => chn match {
-        case "REQ" => Seq(CC, HF, HI)
-        case "RSP" => Seq(CC, HF, RI, HI)
-        case "DAT" => Seq(CC, RF, RI, HF, HI)
+        case "REQ" => Seq(CC, HF, HI, RH)
+        case "RSP" => Seq(CC, HF, RI, HI, RH)
+        case "DAT" => Seq(CC, RF, RI, HF, HI, RH)
         case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
       case RF => chn match {
         case "REQ" => Seq(CC, HF, HI)
         case "RSP" => Seq(CC, HF, HI)
-        case "DAT" => Seq(CC, RF, RI, HF, HI)
+        case "DAT" => Seq(CC, RF, RI, HF, HI, RH)
         case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
@@ -170,24 +187,31 @@ case class Node(
         case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
+      case RH => chn match {
+        case "HPR" => Seq(CC, HF, HI)
+        case "RSP" => Seq(CC, HF, HI)
+        case "DAT" => Seq(CC, HF, HI)
+        case "DBG" => Seq(M)
+        case _ => Seq[Int]()
+      }
       case HF => chn match {
-        case "RSP" => Seq(CC, RF, RI)
-        case "DAT" => Seq(CC, RF, RI, S)
+        case "RSP" => Seq(CC, RF, RI, RH)
+        case "DAT" => Seq(CC, RF, RI, S, RH)
         case "SNP" => Seq(CC, RF)
         case "ERQ" => Seq(S)
         case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
       case HI => chn match {
-        case "RSP" => Seq(CC, RF, RI)
-        case "DAT" => Seq(CC, RF, RI)
+        case "RSP" => Seq(CC, RF, RI, RH)
+        case "DAT" => Seq(CC, RF, RI, RH)
         case "ERQ" => Seq(S)
         case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }
       case S => chn match {
-        case "RSP" => Seq(CC, RF, RI, HF, HI)
-        case "DAT" => Seq(CC, RF, RI, HF, HI)
+        case "RSP" => Seq(CC, RF, RI, HF, HI, RH)
+        case "DAT" => Seq(CC, RF, RI, HF, HI, RH)
         case "DBG" => Seq(M)
         case _ => Seq[Int]()
       }

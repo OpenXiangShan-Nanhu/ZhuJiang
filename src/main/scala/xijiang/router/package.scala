@@ -3,13 +3,13 @@ package xijiang
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
-import xijiang.router.base.BaseRouter
+import xijiang.router.base.{BaseRouter, RouterHelper}
 import zhujiang.ZJParametersKey
 import zhujiang.chi._
 
 package object router {
   class RnRouter(node: Node)(implicit p: Parameters) extends BaseRouter(node) {
-    require(node.nodeType == NodeType.CC || node.nodeType == NodeType.RF || node.nodeType == NodeType.RI)
+    require(node.nodeType == NodeType.CC || node.nodeType == NodeType.RF || node.nodeType == NodeType.RI || node.nodeType == NodeType.RH)
     private val injectFlit = icn.rx.req.get.bits.asTypeOf(new RReqFlit)
     private val addr = injectFlit.Addr.asTypeOf(new ReqAddrBundle)
     private val memAttr = injectFlit.MemAttr.asTypeOf(new MemAttr)
@@ -23,6 +23,9 @@ package object router {
     when(icn.rx.req.get.valid) {
       assert(PopCount(completerSelOH) <= 1.U)
     }
-    if(p(ZJParametersKey).tfsParams.isEmpty) injectsMap("REQ").bits.tgt := reqTarget
+    if(p(ZJParametersKey).tfsParams.isEmpty) {
+      if(RouterHelper.testRingRx(node, "HPR")) ringInjectsMap("HPR").bits.tgt := reqTarget
+      if(RouterHelper.testRingRx(node, "REQ")) ringInjectsMap("REQ").bits.tgt := reqTarget
+    }
   }
 }

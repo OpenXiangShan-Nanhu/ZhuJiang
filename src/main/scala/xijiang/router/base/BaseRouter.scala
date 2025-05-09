@@ -7,8 +7,24 @@ import xijiang.tfb.{FlitMonitor, NodeRegister}
 import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
 import xs.utils.debug.HardwareAssertionKey
+import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.chi._
 import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
+
+object RingEncodings {
+  val encodingsMap = Map[String, Int](
+    "REQ" -> 0,
+    "RSP" -> 1,
+    "DAT" -> 2,
+    "HRQ" -> 3,
+    "HPR" -> 4,
+    "DBG" -> 5,
+  )
+
+  def MAX_LEGAL_RING_CHN: Int = encodingsMap("DBG")
+  val allRingSeq:Seq[String] = encodingsMap.keys.toSeq
+  val cppDefines:String = encodingsMap.map(elm => s"#define ${elm._1} 0x${elm._2.toHexString}\n").reduce(_ + _)
+}
 
 class ChannelBundle[T <: RingFlit](gen: T)(implicit p: Parameters) extends ZJBundle {
   val flit = Valid(gen)
@@ -16,19 +32,21 @@ class ChannelBundle[T <: RingFlit](gen: T)(implicit p: Parameters) extends ZJBun
 }
 
 class RingSide(implicit p: Parameters) extends ZJBundle {
+  val hpr = new ChannelBundle(new RingFlit(rreqFlitBits))
   val req = new ChannelBundle(new RingFlit(rreqFlitBits))
   val rsp = new ChannelBundle(new RingFlit(respFlitBits))
   val dat = new ChannelBundle(new RingFlit(dataFlitBits))
   val hrq = new ChannelBundle(new RingFlit(ringHrqFlitBits))
   val dbg = Option.when(p(HardwareAssertionKey).enable)(new ChannelBundle(new RingFlit(debugFlitBits)))
 
-  def getBundle(chn: String) = {
+  def getRingBundle(chn: String) = {
     chn match {
       case "REQ" => req
       case "RSP" => rsp
       case "DAT" => dat
       case "HRQ" => hrq
       case "DBG" => dbg.get
+      case "HPR" => hpr
     }
   }
 }
@@ -41,6 +59,32 @@ class RouterRingIO(implicit p: Parameters) extends ZJBundle {
 class ResetRingIO extends Bundle {
   val tx = Output(Vec(2, Bool()))
   val rx = Input(Vec(2, Bool()))
+}
+
+object RouterHelper {
+  def testRingRx(node:Node, ring:String)(implicit p:Parameters):Boolean = {
+    val injects = node.injects
+    ring match {
+      case "REQ" => injects.contains("REQ")
+      case "RSP" => injects.contains("RSP")
+      case "DAT" => injects.contains("DAT")
+      case "HRQ" => injects.contains("SNP") || injects.contains("ERQ")
+      case "HPR" => injects.contains("HPR")
+      case "DBG" => injects.contains("DBG")
+    }
+  }
+
+  def testRingTx(node:Node, ring:String)(implicit p:Parameters):Boolean = {
+    val ejects = node.ejects
+    ring match {
+      case "REQ" => ejects.contains("REQ")
+      case "RSP" => ejects.contains("RSP")
+      case "DAT" => ejects.contains("DAT")
+      case "HRQ" => ejects.contains("SNP") || ejects.contains("ERQ")
+      case "HPR" => ejects.contains("HPR") || ejects.contains("REQ")
+      case "DBG" => ejects.contains("DBG")
+    }
+  }
 }
 
 trait BaseRouterUtils {
@@ -73,14 +117,15 @@ trait BaseRouterUtils {
 
   val nid = node.nodeId.U(niw.W)
 
+
+
   private val flitMap = Map[String, RingFlit](
     "REQ" -> new RingFlit(rreqFlitBits),
     "RSP" -> new RingFlit(respFlitBits),
     "DAT" -> new RingFlit(dataFlitBits),
-    "SNP" -> new RingFlit(snoopFlitBits),
-    "ERQ" -> new RingFlit(hreqFlitBits),
     "HRQ" -> new RingFlit(ringHrqFlitBits),
-    "DBG" -> new RingFlit(debugFlitBits)
+    "DBG" -> new RingFlit(debugFlitBits),
+    "HPR" -> new RingFlit(rreqFlitBits),
   )
 
   private val ejectBufSizeMap = Map[String, Int](
@@ -88,69 +133,68 @@ trait BaseRouterUtils {
     "RSP" -> 3,
     "DAT" -> 3,
     "HRQ" -> p(ZJParametersKey).reqEjectBufDepth,
-    "DBG" -> 3
+    "DBG" -> 3,
+    "HPR" -> p(ZJParametersKey).reqEjectBufDepth,
   )
+  private val ringSeq = RingEncodings.allRingSeq
+  val ringInjectsMap = ringSeq.flatMap(r => Option.when(RouterHelper.testRingRx(node, r))(r -> Wire(Decoupled(flitMap(r))))).toMap
+  val ringEjectsMap = ringSeq.flatMap(r => Option.when(RouterHelper.testRingTx(node, r))(r -> Wire(Decoupled(flitMap(r))))).toMap
+  ringInjectsMap.foreach(_._2 := DontCare)
+  ringEjectsMap.foreach(_._2 := DontCare)
 
-  val injectsMap = node.injects.map({inj =>
-    val iw = Wire(Decoupled(flitMap(inj)))
-    val in = icn.rx.getBundle(inj).get
-    iw.valid := in.valid
-    iw.bits := in.bits.asTypeOf(iw.bits)
-    in.ready := iw.ready
-    if(inj == "DBG") iw.bits.TgtID := zjParams.island.filter(_.nodeType == NodeType.M).head.nodeId.U
-    if(m.p(ZJParametersKey).tfsParams.isEmpty) {
-      val ring = m.p(ZJParametersKey).island
-      node.checkLegalInjectTarget(ring, inj, iw.bits.tgt.asTypeOf(new NodeIdBundle), iw.valid, nid)
-    }
-    (inj, iw)
-  }).toMap
-
-  private def getInjectBuf(chn:String): Queue[RingFlit] = {
-    val buf = Module(new Queue(flitMap(chn), entries = 2))
-    buf.suggestName(s"inject${chn.toLowerCase().capitalize}Buffer")
-    if(chn == "HRQ") {
+  for((r, rx) <- ringInjectsMap) {
+    if(r == "HRQ") {
       if(node.injects.contains("ERQ") && node.injects.contains("SNP")) {
-        val arb = Module(new ResetRRArbiter(new RingFlit(ringHrqFlitBits), 2))
-        arb.io.in(0) <> injectsMap("ERQ")
-        arb.io.in(1) <> injectsMap("SNP")
-        buf.io.enq <> arb.io.out
+        val rxHrqArb = Module(new ResetRRArbiter(flitMap(r), 2))
+        connIcn(rxHrqArb.io.in(0), icn.rx.req.getOrElse(WireInit(0.U.asTypeOf(Decoupled(flitMap(r))))), checkWidth = false)
+        connIcn(rxHrqArb.io.in(1), icn.rx.snp.getOrElse(WireInit(0.U.asTypeOf(Decoupled(flitMap(r))))), checkWidth = false)
+        connIcn(rx, rxHrqArb.io.out)
       } else if(node.injects.contains("ERQ") && !node.injects.contains("SNP")) {
-        buf.io.enq <> injectsMap("ERQ")
+        connIcn(rx, icn.rx.req.get, checkWidth = false)
       } else if(!node.injects.contains("ERQ") && node.injects.contains("SNP")) {
-        buf.io.enq <> injectsMap("SNP")
+        connIcn(rx, icn.rx.snp.get, checkWidth = false)
       }
     } else {
-      buf.io.enq <> injectsMap(chn)
+      connIcn(rx, icn.rx.getRingBundle(r).get)
     }
-    buf
+  }
+
+  for((r, tx) <- ringEjectsMap) if(icn.tx.getRingBundle(r).isDefined) connIcn(icn.tx.getRingBundle(r).get, tx, checkWidth = false)
+  if(node.ejects.contains("REQ") && !node.ejects.contains("HPR")) {
+    val txReqArb = Module(new Arbiter(flitMap("REQ"), 2))
+    connIcn(txReqArb.io.in(0), ringEjectsMap("HPR"))
+    connIcn(txReqArb.io.in(1), ringEjectsMap("REQ"))
+    connIcn(icn.tx.req.get, txReqArb.io.out)
   }
 
   def connectRing[K <: Flit](chn: String): Unit = {
-    val hasRx = icn.rx.testBundle(chn)
-    val hasTx = icn.tx.testBundle(chn)
-    val tap = if(hasRx || hasTx) Some(Module(new ChannelTap(flitMap(chn), chn, ejectBufSizeMap(chn), node))) else None
+    val hasRx = ringInjectsMap.contains(chn)
+    val hasTx = ringEjectsMap.contains(chn)
+    val tap = Option.when(hasTx || hasRx)(Module(new ChannelTap(flitMap(chn), chn, ejectBufSizeMap(chn), node)))
     if(tap.isDefined) {
       tap.get.suggestName(s"${chn.toLowerCase()}ChannelTap")
       tap.get.io.matchTag := nid
-      tap.get.io.rx(0) := router.rings(0).rx.getBundle(chn)
-      tap.get.io.rx(1) := router.rings(1).rx.getBundle(chn)
-      router.rings(0).tx.getBundle(chn) := tap.get.io.tx(0)
-      router.rings(1).tx.getBundle(chn) := tap.get.io.tx(1)
+      tap.get.io.rx(0) := router.rings(0).rx.getRingBundle(chn)
+      tap.get.io.rx(1) := router.rings(1).rx.getRingBundle(chn)
+      router.rings(0).tx.getRingBundle(chn) := tap.get.io.tx(0)
+      router.rings(1).tx.getRingBundle(chn) := tap.get.io.tx(1)
       tap.get.io.inject.valid := false.B
       tap.get.io.inject.bits := DontCare
       tap.get.io.eject.ready := false.B
       tap.get.io.injectTapSelOH := DontCare
     } else {
       router.rings.foreach(r => {
-        r.tx.getBundle(chn).flit := Pipe(r.rx.getBundle(chn).flit)
-        r.tx.getBundle(chn).rsvd := Pipe(r.rx.getBundle(chn).rsvd)
+        r.tx.getRingBundle(chn).flit := Pipe(r.rx.getRingBundle(chn).flit)
+        r.tx.getRingBundle(chn).rsvd := Pipe(r.rx.getRingBundle(chn).rsvd)
       })
     }
 
     if(hasRx) {
-      val buf = getInjectBuf(chn)
       val mon = if(hasTfb) Some(Module(new FlitMonitor)) else None
-      tap.get.io.inject <> buf.io.deq
+      val buf = Module(new Queue(flitMap(chn), 2))
+      connIcn(buf.io.enq, ringInjectsMap(chn))
+      connIcn(tap.get.io.inject, buf.io.deq)
+      buf.suggestName(s"inj_buf_${chn.toLowerCase}")
       val tgt = buf.io.deq.bits.tgt.asTypeOf(new NodeIdBundle)
       tap.get.io.injectTapSelOH(0) := node.rightNodes.map(_.nodeId.U === tgt.router).reduce(_ || _)
       tap.get.io.injectTapSelOH(1) := node.leftNodes.map(_.nodeId.U === tgt.router).reduce(_ || _)
@@ -172,7 +216,7 @@ trait BaseRouterUtils {
         m.io.nodeId := nid
         m.io.nodeType := tfbNodeType
         m.io.inject := true.B
-        m.io.flitType := ChannelEncodings.encodingsMap(chn).U
+        m.io.flitType := RingEncodings.encodingsMap(chn).U
         m.io.flit := tap.get.io.inject.bits.asUInt
         when(m.io.valid) {
           assert(!m.io.fault, s"channel $chn inject wrong flit!")
@@ -182,10 +226,7 @@ trait BaseRouterUtils {
 
     if(hasTx) {
       val mon = if(hasTfb) Some(Module(new FlitMonitor)) else None
-      val icnTx = icn.tx.getBundle(chn)
-      icnTx.get.valid := tap.get.io.eject.valid
-      icnTx.get.bits := tap.get.io.eject.bits.asTypeOf(icnTx.get.bits)
-      tap.get.io.eject.ready := icnTx.get.ready
+      connIcn(ringEjectsMap(chn), tap.get.io.eject)
       mon.foreach(m => {
         m.suggestName(s"eject${chn.toLowerCase().capitalize}Monitor")
         m.io.clock := clock
@@ -193,7 +234,7 @@ trait BaseRouterUtils {
         m.io.nodeId := nid
         m.io.nodeType := tfbNodeType
         m.io.inject := false.B
-        m.io.flitType := ChannelEncodings.encodingsMap(chn).U
+        m.io.flitType := RingEncodings.encodingsMap(chn).U
         m.io.flit := tap.get.io.eject.bits.asUInt
         when(m.io.valid) {
           assert(!m.io.fault, s"channel $chn ejects wrong flit!")
@@ -201,6 +242,7 @@ trait BaseRouterUtils {
       })
     }
   }
+  ringSeq.foreach(connectRing)
 }
 
 class BaseRouter(val node: Node)(implicit p: Parameters) extends ZJModule with BaseRouterUtils {
@@ -211,11 +253,5 @@ class BaseRouter(val node: Node)(implicit p: Parameters) extends ZJModule with B
     r.io.nodeId := nid
     r.io.nodeType := tfbNodeType
   })
-
-  connectRing("REQ")
-  connectRing("RSP")
-  connectRing("DAT")
-  connectRing("HRQ")
-  if(p(HardwareAssertionKey).enable) connectRing("DBG")
   print(node)
 }

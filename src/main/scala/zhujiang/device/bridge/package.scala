@@ -82,6 +82,7 @@ package object bridge {
     val ewa = Bool()
     val device = Bool()
     val readCnt = UInt(8.W)
+    val qos = UInt(4.W)
     val isSnooped = Bool() // This field indicates if this CM should be depended on by other CMs
   }
 
@@ -103,6 +104,7 @@ package object bridge {
       info.device := req.MemAttr(1)
       info.readCnt := 0.U
       info.isSnooped := true.B
+      info.qos := 0.U
       state.u.decode(req, valid)
       state.d.decode(req, valid)
     }

@@ -1,14 +1,14 @@
 package zhujiang.device.socket
 
 import chisel3._
+import chisel3.util.DecoupledIO
 import freechips.rocketchip.util.{AsyncBundle, AsyncQueueParams, AsyncQueueSink, AsyncQueueSource}
 import org.chipsalliance.cde.config.Parameters
-import xijiang.{Node, NodeType}
-import xijiang.router.base.{BaseIcnMonoBundle, DeviceIcnBundle, IcnBundle}
+import xijiang.Node
+import xijiang.router.base.{DeviceIcnBundle, IcnBundle}
 import xs.utils.debug.HardwareAssertionKey
+import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.{ZJBundle, ZJModule}
-
-import scala.collection.immutable.SeqMap
 
 object AsyncUtils {
   val params = AsyncQueueParams(depth = 4, sync = 2)
@@ -20,27 +20,32 @@ class AsyncSource[T <: Data](gen: T) extends AsyncQueueSource(gen, AsyncUtils.pa
 
 trait BaseAsyncIcnMonoBundle {
   def req: Option[AsyncBundle[UInt]]
+  def hpr: Option[AsyncBundle[UInt]]
   def resp: Option[AsyncBundle[UInt]]
   def data: Option[AsyncBundle[UInt]]
   def snoop: Option[AsyncBundle[UInt]]
   def debug: Option[AsyncBundle[UInt]]
-  def chnMap: Map[String, Option[AsyncBundle[UInt]]] = Map(
-    ("REQ", req),
-    ("RSP", resp),
-    ("DAT", data),
-    ("SNP", snoop),
-    ("ERQ", req),
-    ("DBG", debug)
+  private lazy val _bundleMap = Seq(
+    "REQ" -> req,
+    "RSP" -> resp,
+    "DAT" -> data,
+    "SNP" -> snoop,
+    "HPR" -> hpr,
+    "DBG" -> debug,
+    "ERQ" -> req
   )
+  lazy val bundleMap = _bundleMap.flatMap(elm => Option.when(elm._2.isDefined)(elm._1, elm._2.get)).toMap
 }
 
 class IcnTxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseAsyncIcnMonoBundle {
-  private val illegal = node.ejects.contains("REQ") && node.ejects.contains("ERQ")
-  require(!illegal)
   val req = if(node.ejects.contains("REQ")) {
     Some(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params))
   } else if(node.ejects.contains("ERQ")) {
     Some(new AsyncBundle(UInt(hreqFlitBits.W), AsyncUtils.params))
+  } else None
+
+  val hpr = if(node.ejects.contains("HPR")) {
+    Some(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params))
   } else None
 
   val resp = if(node.ejects.contains("RSP")) {
@@ -61,12 +66,14 @@ class IcnTxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with
 }
 
 class IcnRxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseAsyncIcnMonoBundle {
-  private val illegal = node.injects.contains("REQ") && node.injects.contains("ERQ")
-  require(!illegal)
   val req = if(node.injects.contains("REQ")) {
     Some(Flipped(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params)))
   } else if(node.injects.contains("ERQ")) {
     Some(Flipped(new AsyncBundle(UInt(hreqFlitBits.W), AsyncUtils.params)))
+  } else None
+
+  val hpr = if(node.injects.contains("HPR")) {
+    Some(Flipped(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params)))
   } else None
 
   val resp = if(node.injects.contains("RSP")) {
@@ -104,55 +111,18 @@ class DeviceIcnAsyncBundle(val node: Node)(implicit p: Parameters) extends ZJBun
   }
 }
 
-abstract class BaseIcnAsyncModule(node: Node, icnSide:Boolean)(implicit p: Parameters) extends ZJModule {
-  private val flitBitsMap = Map[String, Int](
-    "REQ" -> rreqFlitBits,
-    "RSP" -> respFlitBits,
-    "DAT" -> dataFlitBits,
-    "SNP" -> snoopFlitBits,
-    "ERQ" -> hreqFlitBits,
-    "DBG" -> debugFlitBits
-  )
-
-  def icnRxBundle: BaseIcnMonoBundle
-  def asyncTxBundle: BaseAsyncIcnMonoBundle
-
-  def icnTxBundle: BaseIcnMonoBundle
-  def asyncRxBundle: BaseAsyncIcnMonoBundle
-
-  private var initialized = false
-  def makeConnections(): Unit = {
-    if(initialized) return
-    initialized = true
-    val toAsync = if(icnSide) node.ejects else node.injects
-    val fromAsync = if(icnSide) node.injects else node.ejects
-    for(chn <- toAsync) {
-      if(chn != "DBG" || p(HardwareAssertionKey).enable) {
-        val icnRx = icnRxBundle.chnMap(chn).get
-        val asyncTx = asyncTxBundle.chnMap(chn).get
-        val flitType = UInt(flitBitsMap(chn).W)
-        val asyncSource = Module(new AsyncSource(flitType))
-        asyncSource.io.enq.valid := icnRx.valid
-        asyncSource.io.enq.bits := icnRx.bits.asTypeOf(flitType)
-        icnRx.ready := asyncSource.io.enq.ready
-        asyncTx <> asyncSource.io.async
-        asyncSource.suggestName(s"${chn}AsyncSource")
-      }
-    }
-
-    for(chn <- fromAsync) {
-      if(chn != "DBG" || p(HardwareAssertionKey).enable) {
-        val icnTx = icnTxBundle.chnMap(chn).get
-        val asyncRx = asyncRxBundle.chnMap(chn).get
-        val flitType = UInt(flitBitsMap(chn).W)
-        val asyncSink = Module(new AsyncSink(flitType))
-        asyncSink.io.async <> asyncRx
-        icnTx.valid := asyncSink.io.deq.valid
-        icnTx.bits := asyncSink.io.deq.bits.asTypeOf(icnTx.bits)
-        asyncSink.io.deq.ready := icnTx.ready
-        asyncSink.suggestName(s"${chn}AsyncSink")
-      }
-    }
+abstract class BaseIcnAsyncModule(node: Node, icnSide: Boolean)(implicit p: Parameters) extends ZJModule {
+  def toAsync(async: AsyncBundle[UInt], sync: DecoupledIO[Data]) = {
+    val asyncSource = Module(new AsyncSource(sync.bits.asUInt.cloneType))
+    connIcn(asyncSource.io.enq, sync)
+    async <> asyncSource.io.async
+    asyncSource
+  }
+  def fromAsync(sync: DecoupledIO[Data], async: AsyncBundle[UInt]) = {
+    val asyncSink = Module(new AsyncSink(sync.bits.asUInt.cloneType))
+    asyncSink.io.async <> async
+    connIcn(sync, asyncSink.io.deq)
+    asyncSink
   }
 }
 
@@ -161,11 +131,21 @@ class IcnSideAsyncModule(node: Node)(implicit p: Parameters) extends BaseIcnAsyn
     val dev = new DeviceIcnBundle(node)
     val async = new IcnAsyncBundle(node)
   })
-  val icnRxBundle = io.dev.rx
-  val asyncTxBundle = io.async.tx
-  val icnTxBundle = io.dev.tx
-  val asyncRxBundle = io.async.rx
-  makeConnections()
+
+  for(chn <- node.ejects) {
+    val rx = io.dev.rx.bundleMap(chn)
+    val tx = io.async.tx.bundleMap(chn)
+    val ax = toAsync(tx, rx)
+    ax.suggestName(s"async_src_${chn.toLowerCase}")
+
+  }
+
+  for(chn <- node.injects) {
+    val rx = io.async.rx.bundleMap(chn)
+    val tx = io.dev.tx.bundleMap(chn)
+    val ax = fromAsync(tx, rx)
+    ax.suggestName(s"async_sink_${chn.toLowerCase}")
+  }
 }
 
 class DeviceSideAsyncModule(node: Node)(implicit p: Parameters) extends BaseIcnAsyncModule(node = node, icnSide = false) {
@@ -173,9 +153,17 @@ class DeviceSideAsyncModule(node: Node)(implicit p: Parameters) extends BaseIcnA
     val icn = new IcnBundle(node)
     val async = new DeviceIcnAsyncBundle(node)
   })
-  val icnRxBundle = io.icn.rx
-  val asyncTxBundle = io.async.tx
-  val icnTxBundle = io.icn.tx
-  val asyncRxBundle = io.async.rx
-  makeConnections()
+  for(chn <- node.ejects) {
+    val rx = io.async.rx.bundleMap(chn)
+    val tx = io.icn.tx.bundleMap(chn)
+    val ax = fromAsync(tx, rx)
+    ax.suggestName(s"async_sink_${chn.toLowerCase}")
+  }
+
+  for(chn <- node.injects) {
+    val rx = io.icn.rx.bundleMap(chn)
+    val tx = io.async.tx.bundleMap(chn)
+    val ax = toAsync(tx, rx)
+    ax.suggestName(s"async_src_${chn.toLowerCase}")
+  }
 }

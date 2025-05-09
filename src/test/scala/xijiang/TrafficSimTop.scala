@@ -49,7 +49,10 @@ class TrafficSimTop(implicit p: Parameters) extends ZJModule {
 }
 
 object TrafficSimTopMain extends App {
-  val (config, firrtlOpts) = TfsTopParser(args)
+  val (_config, firrtlOpts) = TfsTopParser(args)
+  val config = _config.alterPartial({
+    case ZJParametersKey => _config(ZJParametersKey).copy(tfsParams = Some(TrafficSimParams()))
+  })
   (new XsStage).execute(firrtlOpts, Seq(
     FirtoolOption("-O=release"),
     FirtoolOption("--disable-all-randomization"),
@@ -60,9 +63,7 @@ object TrafficSimTopMain extends App {
     FirtoolOption("--lowering-options=noAlwaysComb," +
       " disallowLocalVariables, disallowMuxInlining," +
       " emittedLineLength=120, explicitBitcast, locationInfoStyle=plain"),
-    ChiselGeneratorAnnotation(() => new TrafficSimTop()(config.alterPartial({
-      case ZJParametersKey => config(ZJParametersKey).copy(tfsParams = Some(TrafficSimParams()))
-    })))
+    ChiselGeneratorAnnotation(() => new TrafficSimTop()(config))
   ))
   if(config(ZJParametersKey).tfbParams.isDefined) TrafficBoardFileManager.release(config)
   if(config(ZJParametersKey).tfsParams.isDefined) TrafficSimFileManager.release(config)

@@ -9,14 +9,14 @@ import xijiang.router.base.DeviceIcnBundle
 import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
 import xs.utils.debug.{HAssert, HardwareAssertion, HardwareAssertionKey}
-import xs.utils.mbist.{MbistInterface, MbistPipeline}
+import xs.utils.mbist.MbistInterface
 import xs.utils.sram.{SramCtrlBundle, SramHelper}
 import zhujiang.chi.FlitHelper.connIcn
-import zhujiang.chi.{ChiBuffer, DataFlit, HReqFlit, NodeIdBundle, ReqAddrBundle, RingFlit}
+import zhujiang.chi._
 import zhujiang.{DftWires, ZJRawModule}
 
 @instantiable
-class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends ZJRawModule with ImplicitClock with ImplicitReset {
+class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) extends ZJRawModule with ImplicitClock with ImplicitReset {
   private val node = nodes.head
   @public
   val io = IO(new Bundle {
@@ -39,14 +39,14 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
   private val ckenWindowCnt = RegInit(15.U(4.W))
   private val idleWindowCnt = RegInit(15.U(4.W))
   private val hnx = Module(new DongJiang(node))
-  private val lanPipes = Seq.tabulate(nodes.length, zjParams.hnxPipelineDepth + 1) { case(i, j) =>
+  private val lanPipes = Seq.tabulate(nodes.length, zjParams.hnxPipelineDepth + 1) { case (i, j) =>
     val pipe = Module(new ChiBuffer(nodes(i)))
     pipe.suggestName(s"lan_${i}_pipe_$j")
   }
   require(zjParams.hnxPipelineDepth < 12)
   private val inbound = io.lans.map({ lan =>
     val rxvs = lan.rx.elements.values.map {
-      case chn:DecoupledIO[Data] => chn.valid
+      case chn: DecoupledIO[Data] => chn.valid
       case _ => false.B
     }
     RegNext(Cat(rxvs.toSeq).orR)
@@ -86,39 +86,40 @@ class HomeWrapper(nodes:Seq[Node], nrFriends:Int)(implicit p:Parameters) extends
     lanPipes(i).last.io.icn
   }
 
-  for(chn <- node.ejects.filterNot(_ == "DBG")) {
-    val rxSeq = hnxLans.map(_.tx.getBundle(chn).get)
+  for((chn, _) <- hnxLans.head.tx.bundleMap.filterNot(_._1 == "DBG")) {
+    val rxSeq = hnxLans.map(_.tx.bundleMap(chn))
     if(rxSeq.size == 1) {
-      hnx.io.lan.rx.getBundle(chn).get <> rxSeq.head
+      hnx.io.lan.rx.bundleMap(chn) <> rxSeq.head
     } else {
       val arb = ResetRRArbiter(rxSeq.head.bits.cloneType, rxSeq.size)
-      arb.io.in.zip(rxSeq).foreach({case(a, b) => a <> b})
-      hnx.io.lan.rx.getBundle(chn).get <> arb.io.out
+      arb.io.in.zip(rxSeq).foreach({ case (a, b) => a <> b })
+      hnx.io.lan.rx.bundleMap(chn) <> arb.io.out
     }
   }
 
   private val mems = zjParams.island.filter(n => n.nodeType == NodeType.S)
-  for(chn <- node.injects.filterNot(_ == "DBG")) {
-    val txBdSeq = hnxLans.map(_.rx.getBundle(chn).get)
-    val txBd = hnx.io.lan.tx.getBundle(chn).get
-
-    val tgt = if(chn == "ERQ" && mems.nonEmpty) {
+  for((chn, _) <- hnxLans.head.rx.bundleMap.filterNot(_._1 == "DBG")) {
+    val txBdSeq = hnxLans.map(_.rx.bundleMap(chn))
+    val txBd = hnx.io.lan.tx.bundleMap(chn)
+    val tgt = if(chn == "REQ" && mems.nonEmpty) {
       val addr = txBd.bits.asTypeOf(new HReqFlit).Addr.asTypeOf(new ReqAddrBundle)
       val memSelOH = mems.map(m => m.addrCheck(addr, io.ci))
       val memIds = mems.map(_.nodeId.U(niw.W))
-      when(txBd.valid) { HAssert(PopCount(memSelOH) === 1.U, cf"ERQ addr not match! @ 0x${addr.asUInt}%x") }
+      when(txBd.valid) {
+        HAssert(PopCount(memSelOH) === 1.U, cf"ERQ addr not match! @ 0x${addr.asUInt}%x")
+      }
       Mux1H(memSelOH, memIds)
     } else {
       txBd.bits.asTypeOf(new RingFlit(txBd.bits.getWidth)).TgtID
     }
 
     val friendsHitVec = Wire(UInt(io.friends.size.W))
-    friendsHitVec    := Cat(io.friends.map(fs => Cat(fs.map(_ === tgt.asTypeOf(new NodeIdBundle).router)).orR).reverse)
+    friendsHitVec := Cat(io.friends.map(fs => Cat(fs.map(_ === tgt.asTypeOf(new NodeIdBundle).router)).orR).reverse)
     dontTouch(friendsHitVec)
 
     val srcId = Mux1H(friendsHitVec, io.nids)
 
-    val txd = if(chn == "ERQ" && mems.nonEmpty) {
+    val txd = if(chn == "REQ" && mems.nonEmpty) {
       val ori = txBd.bits.asTypeOf(new HReqFlit)
       val res = WireInit(ori)
       val noDmt = ori.ReturnNID.get.andR

@@ -69,12 +69,14 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   icnVec.head.rx.req.get.bits  := setRx(io.lan.rx.req.get.bits.asTypeOf(new ReqFlit(false)), LAN)
   icnVec.head.rx.resp.get.bits := setRx(io.lan.rx.resp.get.bits.asTypeOf(new RespFlit()), LAN)
   icnVec.head.rx.data.get.bits := setRx(io.lan.rx.data.get.bits.asTypeOf(new DataFlit()), LAN)
+  icnVec.head.rx.hpr.get := DontCare
   if(hasBBN) {
     icnVec.last <> io.bbnOpt.get
     icnVec.last.rx.req.get.bits   := setRx(io.bbnOpt.get.rx.req.get.bits.asTypeOf(new ReqFlit(false)), BBN)
     icnVec.last.rx.snoop.get.bits := setRx(io.bbnOpt.get.rx.snoop.get.bits.asTypeOf(new SnoopFlit()), BBN)
     icnVec.last.rx.resp.get.bits  := setRx(io.bbnOpt.get.rx.resp.get.bits.asTypeOf(new RespFlit()), BBN)
     icnVec.last.rx.data.get.bits  := setRx(io.bbnOpt.get.rx.data.get.bits.asTypeOf(new DataFlit()), BBN)
+    icnVec.head.rx.hpr.get := DontCare
   }
 
   /*

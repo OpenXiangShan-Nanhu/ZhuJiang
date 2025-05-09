@@ -5,8 +5,6 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.Node
 import xijiang.router.base.{DeviceIcnBundle, IcnBundle}
-import xs.utils.debug.HardwareAssertionKey
-import xs.utils.queue.FastQueue
 import zhujiang.{ZJBundle, ZJModule}
 
 class PowerDomainCrossingBundle[T <: Data](gen:T) extends Bundle {
@@ -63,7 +61,26 @@ class PowerDomainCrossingRx[T <: Data](gen:T) extends Module {
   }
 }
 
-class ChiPdcTxBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
+abstract class PdcBundle(implicit p: Parameters) extends ZJBundle {
+  def req: Option[PowerDomainCrossingBundle[Data]]
+  def rsp: Option[PowerDomainCrossingBundle[Data]]
+  def dat: Option[PowerDomainCrossingBundle[Data]]
+  def snp: Option[PowerDomainCrossingBundle[Data]]
+  def hpr: Option[PowerDomainCrossingBundle[Data]]
+  def dbg: Option[PowerDomainCrossingBundle[Data]]
+  private lazy val _bundleMap = Seq(
+    "REQ" -> req,
+    "RSP" -> rsp,
+    "DAT" -> dat,
+    "SNP" -> snp,
+    "HPR" -> hpr,
+    "DBG" -> dbg,
+    "ERQ" -> req
+  )
+  lazy val bundleMap = _bundleMap.flatMap(elm => Option.when(elm._2.isDefined)(elm._1, elm._2.get)).toMap
+}
+
+class ChiPdcTxBundle(node: Node)(implicit p: Parameters) extends PdcBundle {
   val req = if(node.ejects.contains("REQ")) {
     Some(new PowerDomainCrossingBundle(UInt(rreqFlitBits.W)))
   } else if(node.ejects.contains("ERQ")) {
@@ -72,24 +89,14 @@ class ChiPdcTxBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
     None
   }
 
+  val hpr = Option.when(node.ejects.contains("HPR"))(new PowerDomainCrossingBundle(UInt(rreqFlitBits.W)))
   val rsp = Option.when(node.ejects.contains("RSP"))(new PowerDomainCrossingBundle(UInt(respFlitBits.W)))
   val dat = Option.when(node.ejects.contains("DAT"))(new PowerDomainCrossingBundle(UInt(dataFlitBits.W)))
   val snp = Option.when(node.ejects.contains("SNP"))(new PowerDomainCrossingBundle(UInt(snoopFlitBits.W)))
-  val dbg = Option.when(node.ejects.contains("DBG") && p(HardwareAssertionKey).enable)(new PowerDomainCrossingBundle(UInt(debugFlitBits.W)))
-
-  def getBundle(chn:String): PowerDomainCrossingBundle[UInt] = {
-    chn match {
-      case "REQ" => req.get
-      case "RSP" => rsp.get
-      case "DAT" => dat.get
-      case "SNP" => snp.get
-      case "ERQ" => req.get
-      case "DBG" => dbg.get
-    }
-  }
+  val dbg = Option.when(node.ejects.contains("DBG"))(new PowerDomainCrossingBundle(UInt(debugFlitBits.W)))
 }
 
-class ChiPdcRxBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
+class ChiPdcRxBundle(node: Node)(implicit p: Parameters) extends PdcBundle {
   val req = if(node.injects.contains("REQ")) {
     Some(Flipped(new PowerDomainCrossingBundle(UInt(rreqFlitBits.W))))
   } else if(node.injects.contains("ERQ")) {
@@ -98,21 +105,11 @@ class ChiPdcRxBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
     None
   }
 
+  val hpr = Option.when(node.injects.contains("HPR"))(Flipped(new PowerDomainCrossingBundle(UInt(rreqFlitBits.W))))
   val rsp = Option.when(node.injects.contains("RSP"))(Flipped(new PowerDomainCrossingBundle(UInt(respFlitBits.W))))
   val dat = Option.when(node.injects.contains("DAT"))(Flipped(new PowerDomainCrossingBundle(UInt(dataFlitBits.W))))
   val snp = Option.when(node.injects.contains("SNP"))(Flipped(new PowerDomainCrossingBundle(UInt(snoopFlitBits.W))))
-  val dbg = Option.when(node.injects.contains("DBG") && p(HardwareAssertionKey).enable)(Flipped(new PowerDomainCrossingBundle(UInt(debugFlitBits.W))))
-
-  def getBundle(chn:String): PowerDomainCrossingBundle[UInt] = {
-    chn match {
-      case "REQ" => req.get
-      case "RSP" => rsp.get
-      case "DAT" => dat.get
-      case "SNP" => snp.get
-      case "ERQ" => req.get
-      case "DBG" => dbg.get
-    }
-  }
+  val dbg = Option.when(node.injects.contains("DBG"))(Flipped(new PowerDomainCrossingBundle(UInt(debugFlitBits.W))))
 }
 
 class IcnPdcBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
@@ -135,7 +132,7 @@ class DevPdcBundle(node:Node)(implicit p:Parameters) extends ZJBundle {
 }
 
 trait PdcConnHelper {
-  def syncToPdc(tx:PowerDomainCrossingBundle[UInt], rx:DecoupledIO[Data], chn:String) = {
+  def syncToPdc(tx: PowerDomainCrossingBundle[Data], rx: DecoupledIO[Data], chn: String) = {
     val pdc = Module(new PowerDomainCrossingTx(tx.bits.cloneType))
     pdc.io.enq.valid := rx.valid
     pdc.io.enq.bits := rx.bits.asTypeOf(pdc.io.enq.bits)
@@ -144,7 +141,7 @@ trait PdcConnHelper {
     pdc
   }
 
-  def pdcToSync(tx:DecoupledIO[Data], rx:PowerDomainCrossingBundle[UInt], chn:String) = {
+  def pdcToSync(tx: DecoupledIO[Data], rx: PowerDomainCrossingBundle[Data], chn: String) = {
     val pdc = Module(new PowerDomainCrossingRx(rx.bits.cloneType))
     pdc.io.pdc <> rx
     tx.valid := pdc.io.deq.valid
@@ -154,7 +151,7 @@ trait PdcConnHelper {
   }
 }
 
-class ChiPdcIcnSide(node:Node)(implicit p:Parameters) extends ZJModule with PdcConnHelper {
+class ChiPdcIcnSide(node: Node)(implicit p: Parameters) extends ZJModule with PdcConnHelper {
   val io = IO(new Bundle {
     val icn = new IcnPdcBundle(node)
     val dev = new DeviceIcnBundle(node)
@@ -163,19 +160,19 @@ class ChiPdcIcnSide(node:Node)(implicit p:Parameters) extends ZJModule with PdcC
 
   private val ejCleanVec = Wire(Vec(node.ejects.size, Bool()))
   for((chn, idx) <- node.ejects.zipWithIndex) {
-    val rx = io.dev.rx.getBundle(chn).get
-    val tx = io.icn.tx.getBundle(chn)
+    val rx = io.dev.rx.bundleMap(chn)
+    val tx = io.icn.tx.bundleMap(chn)
     val pdc = syncToPdc(tx, rx, chn)
-    pdc.suggestName(s"${chn.toLowerCase}_pwr_dmn_x_tx")
+    pdc.suggestName(s"${chn.toLowerCase}_pdx_tx")
     ejCleanVec(idx) := pdc.io.clean
   }
 
   private val ijCleanVec = Wire(Vec(node.injects.size, Bool()))
   for((chn, idx) <- node.injects.zipWithIndex) {
-    val tx = io.dev.tx.getBundle(chn).get
-    val rx = io.icn.rx.getBundle(chn)
+    val tx = io.dev.tx.bundleMap(chn)
+    val rx = io.icn.rx.bundleMap(chn)
     val pdc = pdcToSync(tx, rx, chn)
-    pdc.suggestName(s"${chn.toLowerCase}_pwr_dmn_x_rx")
+    pdc.suggestName(s"${chn.toLowerCase}_pdx_rx")
     ijCleanVec(idx) := pdc.io.clean
   }
 
@@ -191,19 +188,19 @@ class ChiPdcDevSide(node:Node)(implicit p:Parameters) extends ZJModule with PdcC
 
   private val ejCleanVec = Wire(Vec(node.ejects.size, Bool()))
   for((chn, idx) <- node.ejects.zipWithIndex) {
-    val rx = io.dev.rx.getBundle(chn)
-    val tx = io.icn.tx.getBundle(chn).get
+    val rx = io.dev.rx.bundleMap(chn)
+    val tx = io.icn.tx.bundleMap(chn)
     val pdc = pdcToSync(tx, rx, chn)
-    pdc.suggestName(s"${chn.toLowerCase}_pwr_dmn_x_rx")
+    pdc.suggestName(s"${chn.toLowerCase}_pdx_rx")
     ejCleanVec(idx) := pdc.io.clean
   }
 
   private val ijCleanVec = Wire(Vec(node.injects.size, Bool()))
   for((chn, idx) <- node.injects.zipWithIndex) {
-    val tx = io.dev.tx.getBundle(chn)
-    val rx = io.icn.rx.getBundle(chn).get
+    val tx = io.dev.tx.bundleMap(chn)
+    val rx = io.icn.rx.bundleMap(chn)
     val pdc = syncToPdc(tx, rx, chn)
-    pdc.suggestName(s"${chn.toLowerCase}_pwr_dmn_x_tx")
+    pdc.suggestName(s"${chn.toLowerCase}_pdx_tx")
     ijCleanVec(idx) := pdc.io.clean
   }
 

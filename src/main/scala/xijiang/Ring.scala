@@ -36,7 +36,7 @@ class Ring(implicit p: Parameters) extends ZJModule {
       val m = Module(new TrafficGen(n))
       m.icn <> r.icn
       m.nodeId := r.router.nodeId
-      m.suggestName(s"${n.routerStr}TrafficGen")
+      m.suggestName(s"${n.routerStr}_TrafficGen")
       if(n.nodeType == NodeType.M) {
         val resetDev = Module(new ResetDevice)
         resetDev.clock := clock

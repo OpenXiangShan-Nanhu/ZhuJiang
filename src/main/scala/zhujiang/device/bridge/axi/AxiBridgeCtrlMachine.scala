@@ -39,6 +39,7 @@ class AxiBridgeCtrlMachine(
   private val allocReqIssued = RegInit(false.B)
   dataBufferAlloc.req.valid := RegNext(valid, false.B) && !allocReqIssued && !payload.state.bufferAllocated
   dataBufferAlloc.req.bits.size := payload.info.size
+  dataBufferAlloc.req.bits.qos := payload.info.qos
   dataBufferAlloc.req.bits.waitNum := waiting
 
   when(icn.rx.req.fire) {
