@@ -206,7 +206,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
       val getDatHit = datHit & datMetaId === i.U
       get := reg.getRespVec(i) | getRspHit | getDatHit
       HardwareAssertion(PopCount(Seq(getRspHit, getDatHit)) <= 1.U)
-      HardwareAssertion.withEn(!getRspHit, get)
+      HardwareAssertion.withEn(!getRspHit, reg.getRespVec(i))
     }
   }
 
