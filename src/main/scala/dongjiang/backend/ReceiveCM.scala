@@ -232,7 +232,7 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
   val entries = Seq.fill(nrReceiveCM) { Module(new ReceiveEntry()) }
   val dbgVec  = VecInit(entries.map(_.io.dbg))
   dontTouch(dbgVec)
-
+  
   /*
    * Connect CM <- IO
    */

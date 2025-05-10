@@ -92,8 +92,8 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   datNodeId.fromLAN := NocType.rxIs(io.rxDat.bits, LAN)
   rspNodeId.nodeId  := io.rxRsp.bits.SrcID
   datNodeId.nodeId  := io.rxDat.bits.SrcID
-  val rspHit        = io.rxRsp.fire & reg.task.hnTxnID === io.rxRsp.bits.TxnID & (io.rxRsp.bits.Opcode === SnpResp     | io.rxRsp.bits.Opcode === SnpRespFwded)
-  val datHit        = io.rxDat.fire & reg.task.hnTxnID === io.rxRsp.bits.TxnID & (io.rxDat.bits.Opcode === SnpRespData | io.rxDat.bits.Opcode === SnpRespDataFwded)
+  val rspHit        = reg.isValid & io.rxRsp.fire & reg.task.hnTxnID === io.rxRsp.bits.TxnID & (io.rxRsp.bits.Opcode === SnpResp     | io.rxRsp.bits.Opcode === SnpRespFwded)
+  val datHit        = reg.isValid & io.rxDat.fire & reg.task.hnTxnID === io.rxDat.bits.TxnID & (io.rxDat.bits.Opcode === SnpRespData | io.rxDat.bits.Opcode === SnpRespDataFwded)
   val rspMetaId     = OHToUInt(rspNodeId.metaIdOH)
   val datMetaId     = OHToUInt(datNodeId.metaIdOH)
   HardwareAssertion.withEn(rspNodeId.metaIdOH.orR, rspHit)
@@ -243,7 +243,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   HAssert.withEn(reg.isReqDB,   reg.isValid & io.reqDB.fire)
   HAssert.withEn(reg.isSendSnp, reg.isValid & io.txSnp.fire)
   HAssert.withEn(reg.isResp,    reg.isValid & io.resp.fire)
-  HAssert.withEn(reg.isSendSnp | reg.isWaitResp, reg.isValid & rspHit | datHit)
+  HAssert.withEn(reg.isSendSnp | reg.isWaitResp, rspHit | datHit)
 
   /*
    * Set new task

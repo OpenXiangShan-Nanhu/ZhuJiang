@@ -34,8 +34,7 @@ trait HasDataOp { this: Bundle =>
 
   // Use in DataCM
   def getNextState(state: UInt)(implicit p: Parameters, s: SourceInfo) = {
-    HAssert(state === ALLOC | state === REPL | state === READ | state === WAIT | state === SEND | state === SAVE)
-    HAssert(valid | repl)
+    HAssert(state === ALLOC | state === REPL | state === READ | state === WAIT | state === SEND | state === SAVE | state === CLEAN | state === RESP)
     // Without replace
     val next0 = WireInit(0.U(CTRLSTATE.width.W))
     switch(state) {
@@ -73,6 +72,7 @@ trait HasDataOp { this: Bundle =>
     switch(state) {
       is(ALLOC) { next1 := REPL   }
       is(REPL)  { next1 := WAIT   }
+      is(WAIT)  { next1 := SEND   }
       is(SEND)  { next1 := CLEAN  }
       is(CLEAN) { next1 := RESP   }
       is(RESP)  { next1 := TOFREE }

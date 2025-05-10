@@ -37,7 +37,7 @@ object WRISTATE {
 class WriMes(implicit p: Parameters) extends DJBundle {
   // TODO: WriteEvictOrEvict
   // REQ To LAN:
-  // CHI: Free --> SendReq --> CanNest --> WaitDBID --> DataTask --> WaitData --> RespCmt --> Free
+  // CHI: Free --> SendReq --> WaitDBID --> DataTask --> WaitData --> RespCmt --> Free
   // REQ To BBN:
   // CHI: Free --> CanNest --> SendReq --> WaitDBID --> DataTask --> WaitData --> CantNest --> RespCmt --> Free
   val state       = UInt(WRISTATE.width.W)
@@ -156,8 +156,8 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   /*
    * Modify Ctrl Machine Table
    */
-  val dbidHit = io.rxRsp.fire     & io.rxRsp.bits.TxnID === reg.task.hnTxnID & (io.rxRsp.bits.Opcode === CompDBIDResp | io.rxRsp.bits.Opcode === DBIDResp)
-  val compHit = io.rxRsp.fire     & io.rxRsp.bits.TxnID === reg.task.hnTxnID & (io.rxRsp.bits.Opcode === CompDBIDResp | io.rxRsp.bits.Opcode === Comp)
+  val dbidHit = reg.isValid & io.rxRsp.fire & io.rxRsp.bits.TxnID === reg.task.hnTxnID & (io.rxRsp.bits.Opcode === CompDBIDResp | io.rxRsp.bits.Opcode === DBIDResp)
+  val compHit = reg.isValid & io.rxRsp.fire & io.rxRsp.bits.TxnID === reg.task.hnTxnID & (io.rxRsp.bits.Opcode === CompDBIDResp | io.rxRsp.bits.Opcode === Comp)
   // Store Msg From Frontend or CHI
   when(io.alloc.fire) {
     next.task             := io.alloc.bits
@@ -190,10 +190,10 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
       when(io.dataTask.fire)    { next.state := WAITDATA }
     }
     is(WAITDATA) {
-      when(dataRespHit)         { next.state := Mux(io.alloc.bits.chi.toBBN, CANTNEST, RESPCMT) }
+      when(dataRespHit)         { next.state := Mux(reg.task.chi.toBBN, CANTNEST, RESPCMT) }
     }
     is(CANTNEST) {
-      when(io.updPosNest.fire)  { next.state := RESPCMT}
+      when(io.updPosNest.fire)  { next.state := RESPCMT }
     }
     is(RESPCMT) {
       when(io.resp.fire)        { next.state := FREE }

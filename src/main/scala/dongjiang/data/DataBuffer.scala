@@ -56,24 +56,27 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
    * Receive read req
    */
   // Set ready ready
-  val hasFreetoCHI      = toDSQ.io.freeNum >= rToCHIReg.asUInt
-  val hasFreetoDS       = toDSQ.io.freeNum >= rToDSReg.asUInt
-  io.readToCHI.ready    := hasFreetoCHI
-  io.readToDS.ready     := hasFreetoDS & !io.readToCHI.valid // TODO: has risk here
-
+  val hasFreetoCHI      = toDSQ.io.freeNum > rToCHIReg.asUInt
+  val hasFreetoDS       = toDSQ.io.freeNum > rToDSReg.asUInt
+  io.readToCHI.ready    := hasFreetoCHI & !io.readToDS.valid // TODO: has risk here
+  io.readToDS.ready     := hasFreetoDS
 
   // Set datBuf read io
   datBuf.io.rreq.valid  := io.readToCHI.fire | io.readToDS.fire
   datBuf.io.rreq.bits   := Mux(io.readToCHI.valid, io.readToCHI.bits.dbid, io.readToDS.bits.dbid)
 
-
   // Set replace flag
-  val cleanValid        = Cat(io.cleanMaskVec.map(_.valid)).orR
-  when(io.readToDS.fire & io.readToDS.bits.repl) {
-    replRegVec(io.readToDS.bits.dbid) := true.B
-    HAssert(!replRegVec(io.readToDS.bits.dbid))
-  }.elsewhen(cleanValid) {
-    io.cleanMaskVec.foreach { c => replRegVec(c.bits.dbid) := !c.valid }
+  replRegVec.zipWithIndex.foreach { case(r, i) =>
+    val replHit   = io.readToDS.fire & io.readToDS.bits.repl  & io.readToDS.bits.dbid === i.U
+    val cleanHit  = Cat(io.cleanMaskVec.map(c => c.valid & c.bits.dbid === i.U)).orR
+    when(replHit) {
+      r := true.B
+      HAssert(!r)
+    }.elsewhen(cleanHit) {
+      r := false.B
+    }
+    HAssert(!(replHit & cleanHit))
+    HAssert(PopCount(io.cleanMaskVec.map(c => c.valid & c.bits.dbid === i.U)) <= 1.U)
   }
 
   /*
@@ -97,11 +100,12 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
 
   /*
    * Modify mask
+   * TODO: optimize clock gating
    */
   maskRegVec.zipWithIndex.foreach { case(m, i) =>
     val cleanVec  = VecInit(io.cleanMaskVec.map(c => c.valid & c.bits.dbid === i.U))
     val cleanHit  = cleanVec.asUInt.orR
-    val dsHit     = io.respDS.fire & io.respDS.bits.dbid === i.U
+    val dsHit     = io.respDS.fire  & io.respDS.bits.dbid  === i.U
     val chiHit    = io.fromCHI.fire & io.fromCHI.bits.dbid === i.U
     when(cleanHit) {
       m := 0.U

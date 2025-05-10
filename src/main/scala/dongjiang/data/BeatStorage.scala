@@ -56,7 +56,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
     suffix      = "_llc_dat"
   ))
   val dcidPipe    = Module(new Pipe(UInt(dcIdBits.W), readDsLatency))
-  val dbidPipe    = Module(new Pipe(UInt(dcIdBits.W), readDsLatency))
+  val dbidPipe    = Module(new Pipe(UInt(dbIdBits.W), readDsLatency))
   val shiftReg    = RegInit(0.U.asTypeOf(new Shift))
   val rstDoneReg  = RegEnable(true.B, false.B, array.io.req.ready)
   HardwareAssertion.withEn(!(array.io.req.ready ^ io.write.ready), rstDoneReg) // Check Shift Reg logic
@@ -82,11 +82,11 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
 
   // dcidPipe
   dcidPipe.io.enq.valid := io.read.fire
-  dcidPipe.io.enq.bits  := io.read.bits.dbid
+  dcidPipe.io.enq.bits  := io.read.bits.dcid
 
   // dbidPipe
   dbidPipe.io.enq.valid := io.read.fire
-  dbidPipe.io.enq.bits  := io.read.bits.dcid
+  dbidPipe.io.enq.bits  := io.read.bits.dbid
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -100,6 +100,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
   io.resp.bits.dbid := dbidPipe.io.deq.bits
 
   HardwareAssertion.withEn(dcidPipe.io.deq.valid, shiftReg.outResp)
+  HardwareAssertion.withEn(dbidPipe.io.deq.valid, shiftReg.outResp)
   HardwareAssertion.withEn(array.io.resp.valid, shiftReg.outResp)
 
   /*

@@ -434,6 +434,30 @@ class Commit(implicit p: Parameters) extends DJModule {
   dontTouch(dbgVec)
 
   /*
+   * SuggestName of entries
+   */
+  def splitInt(value: Int, widths: Seq[Int]): Seq[Int] = {
+    require(widths.forall(_ >= 0), "Widths must be non-negative")
+    require(widths.sum <= 32, "Total width must ≤ 32")
+
+    val totalWidth = widths.sum
+    val maskedValue = if (totalWidth == 0) 0 else value & ((1 << totalWidth) - 1) // 处理全0情况
+
+    widths.foldLeft((List.empty[Int], 0)) { case ((segments, shift), width) =>
+      if (width == 0) {
+        (segments :+ 0, shift) // 位宽为0，直接返回0
+      } else {
+        val segment = (maskedValue >> shift) & ((1 << width) - 1)
+        (segments :+ segment, shift + width)
+      }
+    }._1
+  }
+  entries.zipWithIndex.foreach { case(e, i) =>
+    val idx = splitInt(i, Seq(posWayBits, posSetBits, dirBankBits))
+    e.suggestName(s"entries_${i}_bank${idx(2)}_set${idx(1)}_way${idx(0)}")
+  }
+
+  /*
    * Receive Commit Task from Frontend
    */
   entries.map(_.io.alloc).grouped(nrPoS).zip(io.cmtTaskVec).foreach { case(alloc, task) => alloc.foreach(_ := task) }

@@ -92,7 +92,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  sfWays: ${djparam.sfWays}
        |  sfMetas: ${nrSfMetas}
        |  openDCT: ${djparam.openDCT}
-       |  nrPoS: ${djparam.nrPoS}
+       |  nrPoS: ${djparam.nrPoS} = dirBank[${djparam.nrDirBank}] x posSets[${posSets}] x posSets[${posWays}]
        |  dataBufSize: ${djparam.dataBufSizeInByte} B
        |  dataSetup: ${djparam.dataRamSetup}
        |  dataLatency: ${djparam.dataRamSetup}

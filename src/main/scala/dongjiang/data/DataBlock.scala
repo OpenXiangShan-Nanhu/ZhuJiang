@@ -19,7 +19,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
     val txDat       = Decoupled(new DataFlit)
     val rxDat       = Flipped(Decoupled(new DataFlit)) // Only use rxDat.Data/DataID/BE/TxnID in DataBlock
     // Task From Frontend or Backend
-    val replHnTxnID = Flipped(Valid(new ReplHnTxnID))
+    val replHnTxnID = Flipped(Valid(new ReplHnTxnID)) // broadcast signal
     val reqDB       = Flipped(Decoupled(new HnTxnID with HasDataVec))
     val task        = Flipped(Decoupled(new DataTask))
     val resp        = Valid(new HnTxnID)
@@ -56,9 +56,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
     ds.zipWithIndex.foreach { case(bs, j) =>
       // read // TODO: dataCM dont ReadDS
       bs.io.read.valid      := dataCM.io.readToDB.valid & readDs.ds.bank === i.U & readDs.beatNum === j.U
-      bs.io.read.bits.ds    := readDs.ds
-      bs.io.read.bits.dbid  := dbidCtrl.io.getDBIDVec(3).dbidVec(readDs.beatNum)
-      bs.io.read.bits.dcid  := readDs.dcid
+      bs.io.read.bits       := readDs
       rReadyVec2(i)(j)      := bs.io.read.ready
       // write
       bs.io.write.valid     := datBuf.io.writeDS.valid & writeDs.ds.bank === i.U & writeDs.beatNum === j.U
@@ -87,6 +85,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
    */
   dbidCtrl.io.req               <> dataCM.io.reqDBOut
   dbidCtrl.io.release           := dataCM.io.releaseDB
+  dbidCtrl.io.replHnTxnID       := io.replHnTxnID
 
   /*
    * Connect datBuf
@@ -97,19 +96,22 @@ class DataBlock(implicit p: Parameters) extends DJModule {
   datBuf.io.respDS              := fastArb(dataStorage.flatMap(_.map(_.io.resp)))
   datBuf.io.fromCHI.valid       := io.rxDat.valid
   datBuf.io.fromCHI.bits.dat    := io.rxDat.bits
-  datBuf.io.fromCHI.bits.dbid   := dbidCtrl.io.getDBIDVec(4).dbidVec(Mux(io.rxDat.bits.DataID === "b00".U, 0.U, 1.U)); require(djparam.nrBeat == 2)
   io.rxDat.ready                := datBuf.io.fromCHI.ready
   HAssert(PopCount(dataStorage.flatMap(_.map(_.io.resp.valid))) <= 1.U)
 
   /*
    * Connect getDBIDVec
    */
+  // connect dataCM <> dbidCtrl
   dataCM.io.getDBIDVec.zipWithIndex.foreach { case(get, i) =>
     dbidCtrl.io.getDBIDVec(i).hnTxnID := get.hnTxnID
     get.dbidVec := dbidCtrl.io.getDBIDVec(i).dbidVec
   }
-  dbidCtrl.io.getDBIDVec(3).hnTxnID := readDs.dcid
+  // remap data from CHI TxnID and DataID to DBID
   dbidCtrl.io.getDBIDVec(4).hnTxnID := io.rxDat.bits.TxnID
+  datBuf.io.fromCHI.bits.dbid       := dbidCtrl.io.getDBIDVec(4).dbidVec(Mux(io.rxDat.bits.DataID === "b00".U, 0.U, 1.U)); require(djparam.nrBeat == 2)
+  // require
+  require(dataCM.io.getDBIDVec.size + 1 == dbidCtrl.io.getDBIDVec.size)
 
   /*
    * HardwareAssertion placePipe

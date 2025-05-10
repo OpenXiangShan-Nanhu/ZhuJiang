@@ -120,6 +120,7 @@ class PosEntry(implicit p: Parameters) extends DJModule {
    */
   when(canNestHit) {
     stateNext.canNest := io.updNest.bits.nest
+    HAssert(stateReg.canNest ^ io.updNest.bits.nest)
     HAssert(stateReg.req)
   }
   HAssert.withEn(!stateReg.canNest, canNestHit      &  io.updNest.bits.nest)
@@ -174,7 +175,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
    */
   // Entries
   val entries         = Seq.fill(posWays) { Module(new PosEntry()) }
-  val lockReg         = RegInit(false.B)
+  val lockReg         = RegInit(false.B) // Lock set when ReplaceCM req PoS
   // Entries StateVec
   val esVec           = VecInit(entries.map(_.io.state))
   // Save Alloc in S1
@@ -184,15 +185,6 @@ class PosSet(implicit p: Parameters) extends DJModule {
 
   /*
    * Receive alloc task from TaskBuffer
-   *
-   * 1. task is CHIREQ :
-   *  a. no block
-   *  b. block by addr
-   *
-   * 2. task is CHISNP :
-   *  a. no block
-   *  a. can nest  : nest someone
-   *  b. cant nest : block by addr
    */
   // get base message
   val allocTag_s0     = io.alloc_s0.bits.Addr.posTag
@@ -217,7 +209,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   val blockSnp_s0     = Mux(hasMatTag, !canNest_s0, !hasFree_s0)
 
   // judge block
-  val block_s0        = Mux(io.alloc_s0.bits.isSnp, blockSnp_s0, blockReq_s0) | lockReg
+  val block_s0        = Mux(io.alloc_s0.bits.isSnp, blockSnp_s0, blockReq_s0) | lockReg | io.reqPoS.req.valid
 
   /*
    * Store alloc task from taskBuf
@@ -233,8 +225,8 @@ class PosSet(implicit p: Parameters) extends DJModule {
    * Retrun ack to TaskBuffer and Block
    */
   io.sleep_s1               := RegNext(io.alloc_s0.valid & hasMatTag & !lockReg)
-  io.block_s1               := RegNext(io.alloc_s0.valid & block_s0)
-  io.hnIdx_s1.valid         := RegNext(io.alloc_s0.valid)
+  io.block_s1               := RegNext(io.alloc_s0.valid & block_s0) | io.reqPoS.req.valid
+  io.hnIdx_s1.valid         := RegNext(io.alloc_s0.valid) & !io.reqPoS.req.valid
   io.hnIdx_s1.bits.dirBank  := io.dirBank
   io.hnIdx_s1.bits.pos.set  := io.posSet
   io.hnIdx_s1.bits.pos.way  := allocWayReg_s1
@@ -262,7 +254,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
     io.reqPoS.req.bits.isReq          -> (posWays-2).U,
     io.reqPoS.req.bits.isSnp          -> (posWays-1).U
   ))
-  io.reqPoS.req.ready     := freeVec(replSelWay)
+  io.reqPoS.req.ready     := freeVec(replSelWay) & !lockReg
   // Return HnTxnID
   io.reqPoS.resp.hnTxnID  := VecInit(entries.map(_.io.hnIdx.getTxnID))(replSelWay)
 

@@ -168,14 +168,14 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.writeDir.valid                 := taskReg.isWriDir
   // llc
   io.writeDir.bits.llc.valid        := taskReg.wriLLC
-  io.writeDir.bits.llc.bits.addr    := taskReg.hnTxnID // remap in DongJiang
+  io.writeDir.bits.llc.bits.addr    := Mux(taskReg.alrReplSF, taskReg.repl.hnTxnID, taskReg.hnTxnID) // remap in DongJiang
   io.writeDir.bits.llc.bits.wayOH   := taskReg.dir.llc.wayOH
   io.writeDir.bits.llc.bits.hit     := taskReg.dir.llc.hit
   io.writeDir.bits.llc.bits.metaVec := taskReg.dir.llc.metaVec
   io.writeDir.bits.llc.bits.hnIdx   := taskReg.repl.getHnIdx
   // sf
   io.writeDir.bits.sf.valid         := taskReg.wriSF
-  io.writeDir.bits.sf.bits.addr     := taskReg.hnTxnID // remap in DongJiang
+  io.writeDir.bits.sf.bits.addr     := Mux(taskReg.alrReplSF, taskReg.repl.hnTxnID, taskReg.hnTxnID)  // remap in DongJiang
   io.writeDir.bits.sf.bits.wayOH    := taskReg.dir.sf.wayOH
   io.writeDir.bits.sf.bits.hit      := taskReg.dir.sf.hit
   io.writeDir.bits.sf.bits.metaVec  := taskReg.dir.sf.metaVec
@@ -183,13 +183,6 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   // HAssert
   HAssert.withEn(io.writeDir.bits.llc.bits.hit, io.writeDir.bits.llc.valid & io.writeDir.bits.llc.bits.meta.isInvalid)
   HAssert.withEn(io.writeDir.bits.sf.bits.hit,  io.writeDir.bits.sf.valid  & Cat(io.writeDir.bits.sf.bits.allVec) === 0.U)
-  // save already replace sf
-  when(io.writeDir.fire & taskReg.replSF) {
-    taskNext.alrReplSF := true.B
-    HAssert(!taskReg.alrReplSF)
-  }.elsewhen(taskNext.isFree) {
-    taskNext.alrReplSF := false.B
-  }
 
   /*
    * Update PoS Tag and Save Message of Addr
@@ -202,7 +195,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   val respAddr    = Mux(io.respDir.sf.valid, io.respDir.sf.bits.addr, io.respDir.llc.bits.addr)
   HardwareAssertion(!(io.respDir.sf.valid & io.respDir.llc.valid))
   // Update PosTag when resp need repl
-  io.updPosTag.valid        := dirRespHit // Even when needReplSF or needReplLLC is not needed, updTag must still be sent to unlock the PoS Lock.
+  io.updPosTag.valid        := dirRespHit & !taskReg.alrReplSF // Even when needReplSF or needReplLLC is not needed, updTag must still be sent to unlock the PoS Lock.
   io.updPosTag.bits.addr    := respAddr
   io.updPosTag.bits.hnIdx   := taskReg.repl.getHnIdx
   // Save toLan and dsIdx in replace message
@@ -210,6 +203,14 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     taskNext.repl.toLan     := io.respDir.llc.bits.Addr.isToLAN(io.config.ci)
     taskNext.repl.ds.set(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)
   }
+  // save already replace sf
+  when(sfRespHit) {
+    taskNext.alrReplSF := true.B
+    HAssert(!taskReg.alrReplSF)
+  }.elsewhen(taskNext.isFree) {
+    taskNext.alrReplSF := false.B
+  }
+
 
   /*
    * Send Replace Req to SnoopCM
@@ -300,7 +301,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     }
     // Wait Directory write response
     is(WAITDIR) {
-      when(dirRespHit)                  { taskNext.state := Mux(sfRespHit, Mux(needReplSF, REPLSF, CLEANPOS), Mux(needReplLLC, Mux(taskReg.alrReplSF, REPLHT, REPLLLC), DATATASK)) }
+      when(dirRespHit)                  { taskNext.state := Mux(sfRespHit, Mux(needReplSF, REPLSF, CLEANPOS), Mux(needReplLLC, Mux(taskReg.alrReplSF, REPLLLC, REPLHT), DATATASK)) }
     }
     // Replace HnTxnID in DataBlock
     is(REPLHT) {
@@ -344,8 +345,8 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   HAssert.withEn(taskReg.isReplLLC,     taskReg.isValid & io.cmTaskVec(CMID.WRI).fire)
   HAssert.withEn(taskReg.isWaitRepl,    taskReg.isValid & cmRespHit)
   HAssert.withEn(taskReg.isDataTask,    taskReg.isValid & io.dataTask.fire)
-  HAssert.withEn(taskReg.isWaitResp,    taskReg.isValid & dataRespHit)
   HAssert.withEn(taskReg.isCleanPoS,    taskReg.isValid & io.cleanPoS.fire)
+  HAssert.withEn(taskReg.isWaitRepl | taskReg.isWaitResp, taskReg.isValid & dataRespHit)
 
   /*
    * Get next sResp
