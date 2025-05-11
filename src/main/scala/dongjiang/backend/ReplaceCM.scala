@@ -94,7 +94,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     val cmResp          = Flipped(Valid(new CMResp)) // broadcast signal
     // From/To PoS
     val reqPoS          = new ReqPoS()
-    val updPosTag       = Valid(new Addr with HasPackHnIdx)
+    val updPosTag       = Valid(new Addr with HasAddrValid with HasPackHnIdx)
     val cleanPoS        = Decoupled(new PosClean)
     // Write Directory
     val writeDir        = Decoupled(new DJBundle {
@@ -181,8 +181,8 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.writeDir.bits.sf.bits.metaVec  := taskReg.dir.sf.metaVec
   io.writeDir.bits.sf.bits.hnIdx    := taskReg.repl.getHnIdx
   // HAssert
-  HAssert.withEn(io.writeDir.bits.llc.bits.hit, io.writeDir.bits.llc.valid & io.writeDir.bits.llc.bits.meta.isInvalid)
-  HAssert.withEn(io.writeDir.bits.sf.bits.hit,  io.writeDir.bits.sf.valid  & Cat(io.writeDir.bits.sf.bits.allVec) === 0.U)
+  HAssert.withEn(io.writeDir.bits.llc.bits.hit, io.writeDir.valid & io.writeDir.bits.llc.valid & io.writeDir.bits.llc.bits.meta.isInvalid)
+  HAssert.withEn(io.writeDir.bits.sf.bits.hit,  io.writeDir.valid & io.writeDir.bits.sf.valid  & Cat(io.writeDir.bits.sf.bits.allVec) === 0.U)
 
   /*
    * Update PoS Tag and Save Message of Addr
@@ -196,6 +196,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   HardwareAssertion(!(io.respDir.sf.valid & io.respDir.llc.valid))
   // Update PosTag when resp need repl
   io.updPosTag.valid        := dirRespHit & !taskReg.alrReplSF // Even when needReplSF or needReplLLC is not needed, updTag must still be sent to unlock the PoS Lock.
+  io.updPosTag.bits.addrVal := Mux(io.respDir.sf.valid, io.respDir.sf.bits.metaIsVal, io.respDir.llc.bits.metaIsVal)
   io.updPosTag.bits.addr    := respAddr
   io.updPosTag.bits.hnIdx   := taskReg.repl.getHnIdx
   // Save toLan and dsIdx in replace message
@@ -443,7 +444,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     val cmResp          = Flipped(Valid(new CMResp))
     // From/To PoS
     val reqPosVec       = Vec(djparam.nrDirBank, new ReqPoS())
-    val updPosTag       = Valid(new Addr with HasPackHnIdx)
+    val updPosTag       = Valid(new Addr with HasAddrValid with HasPackHnIdx)
     val cleanPoS        = Decoupled(new PosClean)
     // Write Directory
     val writeDir        = Decoupled(new DJBundle {

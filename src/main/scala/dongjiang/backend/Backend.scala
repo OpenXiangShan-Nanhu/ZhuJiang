@@ -42,7 +42,7 @@ class Backend(implicit p: Parameters) extends DJModule {
     }
     // Frontend <> ReplaceCM
     val reqPosVec       = Vec(djparam.nrDirBank, new ReqPoS)
-    val updPosTag       = Valid(new Addr with HasPackHnIdx)
+    val updPosTag       = Valid(new Addr with HasAddrValid with HasPackHnIdx)
     // Frontend -> Commit/TaskCM
     val cmtTaskVec      = Vec(djparam.nrDirBank, Flipped(Valid(new CommitTask with HasHnTxnID)))
     val cmTaskVec       = Vec(nrTaskCM, Flipped(Decoupled(new CMTask)))

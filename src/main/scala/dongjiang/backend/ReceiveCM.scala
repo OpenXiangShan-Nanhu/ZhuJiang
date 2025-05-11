@@ -203,7 +203,7 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   /*
    * Check timeout
    */
-  HAssert.checkTimeout(reg.isFree, TIMEOUT_REPLACE, cf"TIMEOUT: Receive State[${reg.state}]")
+  HAssert.checkTimeout(reg.isFree, TIMEOUT_REC, cf"TIMEOUT: Receive State[${reg.state}]")
 }
 
 // ----------------------------------------------------------------------------------------------------- //

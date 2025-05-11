@@ -340,8 +340,8 @@ class DataCM(implicit p: Parameters) extends DJModule {
     e.io.task.valid         := RegNext(io.task.fire)
     e.io.task.bits          := RegEnable(io.task.bits, io.task.fire)
   }
-  HAssert.withEn(io.reqDBOut.fire & entries.map(_.io.alloc.fire).reduce(_ | _), io.reqDBIn.fire)
-  HAssert.withEn(io.reqDBOut.fire & entries.map(_.io.alloc.fire).reduce(_ | _), io.task.fire & taskReqDB)
+  HAssert.withEn(io.reqDBOut.fire & PopCount(entries.map(_.io.alloc.fire)) === 1.U, io.reqDBIn.fire)
+  HAssert.withEn(io.reqDBOut.fire & PopCount(entries.map(_.io.alloc.fire)) === 1.U, io.task.fire & taskReqDB)
   HAssert.withEn(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === io.task.bits.hnTxnID).reduce(_ | _), io.task.fire & !taskReqDB)
   HAssert.withEn(io.task.bits.dataOp.valid ^ io.task.bits.dataOp.repl, io.task.valid)
 
@@ -351,6 +351,7 @@ class DataCM(implicit p: Parameters) extends DJModule {
   entries.foreach(_.io.replHnTxnID  := io.replHnTxnID)
   entries.foreach(_.io.dsWriDB      := io.dsWriDB)
   entries.foreach(_.io.txDatFire    := io.txDatFire)
+  HAssert.withEn(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === io.replHnTxnID.bits.before).reduce(_ | _), io.replHnTxnID.valid)
 
   /*
    * Connect IO <- CM

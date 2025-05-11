@@ -73,6 +73,8 @@ class Addr(dirType: String = "llc")(implicit p: Parameters) extends DJBundle wit
   override def addrType: String = dirType
 }
 
+trait HasAddrValid { this: DJBundle => val addrVal = Bool() }
+
 /*
  * HnIdx:
  * HasHnIdx -> HnIndex

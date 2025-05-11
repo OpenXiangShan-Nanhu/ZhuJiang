@@ -38,7 +38,7 @@ class Frontend(implicit p: Parameters) extends DJModule {
     val getAddrVec    = Vec(3, Flipped(new GetAddr())) // txReq + txSnp + writeDir
     // Update PoS Message
     val reqPoS        = Flipped(new ReqPoS())
-    val updPosTag     = Flipped(Valid(new Addr with HasPackHnIdx))
+    val updPosTag     = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     val updPosNest    = Flipped(Valid(new PosCanNest))
     val cleanPos      = Flipped(Valid(new PosClean))
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp

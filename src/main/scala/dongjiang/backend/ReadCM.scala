@@ -235,7 +235,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   /*
    * Check timeout
    */
-  HAssert.checkTimeout(reg.isFree, TIMEOUT_REPLACE, cf"TIMEOUT: Read State[${reg.state}]")
+  HAssert.checkTimeout(reg.isFree, TIMEOUT_READ, cf"TIMEOUT: Read State[${reg.state}]")
 }
 
 

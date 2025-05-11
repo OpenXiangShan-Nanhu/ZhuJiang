@@ -115,7 +115,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   taskAlloc.ds                  := alloc.ds
   // task flag internal send
   taskAlloc.flag.intl.s.data0   := alloc.commit.dataOp.data0 & !taskAlloc.alr.sData
-  taskAlloc.flag.intl.s.data1   := alloc.commit.dataOp.data1 & !(alloc.commit.wriLLC & alloc.dir.llc.hit) // not replace llc
+  taskAlloc.flag.intl.s.data1   := alloc.commit.dataOp.data1 & !(alloc.commit.wriLLC & !alloc.dir.llc.hit) // not replace llc
   taskAlloc.flag.intl.s.wriDir  := alloc.commit.wriDir
   taskAlloc.flag.intl.s.secTask := false.B
   // task flag internal wait
@@ -124,7 +124,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   taskAlloc.flag.intl.w.secResp := false.B
   taskAlloc.flag.intl.w.repl    := alloc.commit.wriDir
   taskAlloc.flag.intl.w.data0   := alloc.commit.dataOp.data0
-  taskAlloc.flag.intl.w.data1   := alloc.commit.dataOp.data1 & !(alloc.commit.wriLLC & alloc.dir.llc.hit) // not replace llc
+  taskAlloc.flag.intl.w.data1   := alloc.commit.dataOp.data1 & !(alloc.commit.wriLLC & !alloc.dir.llc.hit) // not replace llc
   // task flag chi send
   taskAlloc.flag.chi.s_resp     := alloc.commit.sendResp & alloc.commit.channel === ChiChannel.RSP
   // task flag chi wait
@@ -194,7 +194,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    */
   // task flag internal send
   flagDec.intl.s.data0    := taskNext.commit.dataOp.data0
-  flagDec.intl.s.data1    := taskNext.commit.dataOp.data1 & !(taskNext.commit.wriLLC & taskReg.dir.llc.hit) // not replace llc
+  flagDec.intl.s.data1    := taskNext.commit.dataOp.data1 & !(taskNext.commit.wriLLC & !taskReg.dir.llc.hit) // not replace llc
   flagDec.intl.s.wriDir   := taskNext.commit.wriDir
   flagDec.intl.s.secTask  := taskNext.taskCode.opsValid
   // task flag internal wait
@@ -203,7 +203,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   flagDec.intl.w.secResp  := taskNext.taskCode.opsValid
   flagDec.intl.w.repl     := taskNext.commit.wriDir
   flagDec.intl.w.data0    := taskNext.commit.dataOp.data0
-  flagDec.intl.w.data1    := taskNext.commit.dataOp.data1 & !(taskNext.commit.wriLLC & taskReg.dir.llc.hit) // not replace llc
+  flagDec.intl.w.data1    := taskNext.commit.dataOp.data1 & !(taskNext.commit.wriLLC & !taskReg.dir.llc.hit) // not replace llc
   // task flag chi send
   flagDec.chi.s_resp      := taskNext.commit.sendResp & taskNext.commit.channel === ChiChannel.RSP
   // task flag chi wait

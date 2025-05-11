@@ -18,6 +18,7 @@ class PosState(implicit p: Parameters) extends DJBundle with HasAddr {
   val req     = Bool()
   val snp     = Bool()
   val canNest = Bool()
+  val tagVal  = Bool() // tag is valid
   val tag     = UInt(posTagBits.W)
 
   // def
@@ -41,8 +42,8 @@ class PosEntry(implicit p: Parameters) extends DJModule {
     val config      = new DJConfigIO()
     val hnIdx       = Input(new HnIndex())
     // update PoS
-    val alloc       = Flipped(Valid(new Addr with HasChiChannel))
-    val updTag      = Flipped(Valid(new Addr with HasPackHnIdx)) // broadcast signal
+    val alloc       = Flipped(Valid(new Addr with HasAddrValid with HasChiChannel))
+    val updTag      = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx)) // broadcast signal
     val updNest     = Flipped(Valid(new PosCanNest)) // broadcast signal
     val clean       = Flipped(Valid(new PosClean))   // broadcast signal
     // wakeup TaskBuf Entry
@@ -86,9 +87,12 @@ class PosEntry(implicit p: Parameters) extends DJModule {
    * Modify PoS tag
    */
   when(io.alloc.valid) {
-    stateNext.tag := io.alloc.bits.Addr.posTag
+    stateNext.tagVal  := io.alloc.bits.addrVal
+    stateNext.tag     := io.alloc.bits.Addr.posTag
   }.elsewhen(updTagHit) {
-    stateNext.tag := io.updTag.bits.Addr.posTag
+    stateNext.tagVal  := io.updTag.bits.addrVal
+    stateNext.tag     := io.updTag.bits.Addr.posTag
+    HAssert(!stateReg.tagVal)
   }
 
   /*
@@ -135,7 +139,7 @@ class PosEntry(implicit p: Parameters) extends DJModule {
   /*
    * Wakeup someone by addr
    */
-  io.wakeup.valid     := RegNext(cleanHit & stateReg.one)
+  io.wakeup.valid     := RegNext(cleanHit & stateReg.one & stateReg.tagVal)
   io.wakeup.bits.Addr.catPoS(io.config.bankId, stateReg.tag, io.hnIdx.pos.set, io.hnIdx.dirBank)
 }
 
@@ -158,7 +162,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
     val retry_s1    = Input(Bool())
     // connect to ReplaceCM
     val reqPoS      = Flipped(new ReqPoS())
-    val updTag      = Flipped(Valid(new Addr with HasPackHnIdx))
+    val updTag      = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     // update PoS
     val updNest     = Flipped(Valid(new PosCanNest)) // broadcast signal
     val clean       = Flipped(Valid(new PosClean))   // broadcast signal
@@ -189,7 +193,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   // get base message
   val allocTag_s0     = io.alloc_s0.bits.Addr.posTag
   // match pos tag
-  val matTagVec_s0    = Cat(esVec.map(s => s.valid & s.tag === allocTag_s0).reverse)
+  val matTagVec_s0    = Cat(esVec.map(s => s.valid & s.tagVal & s.tag === allocTag_s0).reverse)
   val matTagWay_s0    = PriorityEncoder(matTagVec_s0)
   val hasMatTag       = matTagVec_s0.orR
   dontTouch(matTagVec_s0)
@@ -273,6 +277,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
     e.io.hnIdx.pos.set      := io.posSet
     e.io.hnIdx.pos.way      := i.U
     e.io.alloc.valid        := replReqHit | allocHit
+    e.io.alloc.bits.addrVal := !io.reqPoS.req.valid
     e.io.alloc.bits.addr    := Mux(io.reqPoS.req.valid, 0.U, allocReg_s1.bits.addr)
     e.io.alloc.bits.channel := Mux(io.reqPoS.req.valid, io.reqPoS.req.bits.channel, allocReg_s1.bits.channel)
     e.io.updTag             := io.updTag
@@ -323,7 +328,7 @@ class PosTable(implicit p: Parameters) extends DJModule {
     val retry_s1    = Input(Bool())
     // connect to ReplaceCM
     val reqPoS      = Flipped(new ReqPoS())
-    val updTag      = Flipped(Valid(new Addr with HasPackHnIdx))
+    val updTag      = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     // update PoS
     val updNest     = Flipped(Valid(new PosCanNest)) // broadcast signal
     val clean       = Flipped(Valid(new PosClean)) // broadcast signal
