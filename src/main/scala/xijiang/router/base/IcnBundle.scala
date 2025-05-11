@@ -131,10 +131,10 @@ class IcnBundle(val node: Node, hasReset:Boolean = false)(implicit p: Parameters
   def <>(that: DeviceIcnBundle): Unit = {
     this.rx <> that.tx
     that.rx <> this.tx
-    if(resetState.isDefined && that.resetState.isDefined) {
+    if(this.resetState.isDefined && that.resetState.isDefined) {
       this.resetState.get <> that.resetState.get
     }
-    if(resetInject.isDefined && that.resetInject.isDefined) {
+    if(this.resetInject.isDefined && that.resetInject.isDefined) {
       this.resetInject.get <> that.resetInject.get
     }
   }
@@ -148,10 +148,10 @@ class DeviceIcnBundle(val node: Node, hasReset:Boolean = false)(implicit p: Para
   def <>(that: IcnBundle): Unit = {
     this.rx <> that.tx
     that.rx <> this.tx
-    if(resetState.isDefined && that.resetState.isDefined) {
+    if(this.resetState.isDefined && that.resetState.isDefined) {
       this.resetState.get <> that.resetState.get
     }
-    if(resetInject.isDefined && that.resetInject.isDefined) {
+    if(this.resetInject.isDefined && that.resetInject.isDefined) {
       this.resetInject.get <> that.resetInject.get
     }
   }

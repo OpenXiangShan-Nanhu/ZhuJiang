@@ -15,11 +15,11 @@ import dongjiang.utils.fastArb
 import xs.utils.mbist.MbistPipeline
 
 class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
+  private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
   private val rni = zjParams.dmaParams
-  require(node.nodeType == NodeType.RI)
+  require(node.nodeType == NodeType.RI || node.nodeType == NodeType.RH)
   require(rni.idBits >= log2Ceil(node.outstanding))
-  private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = rni.idBits, attr = node.attr)
-  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(node.outstanding), userBits = axiParams.idBits)
+  require(axiParams.dataBits == dw)
 
   val axi     = IO(Flipped(new AxiBundle(axiParams)))
   val icn     = IO(new DeviceIcnBundle(node))
@@ -70,7 +70,11 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
   working  := axiRdSlave.io.working || axiWrSlave.io.working || chiRdMaster.io.working || chiWrMaster.io.working
 
-  connIcn(icn.tx.req.get         , arbReqOut      )
+  if(icn.tx.req.isDefined) {
+    connIcn(icn.tx.req.get         , arbReqOut      )
+  } else {
+    connIcn(icn.tx.hpr.get         , arbReqOut      )
+  }
   connIcn(icn.tx.resp.get        , arbRspOut      )
   connIcn(icn.tx.data.get        , wrDB.io.dData  )
   connIcn(chiRdMaster.io.chiDat  , icn.rx.data.get)

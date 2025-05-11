@@ -19,6 +19,7 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
   val icn = IO(new DeviceIcnBundle(node))
   val tl = IO(new TLULBundle(tlParams))
   val nodeId = IO(Input(UInt(niw.W)))
+  val working = IO(Output(Bool()))
 
   private def compareTag(addr0: UInt, addr1: UInt): Bool = true.B
 
@@ -46,6 +47,11 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
     tlaArb.io.in(idx) <> cm.tla
     cm
   }
+  private val chiTxV = icn.tx.elements.values.map ({
+    case chn: DecoupledIO[Data] => chn.valid
+    case _ => false.B
+  })
+  working := RegNext(Cat(cms.map(_.io.info.valid) ++ chiTxV).orR)
 
   private val shouldBeWaited = cms.map(cm => cm.io.info.valid && !cm.io.wakeupOut.valid && cm.io.info.bits.isSnooped)
   private val cmAddrSeq = cms.map(cm => cm.io.info.bits.addr)

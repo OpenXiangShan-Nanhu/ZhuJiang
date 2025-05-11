@@ -7,6 +7,7 @@ import xijiang.router._
 import xijiang.router.base.BaseRouter
 import xs.utils.debug.HardwareAssertionKey
 import zhujiang.chi.{MemAttr, NodeIdBundle, ReqAddrBundle}
+import zhujiang.device.AxiDeviceParams
 
 object NodeType {
   val encodingsMap = Seq(
@@ -37,22 +38,21 @@ object NodeType {
   def width: Int = log2Ceil(max)
 
   val cppDefines:String = encodingsMap.filterNot(_._1 == "P").map(elm => s"#define ${elm._1}_TYPE ${elm._2}\n").reduce(_ + _)
+  def testAxiDev(nt: Int): Boolean = nt == HI || nt == RI || nt == RH || nt == S || nt == M
 }
 
 case class NodeParam(
-  attr: String = "",
   nodeType: Int = NodeType.P,
   bankId: Int = 0, // Only applied in HNF
   hfpId: Int = 0, // HNF port id // Only applied in HNF)
   cpuNum: Int = 1, // Only applied in CC
   addrSets: Seq[(Long, Long)] = Seq((0L, 0L)), // Only applied in HNI
   defaultHni: Boolean = false, // Only applied in HNI
-  outstanding: Int = 4, // Only applied in HNI
-  socket: String = "sync"
+  socket: String = "sync",
+  axiDevParams: Option[AxiDeviceParams] = None
 )
 
 case class Node(
-  attr: String = "",
   nodeType: Int = NodeType.P,
   nidBits: Int = 5,
   aidBits: Int = 3,
@@ -66,8 +66,8 @@ case class Node(
   clusterId: Int = 0, //Only applied in CCN
   addrSets: Seq[(Long, Long)] = Seq((0L, 0L)), // Only applied in HNI
   defaultHni: Boolean = false, // Only applied in HNI
-  outstanding: Int = 16, // Only applied in HNI, CCN and SN
-  socket: String = "sync"
+  socket: String = "sync",
+  axiDevParams: Option[AxiDeviceParams] = None
 ) {
   require(NodeType.min <= nodeType && nodeType <= NodeType.max)
 
@@ -75,12 +75,14 @@ case class Node(
 
   var leftNodes: Seq[Node] = Seq()
   var rightNodes: Seq[Node] = Seq()
+  lazy val outstanding = axiDevParams.map(_.outstanding).getOrElse(8)
 
   def genRouter(p: Parameters): BaseRouter = {
     val res = nodeType match {
       case NodeType.CC => Module(new RnRouter(this)(p))
       case NodeType.RF => Module(new RnRouter(this)(p))
       case NodeType.RI => Module(new RnRouter(this)(p))
+      case NodeType.RH => Module(new RnRouter(this)(p))
       case _ => Module(new BaseRouter(this)(p))
     }
     res.suggestName(routerName)
@@ -90,12 +92,13 @@ case class Node(
   private lazy val routerName:String = {
     val nstr = nodeType match {
       case NodeType.CC => s"ccn_$domainId"
-      case NodeType.RF => if(attr == "") s"rnf" else s"rnf_$attr"
-      case NodeType.RI => if(attr == "") s"rni" else s"rni_$attr"
+      case NodeType.RF => "rnf"
+      case NodeType.RI => "rni"
+      case NodeType.RH => "rnh"
       case NodeType.HF => s"hnf_$bankId"
-      case NodeType.HI => if(attr == "") s"hni" else s"hni_$attr"
-      case NodeType.M => if(attr == "") s"mn" else s"mn_$attr"
-      case NodeType.S => if(attr == "") s"sn" else s"sn_$attr"
+      case NodeType.HI => "hni"
+      case NodeType.M => "mn"
+      case NodeType.S => "sn"
       case _ => "pip"
     }
     s"ring_stop_${nstr}_id_0x${nodeId.toHexString}"
@@ -107,6 +110,7 @@ case class Node(
       case NodeType.CC => s"ccn_${domainId}_$nidStr"
       case NodeType.RF => s"core_${domainId}_$nidStr"
       case NodeType.RI => s"axi_to_chi_$nidStr"
+      case NodeType.RH => s"axi_to_chi_$nidStr"
       case NodeType.HF => s"hnf_$bankId"
       case NodeType.HI => s"chi_to_axi_lite_$nidStr"
       case NodeType.M =>  s"mnDev"
@@ -122,6 +126,7 @@ case class Node(
     case NodeType.CC => (routerStrGen("CpuCluster"), icnStrGen("", "ccn"), "CCN")
     case NodeType.RF => (routerStrGen("RequestFull"), icnStrGen("", "rnf"), "RNF")
     case NodeType.RI => (routerStrGen("RequestIo"), icnStrGen("", "rni"), "RNI")
+    case NodeType.RH => (routerStrGen("RequestHigh"), icnStrGen("", "rnh"), "RNH")
     case NodeType.HF => (routerStrGen("HomeFull"), icnStrGen("", s"hnf_bank_$bankId"), "HNF")
     case NodeType.HI => (routerStrGen("HomeIo"), icnStrGen("", "hni"), "HNI")
     case NodeType.M => (routerStrGen("Misc"), icnStrGen("", "mn"), "MN")
@@ -134,10 +139,10 @@ case class Node(
       case NodeType.CC => (Seq("REQ", "RSP", "DAT", "SNP"), Seq("REQ", "RSP", "DAT"))
       case NodeType.RF => (Seq("RSP", "DAT", "SNP"), Seq("REQ", "RSP", "DAT"))
       case NodeType.RI => (Seq("RSP", "DAT"), Seq("REQ", "RSP", "DAT"))
+      case NodeType.RH => (Seq("RSP", "DAT"), Seq("HPR", "RSP", "DAT"))
       case NodeType.HF => (Seq("REQ", "RSP", "DAT", "HPR"), Seq("RSP", "DAT", "SNP", "ERQ"))
       case NodeType.HI => (Seq("REQ", "RSP", "DAT"), Seq("RSP", "DAT", "ERQ"))
       case NodeType.S => (Seq("ERQ", "DAT"), Seq("RSP", "DAT"))
-      case NodeType.RH => (Seq("RSP", "DAT"), Seq("HPR", "RSP", "DAT"))
       case _ => (Seq(), Seq())
     }
     val illegal1 = res._1.contains("REQ") && res._1.contains("ERQ") || res._1.contains("HPR") && res._1.contains("ERQ")

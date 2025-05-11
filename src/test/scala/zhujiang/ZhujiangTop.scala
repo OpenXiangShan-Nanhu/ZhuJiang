@@ -9,6 +9,8 @@ import xs.utils.FileRegisters
 import xs.utils.debug.{HardwareAssertionKey, HwaParams}
 import xs.utils.perf._
 import xs.utils.stage.XsStage
+import zhujiang.axi.AxiParams
+import zhujiang.device.AxiDeviceParams
 
 import scala.annotation.tailrec
 
@@ -38,6 +40,19 @@ object AddrConfig {
     (0x000B_0000_0000L, 0x000F_0000_0000L),
     (0x000C_0000_0000L, 0x000F_0000_0000L),
   )
+  val mem3 = Seq(
+    (0x0005_0000_0000L, 0x000F_0000_0000L),
+    (0x0006_0000_0000L, 0x000F_0000_0000L),
+    (0x0007_0000_0000L, 0x000F_0000_0000L),
+    (0x0008_0000_0000L, 0x000F_0000_0000L),
+    (0x0009_0000_0000L, 0x000F_0000_0000L),
+    (0x000A_0000_0000L, 0x000F_0000_0000L),
+    (0x000B_0000_0000L, 0x000F_0000_0000L),
+    (0x000C_0000_0000L, 0x000F_0000_0000L),
+  )
+  val memUc = Seq(
+    (0x0000_8000_0000L, 0x000F_8000_0000L),
+  )
 }
 
 class ZhujiangTopConfig extends Config((site, here, up) => {
@@ -45,30 +60,32 @@ class ZhujiangTopConfig extends Config((site, here, up) => {
   case PerfCounterOptionsKey => PerfCounterOptions(enablePerfPrint = false, enablePerfDB = false, XSPerfLevel.VERBOSE, 0)
   case ZJParametersKey => ZJParameters(
     nodeParams = Seq(
+      NodeParam(nodeType = NodeType.P),
       NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 0),
-      NodeParam(nodeType = NodeType.CC, outstanding = 8, attr = "nanhu", socket = "async"),
       NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 0),
-      NodeParam(nodeType = NodeType.P),
+      NodeParam(nodeType = NodeType.RI, axiDevParams = Some(AxiDeviceParams(1, 64, "north", "mem_n_0"))),
+      NodeParam(nodeType = NodeType.RI, axiDevParams = Some(AxiDeviceParams(1, 64, "north", "mem_n_1"))),
       NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 0),
-      NodeParam(nodeType = NodeType.CC, outstanding = 8, attr = "nanhu", socket = "async"),
       NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 0),
-
-      NodeParam(nodeType = NodeType.RI, attr = "main", outstanding = 32),
-      NodeParam(nodeType = NodeType.HI, defaultHni = true, attr = "main", outstanding = 32),
-      NodeParam(nodeType = NodeType.M),
-      NodeParam(nodeType = NodeType.S,  addrSets = AddrConfig.mem2, outstanding = 32, attr = "2"),
-
-      NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 1),
-      NodeParam(nodeType = NodeType.CC, outstanding = 8, attr = "nanhu", socket = "async"),
-      NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 1),
       NodeParam(nodeType = NodeType.P),
-      NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 1),
-      NodeParam(nodeType = NodeType.CC, outstanding = 8, attr = "nanhu", socket = "async"),
-      NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 1),
 
-      NodeParam(nodeType = NodeType.S,  addrSets = AddrConfig.mem1, outstanding = 32, attr = "1"),
-      NodeParam(nodeType = NodeType.S,  addrSets = AddrConfig.mem0, outstanding = 32, attr = "0"),
-      NodeParam(nodeType = NodeType.P)
+      NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "east", "e_0")),  addrSets = AddrConfig.mem2),
+      NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "east", "e_1")),  addrSets = AddrConfig.mem3),
+
+      NodeParam(nodeType = NodeType.CC, socket = "async"),
+      NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 1),
+      NodeParam(nodeType = NodeType.CC, socket = "async"),
+      NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 1),
+      NodeParam(nodeType = NodeType.HI, axiDevParams = Some(AxiDeviceParams(0, 32, "south", "main")), defaultHni = true),
+      NodeParam(nodeType = NodeType.RH, axiDevParams = Some(AxiDeviceParams(0, 32, "south", "main", Some(AxiParams(idBits = 15))))),
+      NodeParam(nodeType = NodeType.M,  axiDevParams = Some(AxiDeviceParams(3, 32, "south"))),
+      NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 1),
+      NodeParam(nodeType = NodeType.CC, socket = "async"),
+      NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 1),
+      NodeParam(nodeType = NodeType.CC, socket = "async"),
+
+      NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "west", "w_0")),  addrSets = AddrConfig.mem0),
+      NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "west", "w_1")),  addrSets = AddrConfig.mem1),
     )
   )
   case DebugOptionsKey => DebugOptions(EnablePerfDebug = false)

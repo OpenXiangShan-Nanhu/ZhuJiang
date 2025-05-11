@@ -10,7 +10,12 @@ import zhujiang.chi._
 package object router {
   class RnRouter(node: Node)(implicit p: Parameters) extends BaseRouter(node) {
     require(node.nodeType == NodeType.CC || node.nodeType == NodeType.RF || node.nodeType == NodeType.RI || node.nodeType == NodeType.RH)
-    private val injectFlit = icn.rx.req.get.bits.asTypeOf(new RReqFlit)
+    private val rxreq = if(node.nodeType == NodeType.RH) {
+      icn.rx.hpr.get
+    } else {
+      icn.rx.req.get
+    }
+    private val injectFlit = rxreq.bits.asTypeOf(new RReqFlit)
     private val addr = injectFlit.Addr.asTypeOf(new ReqAddrBundle)
     private val memAttr = injectFlit.MemAttr.asTypeOf(new MemAttr)
 
@@ -20,7 +25,7 @@ package object router {
     private val completerSelOH = possibleCompleters.map(_.isReqCompleter(addr, router.ci, memAttr, zjParams.hnxBankOff))
     private val completerId = possibleCompleters.map(_.nodeId.U(niw.W))
     private val reqTarget = Mux(Cat(completerSelOH).orR, Mux1H(completerSelOH, completerId), defaultHni.nodeId.U)
-    when(icn.rx.req.get.valid) {
+    when(rxreq.valid) {
       assert(PopCount(completerSelOH) <= 1.U)
     }
     if(p(ZJParametersKey).tfsParams.isEmpty) {

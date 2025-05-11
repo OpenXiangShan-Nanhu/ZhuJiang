@@ -14,6 +14,7 @@ import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.dma.Axi2Chi
 import zhujiang.device.home.HomeWrapper
+import zhujiang.device.io.IoWrapper
 import zhujiang.device.misc.MiscDevice
 import zhujiang.device.socket.{SocketIcnSide, SocketIcnSideBundle}
 
@@ -54,9 +55,9 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     rstGen.o_reset
   }
 
-  private def placeSocket(pfx: String, icn: IcnBundle, idx: Option[Int]): SocketIcnSide = {
+  private def placeSocket(icn: IcnBundle, idx: Option[Int]): SocketIcnSide = {
     icn.resetInject.foreach(_ := DontCare)
-    val pfxStr = s"${pfx}_${idx.map(_.toString).getOrElse("")}"
+    val pfxStr = s"cc_${idx.map(_.toString).getOrElse("")}"
     val dev = Module(new SocketIcnSide(icn.node))
     dev.io.dev <> icn
     dev.reset := placeResetGen(pfxStr, icn)
@@ -73,6 +74,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     val devName = hfIcnSeq(i)._2.head.node.deviceName
     val bankId = hfIcnSeq(i)._1
     val icnSeq = hfIcnSeq(i)._2
+    ZhujiangGlobal.addHnf(this, devName, icnSeq.map(_.node.nodeId))
     for(j <- icnSeq.indices) {
       hfDevSeq(i).io.lans(j) <> icnSeq(j)
       hfDevSeq(i).io.nids(j) := icnSeq(j).node.nodeId.U
@@ -91,59 +93,24 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
     hfDevSeq(i).suggestName(devName)
   }
 
-  private val memDatIcns = ring.icnSns.get
-  private val memDevSeq = memDatIcns.map({ icn =>
-    val nidStr = icn.node.nodeId.toHexString
-    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
-    val bridge = Module(new AxiBridge(icn.node.copy(attr = attrStr)))
-    bridge.reset := placeResetGen(icn.node.deviceName, icn)
-    bridge.icn <> icn
-    bridge
-  })
-  memDevSeq.foreach(d => d.suggestName(d.icn.node.deviceName))
-  private val memAxiPorts = memDevSeq.map(_.axi)
+  private val ioIcns = ring.icnSns.getOrElse(Seq()) ++
+    ring.icnHis.getOrElse(Seq()) ++
+    ring.icnRis.getOrElse(Seq()) ++
+    ring.icnRhs.getOrElse(Seq()) ++
+    ring.icnMns.getOrElse(Seq())
+  private val ioIcnGroups = ioIcns.groupBy(_.node.axiDevParams.get.wrapper).toSeq
+  private val ioWrps = for((_, iog) <- ioIcnGroups) yield {
+    val iow = Module(new IoWrapper(iog.map(_.node)))
+    iow.io.dft := dft
+    iow.io.ramctl := ramctl
+    iow.reset := reset
+    iow.icnSeq.zip(iog).foreach({case(a, b) => a <> b})
+    iow
+  }
+  ioWrps.foreach(iow => iow.suggestName(s"iowrp_${iow.icnSeq.head.node.axiDevParams.get.wrapper.toLowerCase}"))
 
-  private val cfgIcnSeq = ring.icnHis.get
-  require(cfgIcnSeq.nonEmpty)
-  require(cfgIcnSeq.count(_.node.defaultHni) == 1)
-  private val cfgDevSeq = cfgIcnSeq.map({ icn =>
-    val nidStr = icn.node.nodeId.toHexString
-    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
-    val cfg = Module(new AxiLiteBridge(icn.node.copy(attr = attrStr), 64, 3))
-    cfg.icn <> icn
-    cfg.reset := placeResetGen(icn.node.deviceName, icn)
-    cfg.nodeId := icn.node.nodeId.U
-    cfg
-  })
-  cfgDevSeq.foreach(d => d.suggestName(d.icn.node.deviceName))
-  private val cfgAxiPorts = cfgDevSeq.map(_.axi)
-
-  private val dmaIcnSeq = ring.icnRis.get
-  require(dmaIcnSeq.nonEmpty)
-  private val dmaDevSeq = dmaIcnSeq.zipWithIndex.map({ case (icn, idx) =>
-    val nidStr = icn.node.nodeId.toHexString
-    val attrStr = if(icn.node.attr == "") s"0x$nidStr" else s"${icn.node.attr}"
-    val dma = Module(new Axi2Chi(icn.node.copy(attr = attrStr)))
-    dma.icn <> icn
-    dma.reset := placeResetGen(icn.node.deviceName, icn)
-    dma
-  })
-  dmaDevSeq.foreach(d => d.suggestName(d.icn.node.deviceName))
-  private val dmaAxiPorts = dmaDevSeq.map(_.axi)
-
-  require(ring.icnCcs.get.nonEmpty)
   private val ccnIcnSeq = ring.icnCcs.get
-  private val ccnSocketSeq = ccnIcnSeq.map(icn => placeSocket("cc", icn, Some(icn.node.domainId)))
-
-  require(ring.icnMns.get.nonEmpty)
-  private val mnIcn = ring.icnMns.get.head
-  private val mnDev = Module(new MiscDevice(mnIcn.node))
-  mnDev.io.icn <> mnIcn
-  mnIcn.resetInject.get := mnDev.io.icn.resetInject.get
-  mnDev.io.icn.resetState.get := mnIcn.resetState.get
-  mnDev.clock := clock
-  mnDev.reset := reset
-  mnDev.suggestName(mnIcn.node.deviceName)
+  private val ccnSocketSeq = ccnIcnSeq.map(icn => placeSocket(icn, Some(icn.node.domainId)))
 
   val io = IO(new Bundle {
     val ci = Input(UInt(ciIdBits.W))
@@ -156,19 +123,16 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   io.resetBypass := ResetGen(2, Some(io.dft.reset))
   dft := io.dft
   ramctl := io.ramctl
-  val ddrDrv = memAxiPorts
-  val cfgDrv = cfgAxiPorts
-  val dmaDrv = dmaAxiPorts
+  private val mnIow = ioWrps.filter(_.io.onReset.isDefined).head
+  val ddrDrv = ioWrps.flatMap(_.memAxiPorts)
+  val cfgDrv = ioWrps.flatMap(_.cfgAxiPorts)
+  val dmaDrv = ioWrps.flatMap(_.dmaAxiPorts)
   val ccnDrv = ccnSocketSeq.map(_.io.socket)
-  val hwaDrv = mnDev.io.axi
+  val hwaDrv = mnIow.hwaAxiPort
   runIOAutomation()
-  io.onReset := mnDev.io.onReset
+  io.onReset := mnIow.io.onReset.get
   ring.io_ci := io.ci
-  io.intr.foreach(_ := mnDev.io.intr.get)
-
-  MbistInterface("NocMisc", io.dft.func, hasMbist)
-  SramHelper.genSramCtrlBundleTop() := ramctl
-  ZhujiangGlobal.addRing(desiredName, this)
+  io.intr.foreach(_ := mnIow.io.intr.get)
 }
 
 trait NocIOHelper {
@@ -185,25 +149,25 @@ trait NocIOHelper {
   lazy val ccnIO: Seq[SocketIcnSideBundle] = ccnDrv.map(drv => IO(new SocketIcnSideBundle(drv.node)(p)))
   lazy val hwaIO: Option[ExtAxiBundle] = hwaDrv.map(drv => IO(Flipped(new ExtAxiBundle(drv.params))))
 
-  def runIOAutomation(bufChain:Int = 0): Unit = {
+  def runIOAutomation(): Unit = {
     ddrIO.zip(ddrDrv).zipWithIndex.foreach({ case ((a, b), i) =>
       val portName = s"m_axi_mem_${b.params.attr}"
       a.suggestName(portName)
-      a <> AxiBuffer.chain(b, bufChain, Some(portName))
+      a <> b
       dontTouch(a)
       dontTouch(b)
     })
     cfgIO.zip(cfgDrv).zipWithIndex.foreach({ case ((a, b), i) =>
       val portName = s"m_axi_cfg_${b.params.attr}"
       a.suggestName(portName)
-      a <> AxiBuffer.chain(b, bufChain, Some(portName))
+      a <> b
       dontTouch(a)
       dontTouch(b)
     })
     dmaIO.zip(dmaDrv).zipWithIndex.foreach({ case ((a, b), i) =>
       val portName = s"s_axi_${b.params.attr}"
       a.suggestName(portName)
-      b <> AxiBuffer.chain(a, bufChain, Some(portName))
+      b <> a
       dontTouch(a)
       dontTouch(b)
     })
@@ -215,7 +179,7 @@ trait NocIOHelper {
     hwaIO.zip(hwaDrv).foreach({ case (a, b) =>
       val portName = s"s_axi_hwa"
       a.suggestName(portName)
-      b <> AxiBuffer.chain(a, bufChain, Some(portName))
+      b <> a
       dontTouch(a)
       dontTouch(b)
     })

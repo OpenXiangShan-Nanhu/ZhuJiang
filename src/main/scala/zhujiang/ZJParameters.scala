@@ -10,6 +10,7 @@ import xijiang.tfs.TrafficSimParams
 import xijiang.{Node, NodeParam, NodeType}
 import xs.utils.debug.HardwareAssertionKey
 import zhujiang.chi._
+import zhujiang.device.AxiDeviceParams
 import zhujiang.device.dma.DmaParams
 
 import scala.collection.mutable
@@ -19,29 +20,34 @@ case object ZJParametersKey extends Field[ZJParameters]
 object ZhujiangGlobal {
   private val islandPool = mutable.Map[String, Seq[Node]]()
   private val islandPtrMap = mutable.Map[String, RawModule]()
+  private val dmaPool = mutable.Queue[(RawModule, Int)]()
+  private val memPool = mutable.Queue[(RawModule, Int)]()
+  private val hnfPool = mutable.Queue[(RawModule, String, Seq[Int])]()
 
-  def addRing(tag:String, island:RawModule):Unit = {
-    if(!islandPtrMap.contains(tag)) {
-      islandPtrMap.addOne(tag, island)
+  def addAxiDev(mod:RawModule, node:Node):Unit = {
+    node.nodeType match {
+      case NodeType.RH => dmaPool.addOne((mod, node.nodeId))
+      case NodeType.RI => dmaPool.addOne((mod, node.nodeId))
+      case NodeType.S => memPool.addOne((mod, node.nodeId))
     }
+  }
+
+  def addHnf(island:RawModule, mod:String, nid:Seq[Int]):Unit = {
+    hnfPool.addOne((island, mod, nid))
   }
 
   private def decorate(key:String, body:Seq[String]): Seq[String] = {
     s"$key = {\n" +: body.map(b => s"  $b") :+ "},\n"
   }
 
-  def getRingDesc(name:String):Seq[String] = {
-    val path = islandPtrMap(name).pathName
-    val snf = islandPool(name).filter(_.nodeType == NodeType.S)
-    val rni = islandPool(name).filter(_.nodeType == NodeType.RI)
-    val hnf = islandPool(name).filter(_.nodeType == NodeType.HF).groupBy(_.bankId).toSeq
-    val snfStr = snf.map(n => s"{\"$path.${n.deviceName}\", {0x${n.nodeId.toHexString}}},\n")
-    val rniStr = rni.map(n => s"{\"$path.${n.deviceName}\", {0x${n.nodeId.toHexString}}},\n")
-    val hnfStrSeq = hnf.map({ case(_, ns) =>
-      val idStr = ns.map(n => s"0x${n.nodeId.toHexString}, ").reduce(_ + _)
-      s"{\"$path.${ns.head.deviceName}\", {$idStr}},\n"
-    })
-    decorate("snf", snfStr) ++ decorate("rni", rniStr) ++ decorate("hnf", hnfStrSeq)
+  def descStrSeq:Seq[String] = {
+    val snfStrSeq = memPool.map(sn => s"{\"${sn._1.pathName}\", {0x${sn._2.toHexString}}},\n").toSeq
+    val rniStrSeq = dmaPool.map(ri => s"{\"${ri._1.pathName}\", {0x${ri._2.toHexString}}},\n").toSeq
+    val hnfStrSeq = hnfPool.map({ case(zj, mn, ids) =>
+      val idStr = ids.map(id => s"0x${id.toHexString}, ").reduce(_ + _)
+      s"{\"${zj.pathName}.$mn\", {$idStr}},\n"
+    }).toSeq
+    decorate("snf", snfStrSeq) ++ decorate("rni", rniStrSeq) ++ decorate("hnf", hnfStrSeq)
   }
 
   def getIsland(nidBits: Int, aidBits: Int, lns: Seq[NodeParam], csb: Int, lanAddrBits:Int, tag: String): Seq[Node] = {
@@ -95,7 +101,6 @@ object ZhujiangGlobal {
         case _           => Seq((0x0L, 0x0L))
       }
       val n = Node(
-        attr = np.attr,
         nodeType = np.nodeType,
         nidBits = nidBits,
         aidBits = aidBits,
@@ -109,8 +114,8 @@ object ZhujiangGlobal {
         clusterId = if(np.nodeType == NodeType.CC) ccId.toInt else 0,
         addrSets = addrSets,
         defaultHni = if(np.nodeType == NodeType.HI) np.defaultHni else false,
-        outstanding = if(np.nodeType == NodeType.HI || np.nodeType == NodeType.CC || np.nodeType == NodeType.S || np.nodeType == NodeType.RI) np.outstanding else 0,
-        socket = np.socket
+        socket = np.socket,
+        axiDevParams = if(NodeType.testAxiDev(np.nodeType)) Some(np.axiDevParams.getOrElse(AxiDeviceParams())) else None
       )
       if(np.nodeType == NodeType.CC) ccId = ccId + np.cpuNum
       n
@@ -252,12 +257,6 @@ case class ZJParameters(
 trait HasZJParams {
   implicit val p: Parameters
   lazy val zjParams = p(ZJParametersKey)
-  lazy val M = zjParams.M
-  lazy val PB = zjParams.PB
-  lazy val E = zjParams.E
-  lazy val R = zjParams.R
-  lazy val S = zjParams.S
-  lazy val Y = zjParams.Y
   lazy val raw = zjParams.requestAddrBits
   lazy val saw = zjParams.snoopAddrBits
   lazy val niw = zjParams.nodeIdBits

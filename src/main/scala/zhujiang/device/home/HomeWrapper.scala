@@ -13,6 +13,7 @@ import xs.utils.mbist.MbistInterface
 import xs.utils.sram.{SramCtrlBundle, SramHelper}
 import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.chi._
+import zhujiang.utils.DoubleCounterClockGate
 import zhujiang.{DftWires, ZJRawModule}
 
 @instantiable
@@ -34,50 +35,13 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
   val implicitReset = reset
 
   private val mbistCgEn = WireInit(false.B)
-  private val cg = Module(new xs.utils.ClockGate)
-  private val ckCtrl = RegInit(true.B)
-  private val ckenWindowCnt = RegInit(15.U(4.W))
-  private val idleWindowCnt = RegInit(15.U(4.W))
+  private val cg = Module(new DoubleCounterClockGate)
   private val hnx = Module(new DongJiang(node))
   private val lanPipes = Seq.tabulate(nodes.length, zjParams.hnxPipelineDepth + 1) { case (i, j) =>
     val pipe = Module(new ChiBuffer(nodes(i)))
     pipe.suggestName(s"lan_${i}_pipe_$j")
   }
   require(zjParams.hnxPipelineDepth < 12)
-  private val inbound = io.lans.map({ lan =>
-    val rxvs = lan.rx.elements.values.map {
-      case chn: DecoupledIO[Data] => chn.valid
-      case _ => false.B
-    }
-    RegNext(Cat(rxvs.toSeq).orR)
-  }).reduce(_ | _)
-
-  if(zjParams.hnxPipelineDepth == 0) {
-    cg.io.E := ckCtrl | inbound | mbistCgEn
-  } else {
-    cg.io.E := ckCtrl | mbistCgEn
-  }
-  cg.io.CK := clock
-  cg.io.TE := io.dfx.func.cgen
-  hnx.io.config.ci := io.ci
-  hnx.io.config.bankId := io.bank
-  hnx.clock := cg.io.Q
-  hnx.io.flushCache.req.valid := false.B
-  hnx.io.flushCache.req.bits := DontCare
-  hnx.io.config.closeLLC := false.B
-
-  ckCtrl := Mux(ckCtrl, ckenWindowCnt.orR || idleWindowCnt.orR, inbound)
-  when(inbound) {
-    ckenWindowCnt := Fill(ckenWindowCnt.getWidth, true.B)
-  }.elsewhen(ckenWindowCnt.orR) {
-    ckenWindowCnt := ckenWindowCnt - 1.U
-  }
-  when(hnx.io.working) {
-    idleWindowCnt := Fill(idleWindowCnt.getWidth, true.B)
-  }.elsewhen(idleWindowCnt.orR) {
-    idleWindowCnt := idleWindowCnt - 1.U
-  }
-
   private val hnxLans = for(i <- nodes.indices) yield {
     for(j <- 1 until lanPipes(i).size) {
       lanPipes(i)(j).io.dev <> lanPipes(i)(j - 1).io.icn
@@ -85,6 +49,21 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
     lanPipes(i).head.io.dev <> io.lans(i)
     lanPipes(i).last.io.icn
   }
+
+  private val inbound = hnxLans.map({ lan =>
+    val reqv = lan.rx.req.map(_.valid).getOrElse(false.B)
+    val hprv = lan.rx.hpr.map(_.valid).getOrElse(false.B)
+    reqv | hprv
+  }).reduce(_ | _)
+  cg.io.te := io.dfx.func.cgen
+  cg.io.inbound := inbound | mbistCgEn
+  cg.io.working := hnx.io.working
+  hnx.io.config.ci := io.ci
+  hnx.io.config.bankId := io.bank
+  hnx.clock := cg.io.ock
+  hnx.io.flushCache.req.valid := false.B
+  hnx.io.flushCache.req.bits := DontCare
+  hnx.io.config.closeLLC := false.B
 
   for((chn, _) <- hnxLans.head.tx.bundleMap.filterNot(_._1 == "DBG")) {
     val rxSeq = hnxLans.map(_.tx.bundleMap(chn))

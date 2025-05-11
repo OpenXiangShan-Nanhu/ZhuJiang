@@ -57,6 +57,7 @@ class Ring(implicit p: Parameters) extends ZJModule {
   val icnCcs = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.CC).map(_._1.get)) else None
   val icnRfs = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.RF).map(_._1.get)) else None
   val icnRis = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.RI).map(_._1.get)) else None
+  val icnRhs = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.RH).map(_._1.get)) else None
   val icnHfs = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.HF).map(_._1.get)) else None
   val icnHis = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.HI).map(_._1.get)) else None
   val icnSns = if(!tfs) Some(icnsWithNodes.filter(_._2.nodeType == NodeType.S).map(_._1.get)) else None

@@ -6,13 +6,12 @@ import xs.utils.ResetRRArbiter
 
 abstract class BaseAxiXbar(mstParams:Seq[AxiParams]) extends Module {
   def slvMatchersSeq: Seq[UInt => Bool]
-
-  private lazy val dataBits = mstParams.head.dataBits
+  private lazy val _slvP = AxiSlvParamsCalc(mstParams)
+  private lazy val dataBits = _slvP.dataBits
   private lazy val mstMaxIdBits = mstParams.map(_.idBits).max
-  private lazy val mstMaxAddrBits = mstParams.map(_.addrBits).max
   private lazy val extraIdBits = log2Ceil(mstParams.length)
   private lazy val slvIdBits = mstMaxIdBits + extraIdBits
-  private lazy val slvParams = Seq.fill(slvMatchersSeq.length)(AxiParams(addrBits = mstMaxAddrBits, dataBits = dataBits, idBits = slvIdBits))
+  private lazy val slvParams = Seq.fill(slvMatchersSeq.length)(_slvP.copy())
   private lazy val extraBitsRange = (slvIdBits - 1, mstMaxIdBits)
   private lazy val mstSize = mstParams.length
   private lazy val slvSize = slvParams.length

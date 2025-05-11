@@ -17,10 +17,11 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule {
   private val compareTagBits = 32
   private val tagOffset = 6
   require(node.nodeType == NodeType.S)
-  private val axiParams = AxiParams(idBits = log2Ceil(node.outstanding), dataBits = dw, addrBits = raw, attr = node.attr)
+  private val axiParams = AxiParams(idBits = log2Ceil(node.outstanding), dataBits = dw, addrBits = raw)
 
   val icn = IO(new DeviceIcnBundle(node))
   val axi = IO(new AxiBundle(axiParams))
+  val working = IO(Output(Bool()))
   dontTouch(icn)
   dontTouch(axi)
 
@@ -64,6 +65,11 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule {
     cm.dataBufferAlloc.resp := dataBufferallocSelector.io.out.fire && dataBufferallocSelector.io.out.bits.idxOH(idx)
     cm
   }
+  private val chiTxV = icn.tx.elements.values.map ({
+    case chn: DecoupledIO[Data] => chn.valid
+    case _ => false.B
+  })
+  working := RegNext(Cat(cms.map(_.io.info.valid) ++ chiTxV).orR)
 
   private val wSeq = cms.map(_.axi.w)
   private val awQueue = Module(new Queue(UInt(node.outstanding.W), entries = node.outstanding))

@@ -5,14 +5,12 @@ import chisel3.stage.ChiselGeneratorAnnotation
 import circt.stage.FirtoolOption
 import xijiang.c2c.C2cLoopBack
 import xijiang.router.base.{EjectBuffer, SingleChannelTap}
-import xijiang.{Node, NodeType}
 import xs.utils.stage.XsStage
 import zhujiang.UnitTop.{firtoolOpts, firtoolOptsDebug}
 import zhujiang.chi.{RingFlit, SnoopFlit}
 import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.bridge.tlul.TLULBridge
-import zhujiang.device.ddr.MemoryComplex
 import zhujiang.device.dma.Axi2Chi
 import zhujiang.device.home.HomeWrapper
 import zhujiang.device.tlu2chi.TLUL2ChiBridge
@@ -24,6 +22,7 @@ import dongjiang.data._
 import dongjiang.backend._
 import dongjiang.frontend._
 import xs.utils.debug.{HardwareAssertionKey, HwaParams}
+import zhujiang.device.AxiDeviceParams
 
 object UnitTop {
   val _firtoolOpts = Seq(
@@ -43,44 +42,35 @@ object UnitTop {
 object AxiBridgeTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new AxiBridge(Node(nodeType = NodeType.S, outstanding = 8))(config))
+    ChiselGeneratorAnnotation(() => new AxiBridge(Node(nodeType = NodeType.S, axiDevParams = Some(AxiDeviceParams())))(config))
   ))
 }
 
 object AxiLiteBridgeTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new AxiLiteBridge(Node(nodeType = NodeType.HI, outstanding = 8), 64, 3)(config))
+    ChiselGeneratorAnnotation(() => new AxiLiteBridge(Node(nodeType = NodeType.HI, axiDevParams = Some(AxiDeviceParams())), 64, 3)(config))
   ))
 }
 
 object TLULBridgeTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new TLULBridge(Node(nodeType = NodeType.HI, outstanding = 8), 64, 3)(config))
+    ChiselGeneratorAnnotation(() => new TLULBridge(Node(nodeType = NodeType.HI, axiDevParams = Some(AxiDeviceParams())), 64, 3)(config))
   ))
 }
 
 object TLUL2ChiBridgeTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new TLUL2ChiBridge(Node(nodeType = NodeType.RI, outstanding = 16), TilelinkParams(addrBits = 48, userBits = 2 /* Extra two bits for svbpmt */))(config))
+    ChiselGeneratorAnnotation(() => new TLUL2ChiBridge(Node(nodeType = NodeType.RI, axiDevParams = Some(AxiDeviceParams())), TilelinkParams(addrBits = 48, userBits = 2 /* Extra two bits for svbpmt */))(config))
   ))
 }
 
 object DmaTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new Axi2Chi(Node(nodeType = NodeType.RI, outstanding = 32))(config))
-  ))
-}
-
-object MemCxTop extends App {
-  val (config, firrtlOpts) = ZhujiangTopParser(args)
-  val cfgNode = Node(nodeType = NodeType.HI)
-  val memNode = Node(nodeType = NodeType.S)
-  (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new MemoryComplex(cfgNode, memNode)(config))
+    ChiselGeneratorAnnotation(() => new Axi2Chi(Node(nodeType = NodeType.RI, axiDevParams = Some(AxiDeviceParams(outstanding = 32))))(config))
   ))
 }
 

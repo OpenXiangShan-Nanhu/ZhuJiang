@@ -14,11 +14,12 @@ import zhujiang.utils.ConditionRRArbiter
 class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Parameters) extends ZJModule {
   private val compareTagBits = 16
   require(node.nodeType == NodeType.HI)
-  private val axiParams = AxiParams(idBits = log2Ceil(node.outstanding), dataBits = busDataBits, addrBits = raw, attr = node.attr)
+  private val axiParams = AxiParams(idBits = log2Ceil(node.outstanding), dataBits = busDataBits, addrBits = raw)
 
   val icn = IO(new DeviceIcnBundle(node))
   val axi = IO(new AxiBundle(axiParams))
   val nodeId = IO(Input(UInt(niw.W)))
+  val working = IO(Output(Bool()))
 
   private def compareTag(addr0: UInt, addr1: UInt): Bool = true.B
 
@@ -51,6 +52,11 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
     arArb.io.in(idx) <> cm.axi.ar
     cm
   }
+  private val chiTxV = icn.tx.elements.values.map ({
+    case chn: DecoupledIO[Data] => chn.valid
+    case _ => false.B
+  })
+  working := RegNext(Cat(cms.map(_.io.info.valid) ++ chiTxV).orR)
 
   private val wSeq = cms.map(_.axi.w)
   private val awQueue = Module(new Queue(UInt(node.outstanding.W), entries = node.outstanding))

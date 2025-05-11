@@ -60,8 +60,6 @@ abstract class BaseCtrlMachine[
     payload := Mux(valid, payloadMiscNext, payloadEnqNext)
   }
 
-
-
   icn.rx.req.ready := !valid
   icn.rx.resp.foreach(_.ready := true.B)
   icn.rx.data.ready := true.B

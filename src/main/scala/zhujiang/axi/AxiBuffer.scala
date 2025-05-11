@@ -15,6 +15,23 @@ class AxiBuffer(axiParams: AxiParams, depth:Int = 2) extends Module {
   io.in.b <> Queue(io.out.b, entries = depth, pipe = true)
 }
 
+class AxiBufferChain(axiParams: AxiParams, chain:Int) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(new AxiBundle(axiParams))
+    val out = new AxiBundle(axiParams)
+  })
+  private val bufSeq = Seq.fill(chain)(Module(new AxiBuffer(axiParams)))
+  bufSeq.zipWithIndex.foreach({case(a, b) => a.suggestName(s"buf_$b")})
+  if(chain == 0) {
+    io.out <> io.in
+  } else {
+    io.out <> bufSeq.foldLeft(io.in)((enq:AxiBundle, buf:AxiBuffer) => {
+      buf.io.in <> enq
+      buf.io.out
+    })
+  }
+}
+
 object AxiBuffer {
   def apply(in: AxiBundle, depth:Int = 2, name:Option[String] = None):AxiBundle = {
     val buffer = Module(new AxiBuffer(in.params, depth))
@@ -23,17 +40,10 @@ object AxiBuffer {
     buffer.io.out
   }
   def chain(in: AxiBundle, length:Int, name:Option[String]):AxiBundle = {
-    val bufferSeq = Seq.fill(length)(Module(new AxiBuffer(in.params, 2)))
-    val out = if(length > 0) {
-      bufferSeq.foldLeft(in)((enq:AxiBundle, buf:AxiBuffer) => {
-        buf.io.in <> enq
-        buf.io.out
-      })
-    } else {
-      in
-    }
-    if(name.isDefined) for((buf, i) <- bufferSeq.zipWithIndex) buf.suggestName(s"${name.get}_buf_$i")
-    out
+    val bufChain = Module(new AxiBufferChain(in.params, length))
+    if(name.isDefined) bufChain.suggestName(s"${name.get}_buf_chain")
+    bufChain.io.in <> in
+    bufChain.io.out
   }
   def chain(in: AxiBundle, length:Int, name:String):AxiBundle = chain(in, length, Some(name))
   def chain(in: AxiBundle, length:Int):AxiBundle = chain(in, length, None)
