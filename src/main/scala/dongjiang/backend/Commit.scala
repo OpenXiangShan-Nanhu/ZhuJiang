@@ -120,7 +120,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   taskAlloc.flag.intl.s.secTask := false.B
   // task flag internal wait
   taskAlloc.flag.intl.w.receive := alloc.taskCode.waitRecDone
-  taskAlloc.flag.intl.w.cmResp  := !alloc.commit.valid // if not need commit, is must has CMTask to do
+  taskAlloc.flag.intl.w.cmResp  := alloc.taskCode.opsValid
   taskAlloc.flag.intl.w.secResp := false.B
   taskAlloc.flag.intl.w.repl    := alloc.commit.wriDir
   taskAlloc.flag.intl.w.data0   := alloc.commit.dataOp.data0
@@ -145,26 +145,30 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    * 2nd decode after Commit gets TaskCM & ReceiveCM response, save to TaskReg
    * 3rd decode after Commit gets TaskCM response again, save to TaskReg
    */
+  // judge decode is valid
+  val waitSecDec  = taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.receive
+  val secDecReady = !waitSecDec
+  val secDecValid = RegNext(waitSecDec) & secDecReady & valid
+  val trdDecValid = io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID & taskReg.flag.intl.w.secResp & valid
+  val decValid    = secDecValid | trdDecValid
+  HAssert.withEn(!io.cmResp.bits.fromRec, trdDecValid)
+
   // Get second taskInst
-  when(taskReg.flag.intl.w.secResp & io.cmResp.valid) {
+  when(trdDecValid) {
     secTaskInst   := io.cmResp.bits.taskInst
   }
   // Get other inst
   val chiInst     = taskReg.chi.getChiInst(valid)
   val stateInst   = taskReg.dir.getStateInst(taskReg.chi.metaIdOH, valid)
-  val taskInst    = taskReg.taskInst
-
-  // judge decode is valid
-  val waitSecDec  = taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.receive
-  val secDecReady = !waitSecDec
-  val secDecValid = RegNext(waitSecDec) & secDecReady & valid
-  val trdDecValid = io.cmResp.valid & taskReg.commit.invalid & taskReg.flag.intl.w.secResp & valid
-  val decValid    = secDecValid | trdDecValid
+  val taskInst    = WireInit(taskReg.taskInst)
+  taskInst.valid  := taskReg.taskInst.valid & valid
 
   // Decode result
   val decRes      = Decode.decode(chiInst, stateInst, taskInst, secTaskInst)._2
-  val secTaskCode = decRes._2
-  val cmtCode     = decRes._3
+  val secTaskCode = WireInit(decRes._2)
+  val cmtCode     = WireInit(decRes._3)
+  dontTouch(secTaskCode)
+  dontTouch(cmtCode)
 
   // get 2nd deocode result
   when(secDecValid) {
@@ -175,32 +179,33 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     // HAssert
     HAssert(!taskReg.taskCode.valid)
     HAssert(!taskReg.commit.valid)
-    HAssert(taskNext.taskCode.valid | taskNext.commit.valid)
+    HAssert.withEn(taskNext.taskCode.valid, cmtCode.waitSecDone)
+    HAssert.withEn(cmtCode.asUInt === 0.U | cmtCode.waitSecDone, !cmtCode.valid)
   }.elsewhen(trdDecValid) {
     taskNext.commit       := cmtCode
     // HAssert
     HAssert(taskReg.taskCode.valid)
     HAssert(!taskReg.commit.valid)
-    HAssert(taskNext.commit.valid)
+    HAssert.withEn(cmtCode.asUInt === 0.U | cmtCode.waitSecDone, !cmtCode.valid)
   }
 
   /*
    * Get new flag when decode done
    */
   // task flag internal send
-  flagDec.intl.s.data0    := cmtCode.dataOp.data0
-  flagDec.intl.s.data1    := cmtCode.dataOp.data1 & !(cmtCode.wriLLC & taskReg.dir.llc.hit) // not replace llc
-  flagDec.intl.s.wriDir   := cmtCode.wriDir
-  flagDec.intl.s.secTask  := secTaskCode.opsValid
+  flagDec.intl.s.data0    := taskNext.commit.dataOp.data0
+  flagDec.intl.s.data1    := taskNext.commit.dataOp.data1 & !(taskNext.commit.wriLLC & taskReg.dir.llc.hit) // not replace llc
+  flagDec.intl.s.wriDir   := taskNext.commit.wriDir
+  flagDec.intl.s.secTask  := taskNext.taskCode.opsValid
   // task flag internal wait
   flagDec.intl.w.receive  := false.B
   flagDec.intl.w.cmResp   := false.B
-  flagDec.intl.w.secResp  := secTaskCode.opsValid
-  flagDec.intl.w.repl     := cmtCode.wriDir
-  flagDec.intl.w.data0    := cmtCode.dataOp.data0
-  flagDec.intl.w.data1    := cmtCode.dataOp.data1 & !(cmtCode.wriLLC & taskReg.dir.llc.hit) // not replace llc
+  flagDec.intl.w.secResp  := taskNext.taskCode.opsValid
+  flagDec.intl.w.repl     := taskNext.commit.wriDir
+  flagDec.intl.w.data0    := taskNext.commit.dataOp.data0
+  flagDec.intl.w.data1    := taskNext.commit.dataOp.data1 & !(taskNext.commit.wriLLC & taskReg.dir.llc.hit) // not replace llc
   // task flag chi send
-  flagDec.chi.s_resp      := cmtCode.sendResp & cmtCode.channel === ChiChannel.RSP
+  flagDec.chi.s_resp      := taskNext.commit.sendResp & taskNext.commit.channel === ChiChannel.RSP
   // task flag chi wait
   flagDec.chi.w_ack       := taskReg.flag.chi.w_ack & !compAckHit
   // task flag clean and valid
@@ -299,10 +304,10 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   secCMTask.cbResp                := taskReg.dir.llc.metaVec.head.cbResp
   secCMTask.doDMT                 := taskReg.taskCode.doDMT
   // alloc
-  io.cmTaskVec(CMID.SNP).valid    := valid & taskReg.taskCode.snoop
-  io.cmTaskVec(CMID.READ).valid   := valid & taskReg.taskCode.read
-  io.cmTaskVec(CMID.DL).valid     := valid & taskReg.taskCode.dataless
-  io.cmTaskVec(CMID.WRI).valid    := valid & taskReg.taskCode.wriOrAtm
+  io.cmTaskVec(CMID.SNP).valid    := valid & taskReg.flag.intl.s.secTask & taskReg.taskCode.snoop
+  io.cmTaskVec(CMID.READ).valid   := valid & taskReg.flag.intl.s.secTask & taskReg.taskCode.read
+  io.cmTaskVec(CMID.DL).valid     := valid & taskReg.flag.intl.s.secTask & taskReg.taskCode.dataless
+  io.cmTaskVec(CMID.WRI).valid    := valid & taskReg.flag.intl.s.secTask & taskReg.taskCode.wriOrAtm
   io.cmTaskVec.foreach(_.bits     := secCMTask)
   HardwareAssertion(PopCount(io.cmTaskVec.map(_.fire)) <= 1.U)
 
@@ -354,7 +359,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     when(io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.data1   := taskReg.flag.intl.s.data1 }
     // task flag chi send
     when(io.txRsp.fire) { flagNext.chi.s_resp := false.B; HAssert(taskReg.flag.chi.s_resp) }
-    when(compAckHit)    { flagNext.chi.w_ack  := false.B; HAssert(taskReg.flag.chi.w_ack)  }
+    when(compAckHit)    { flagNext.chi.w_ack  := false.B; HAssert(taskReg.flag.chi.w_ack | taskReg.chi.reqIs(WriteEvictOrEvict))  }
     // task flag clean and valid
     when(io.alloc.fire & io.alloc.bits.hnTxnID === io.hnTxnID) {
       flagNext.valid  := true.B
@@ -378,7 +383,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     taskNext := taskAlloc
   }.elsewhen(io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID) {
     taskNext.taskInst := (taskReg.taskInst.asUInt | io.cmResp.bits.taskInst.asUInt).asTypeOf(new TaskInst)
-    HAssert.withEn(!taskReg.taskInst.valid, !io.cmResp.bits.fromRec)
+    HAssert.withEn(io.cmResp.valid, io.cmResp.bits.fromRec)
   }
   taskNext.flag := flagNext
 

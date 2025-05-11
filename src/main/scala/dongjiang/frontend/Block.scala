@@ -48,6 +48,7 @@ class Block(implicit p: Parameters) extends DJModule {
   val sDBIDReg_s1         = RegInit(false.B)  // need send XDBIDResp in s1
   val reqIsWEOEReg_s1     = RegInit(false.B)  // Req is WriteEvictOrEvict
   val shouldResp_s1       = Wire(Bool())      // shouled send fast resp to Backend
+  val blockByDB_s1        = Wire(Bool())      // block by no DataBuffer
   val rsvdReg_s1          = RegInit(false.B)  // block by issue
   val block_s1            = Wire(new Bundle {
     val rsvd              = Bool()
@@ -79,7 +80,7 @@ class Block(implicit p: Parameters) extends DJModule {
   block_s1.rsvd     := rsvdReg_s1
   block_s1.pos      := io.posBlock_s1
   block_s1.dir      := !io.readDir_s1.ready // TODO: nocache no need wait dir.read.ready
-  block_s1.resp     := shouldResp_s1 & !io.fastResp_s1.ready
+  block_s1.resp     := blockByDB_s1 | (shouldResp_s1 & !io.fastResp_s1.ready)
   io.retry_s1       := validReg_s1 & block_s1.all
 
   /*
@@ -106,7 +107,8 @@ class Block(implicit p: Parameters) extends DJModule {
   sReceiptReg_s1              := io.chiTask_s0.bits.chi.isRead  & io.chiTask_s0.bits.chi.isEO
   sDBIDReg_s1                 := io.chiTask_s0.bits.chi.needSendDBID
   reqIsWEOEReg_s1             := io.chiTask_s0.bits.chi.reqIs(WriteEvictOrEvict)
-  shouldResp_s1               := sReceiptReg_s1 | reqIsWEOEReg_s1 | sDBIDReg_s1 & io.reqDB_s1.ready
+  shouldResp_s1               := sReceiptReg_s1 | reqIsWEOEReg_s1 | (sDBIDReg_s1 & io.reqDB_s1.ready)
+  blockByDB_s1                := sDBIDReg_s1 & !io.reqDB_s1.ready
   // Send Req To Data
   io.reqDB_s1.valid           := validReg_s1 & sDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
   io.reqDB_s1.bits.dataVec    := DataVec.Full

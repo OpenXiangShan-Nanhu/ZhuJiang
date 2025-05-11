@@ -271,9 +271,9 @@ object Inst {
   def datIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.opcode       := x;         require(x.getWidth == DatOpcode.width); temp.asUInt | isDat }
   def respIs  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.resp         := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt }
   def fwdIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.fwdResp      := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | fwdValid }
-  def xCBWrDataValid    : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.wrRespIsDat  := true.B;    temp.asUInt }
-  def cbRespIsCompAck   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbRespIsAck  := true.B;    temp.asUInt }
-  def cbRespIs(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | taskValid | xCBWrDataValid  }
+  def xCBWrDataValid    : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.wrRespIsDat  := true.B;    temp.asUInt | taskValid }
+  def cbRespIsCompAck   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbRespIsAck  := true.B;    temp.asUInt | taskValid }
+  def cbRespIs(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | xCBWrDataValid  }
   def hasGotNCBWrData   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(I); temp.asUInt | taskValid | xCBWrDataValid }
   def noResp            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst()));                                 temp.asUInt }
 }
@@ -440,9 +440,9 @@ object Decode {
     val cmtRes  = cmtCode_3.asTypeOf(new CommitCode())
 
     // HardwareAssertion valid
-    HardwareAssertion.withEn(chi.valid & state.valid & task.valid, secTask.valid)
-    HardwareAssertion.withEn(chi.valid & state.valid,  task.valid)
-    HardwareAssertion.withEn(chi.valid,  state.valid)
+    HardwareAssertion.withEn(chi.valid & state.valid & task.valid, secTask.valid, cf"When SecTaskInst is valid, ChiInst[${chi.valid}] StateInst[${state.valid}] TaskInst[${task.valid}] should be valid")
+    HardwareAssertion.withEn(chi.valid & state.valid,  task.valid, cf"When TaskInst is valid,  ChiInst[${chi.valid}] StateInst[${state.valid}] should be valid")
+    HardwareAssertion.withEn(chi.valid,  state.valid, cf"When StateInst is valid, ChiInst[${chi.valid}] should be valid")
     // HardwareAssertion result
     // chiInstVecCf
     var chiInstVecCf = cf""

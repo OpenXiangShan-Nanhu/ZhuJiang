@@ -88,7 +88,7 @@ class Decode(implicit p: Parameters) extends DJModule {
   io.cmtTask_s3.bits.alr.reqs     := io.fastData_s3.fire & io.fastData_s3.bits.dataOp.reqs | taskReg_s3.alr.reqs
   io.cmtTask_s3.bits.alr.sData    := io.fastData_s3.fire & io.fastData_s3.bits.dataOp.send
   io.cmtTask_s3.bits.taskCode     := taskCode_s3
-  io.cmtTask_s3.bits.taskInst     := DontCare
+  io.cmtTask_s3.bits.taskInst     := DontCare // Unuse in Decode to Commit
   io.cmtTask_s3.bits.commit       := Mux(taskCode_s3.valid, 0.U.asTypeOf(new CommitCode), cmtCode_s3)
   io.cmtTask_s3.bits.snpTgt       := taskCode_s3.snpTgt
   io.cmtTask_s3.bits.ds.set(taskReg_s3.addr, io.respDir_s3.bits.dir.llc.way)

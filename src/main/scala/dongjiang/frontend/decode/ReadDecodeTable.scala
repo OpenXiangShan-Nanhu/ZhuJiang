@@ -36,26 +36,26 @@ object Read_LAN_DCT_DMT {
 
   // ReadOnce
   def readOnce: DecodeType = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | noOrder, Seq(
-    // I I I  -> UC I I
-    (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | doDMT, wriSRC(true)),
-    // I I SC -> UC I I
+    // I I I  -> I I I
+    (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | doDMT, noCmt),
+    // I I SC -> I I SC
     (sfMiss | llcIs(SC))  -> first(cdop("reqs", "read", "send", "clean") | cmtDat(CompData) | resp(I)),
-    // I I UC -> UC I I
+    // I I UC -> I I UC
     (sfMiss | llcIs(UC))  -> first(cdop("reqs", "read", "send", "clean") | cmtDat(CompData) | resp(I)),
-    // I I UD -> UD I I
+    // I I UD -> I I UD
     (sfMiss | llcIs(UD))  -> first(cdop("reqs", "read", "send", "clean") | cmtDat(CompData) | resp(I)),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (tdop("reqs") | snpOne(SnpOnceFwd), Seq(
-      (rspIs(SnpRespFwded)      | respIs(UC)    | fwdIs(I))   -> second(cdop("clean")), // I UC I
-      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(I))   -> second(cdop("clean")), // I SC I
-      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(cdop("clean") | wriSNP(false)), // I SC I
-      (rspIs(SnpRespFwded)      | respIs(UD)    | fwdIs(I))   -> second(cdop("clean")), // I UD I
-      (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(I))   -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpFull), noCmt), // I SC I
-      (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(I))   -> second(cdop("save", "clean") | wriSNP(false) | wriLLC(UD)), // I I UD
-      (rspIs(SnpResp)           | respIs(SC))                 -> second(read(ReadNoSnp) | doDMT, cdop("clean")), // I SC I
-      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(I))   -> second(cdop("clean")), // I SC I
-      (rspIs(SnpResp)           | respIs(I))                  -> second(read(ReadNoSnp) | doDMT, cdop("clean") | wriSNP(false)), // I I I
-      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(cdop("clean") | wriSNP(false)), // I I I
+      (rspIs(SnpRespFwded)      | respIs(UC)    | fwdIs(I))   -> second(cdop("clean")),                                           // I UC  I
+      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(I))   -> second(cdop("clean")),                                           // I SC  I
+      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(cdop("clean") | wriSNP(false)),                           // I SC  I
+      (rspIs(SnpRespFwded)      | respIs(UD)    | fwdIs(I))   -> second(cdop("clean")),                                           // I UD  I
+      (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(I))   -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpFull), noCmt), // I SC  I
+      (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(I))   -> second(cdop("save", "clean") | wriSNP(false) | wriLLC(UD)),      // I  I UD
+      (rspIs(SnpResp)           | respIs(SC))                 -> second(read(ReadNoSnp) | doDMT, cdop("clean")),                  // I SC  I
+      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(I))   -> second(cdop("clean")),                                           // I SC  I
+      (rspIs(SnpResp)           | respIs(I))                  -> second(read(ReadNoSnp) | doDMT, cdop("clean") | wriSNP(false)),  // I  I  I
+      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(cdop("clean") | wriSNP(false)),                           // I  I  I
     )),
   ))
 

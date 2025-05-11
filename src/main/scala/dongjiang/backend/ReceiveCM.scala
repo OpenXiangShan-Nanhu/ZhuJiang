@@ -128,6 +128,7 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   io.resp.bits.fromRec    := true.B
   io.resp.bits.toRepl     := false.B
   io.resp.bits.taskInst   := reg.taskInst
+  HAssert.withEn(io.resp.bits.taskInst.wrRespIsDat ^ io.resp.bits.taskInst.cbRespIsAck, io.resp.valid)
 
 
   /*
@@ -148,10 +149,10 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
     next.rsp.Opcode       := CompDBIDResp
   // Store Inst
   }.elsewhen(rspHit | datHit) {
-    next.taskInst.valid   := true.B
-    next.taskInst.channel := Mux(rspHit, ChiChannel.RSP,       ChiChannel.DAT)
-    next.taskInst.opcode  := Mux(rspHit, io.rxRsp.bits.Opcode, io.rxDat.bits.Opcode)
-    next.taskInst.resp    := Mux(rspHit, io.rxRsp.bits.Resp,   io.rxDat.bits.Resp)
+    next.taskInst.valid       := true.B
+    next.taskInst.wrRespIsDat := datHit
+    next.taskInst.cbRespIsAck := rspHit
+    next.taskInst.cbResp      := Mux(datHit, io.rxDat.bits.Resp, ChiResp.I)
   }
 
   // Get Next State
