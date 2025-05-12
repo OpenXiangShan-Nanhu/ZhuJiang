@@ -307,7 +307,8 @@ class PosSet(implicit p: Parameters) extends DJModule {
  *  1. req    : Indicates that there is currently a CHI REQ running in the system.
  *  2. snp    : Indicates that there is currently a CHI SNP running in the system.
  *  3. canNest: CHI SNP can nest CHI REQ with same addr
- *  4. tag    : Part of the request address
+ *  4. tagVal : Indicates whether the saved tag is valid
+ *  5. tag    : Part of the request address
  *
  * Special Entry:
  * Entry*: Reserve for LLC Replace

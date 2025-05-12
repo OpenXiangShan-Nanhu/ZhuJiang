@@ -167,7 +167,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val posTagBits       = addrBits - bankBits - posSetBits - dirBankBits - offsetBits
   // require [ci_lo] > [bankId_hi] > [bankId_lo] > [offset_hi]
   require(addrBits - ciBits > hnxBankOff + bankBits - 1)
-  require(hnxBankOff > offsetBits)
+  require(hnxBankOff > offsetBits - 1)
   // useAddr
   lazy val useAddr_hi       = addrBits - 1
   lazy val useAddr_lo       = offsetBits
