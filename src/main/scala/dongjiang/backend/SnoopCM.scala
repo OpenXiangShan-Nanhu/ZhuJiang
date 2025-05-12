@@ -116,7 +116,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   /*
    * Send Snoop
    */
-  val snpMetaId   = OHToUInt(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt)
+  val snpMetaId   = PriorityEncoder(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt)
   val snpIsFst    = reg.alrSendVec.asUInt === 0.U
   snpNodeId.setSnpNodeId(snpMetaId)
   // valid
