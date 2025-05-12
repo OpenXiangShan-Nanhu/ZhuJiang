@@ -124,7 +124,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   taskAlloc.flag.intl.w.secResp := false.B
   taskAlloc.flag.intl.w.repl    := alloc.commit.wriDir
   taskAlloc.flag.intl.w.data0   := alloc.commit.dataOp.data0
-  taskAlloc.flag.intl.w.data1   := alloc.commit.dataOp.data1 & !(alloc.commit.wriLLC & !alloc.dir.llc.hit) // not replace llc
+  taskAlloc.flag.intl.w.data1   := alloc.alr.cleanDB | (alloc.commit.dataOp.data1 & !(alloc.commit.wriLLC & !alloc.dir.llc.hit)) // not replace llc
   // task flag chi send
   taskAlloc.flag.chi.s_resp     := alloc.commit.sendResp & alloc.commit.channel === ChiChannel.RSP
   // task flag chi wait
@@ -182,6 +182,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     HAssert.withEn(taskNext.taskCode.valid, cmtCode.waitSecDone)
     HAssert.withEn(cmtCode.asUInt === 0.U | cmtCode.waitSecDone, !cmtCode.valid)
   }.elsewhen(trdDecValid) {
+    taskNext.taskCode     := 0.U.asTypeOf(new TaskCode)
     taskNext.commit       := cmtCode
     // HAssert
     HAssert(taskReg.taskCode.valid)
@@ -357,6 +358,8 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     when(io.replResp.fire & io.replResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.repl    := false.B; HAssert(taskReg.flag.intl.w.repl) }
     when(io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.data0   := taskReg.flag.intl.s.data0 }
     when(io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.data1   := taskReg.flag.intl.s.data1 }
+    // when task is (1)invalid or (2)wait data or (3)wait cm resp or (4) wait replace resp can get data resp
+    HAssert.withEn(!taskReg.flag.valid | taskReg.flag.intl.w.data0 | taskReg.flag.intl.w.data1 | taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.secResp | taskReg.flag.intl.w.repl, io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID)
     // task flag chi send
     when(io.txRsp.fire) { flagNext.chi.s_resp := false.B; HAssert(taskReg.flag.chi.s_resp) }
     when(compAckHit)    { flagNext.chi.w_ack  := false.B; HAssert(taskReg.flag.chi.w_ack | taskReg.chi.reqIs(WriteEvictOrEvict))  }

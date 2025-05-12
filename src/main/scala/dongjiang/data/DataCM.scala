@@ -26,10 +26,10 @@ object CTRLSTATE {
   val SEND    = 0x5.U // * // Read DB and send to CHI
   val SAVE    = 0x6.U // * // Read DB adn send to DS
   val CLEAN   = 0x7.U // * // Clean DB mask and DBIDPool
-  val RESP    = 0x8.U // * // Send resp to Backend
-  val TOFREE  = 0x9.U // -> FREE // Can be free when sending is all false
+  val RESP    = 0x8.U // -> ALLOC/FREE // Send resp to Backend
+  val TOFREE  = 0x9.U // -> FREE       // Can be free when sending is all false
 
-  // Note: with * must use dataOp.getNextState
+  // Note: with * must use dataOp.getNextStateS
 }
 
 trait HasCtrlMes { this: DJBundle =>
@@ -75,7 +75,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     val dcid        = Input(UInt(dcIdBits.W))
     // From/To Backend
     val replHnTxnID = Flipped(Valid(new ReplHnTxnID))
-    val alloc       = Flipped(Decoupled(new HnTxnID))
+    val alloc       = Flipped(Decoupled(new HnTxnID with HasDataVec))
     val task        = Flipped(Valid(new DataTask)) // broadcast signal
     val resp        = Decoupled(new HnTxnID)
     // To DS/DB
@@ -97,9 +97,11 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
    * Reg and Wire declaration
    */
   require(djparam.nrBeat == 2)
-  val reg = RegInit(new PackDataTask with HasCtrlMes {
-    def getBeatNum = Mux(opBeat === 0.U, PriorityEncoder(task.dataVec), 1.U)
-    def opAll = Mux(task.isFullSize, opBeat === 1.U, opBeat === 0.U)  // The beat block is operate all (read/send/save/send)
+  // set reg.dataVec when alloc
+  // set reg.task.dataVec when io.data hit
+  val reg = RegInit(new PackDataTask with HasCtrlMes with HasDataVec {
+    def getBeatNum  = Mux(opBeat === 0.U, PriorityEncoder(task.dataVec), 1.U)
+    def opAll       = Mux(task.isFullSize, opBeat === 1.U, opBeat === 0.U)  // The beat block is operate all (read/send/save/send)
   }.Lit(_.state -> FREE))
   val next = WireInit(reg)
 
@@ -107,7 +109,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     * Connect io
    */
   io.txDatBits          := reg.task.txDat
-  io.txDatBits.DataID   := PriorityMux(Seq( // TODO:
+  io.txDatBits.DataID   := PriorityMux(Seq( // TODO: parameterization
     reg.task.isFullSize -> Mux(reg.wSBeat === 2.U, "b00".U, "b10".U),
     reg.task.dataVec(1) -> "b10".U,
     reg.task.dataVec(0) -> "b00".U
@@ -168,11 +170,21 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   // Get next task
   val taskHit = reg.isValid & io.task.valid & io.task.bits.hnTxnID === reg.task.hnTxnID
   when(io.alloc.fire) {
-    next.task := 0.U.asTypeOf(new DataTask)
+    next.task     := 0.U.asTypeOf(new DataTask)
     HAssert.withEn(io.task.bits.hnTxnID =/= io.alloc.bits.hnTxnID, io.task.valid)
   }.elsewhen(taskHit) {
-    next.task := io.task.bits
+    next.task     := io.task.bits
     HAssert(reg.isAlloc)
+    reg.dataVec.zip(io.task.bits.dataVec).map { case(v, t) => HAssert.withEn(v, t) }
+  }
+
+  // Get next dataVec
+  when(io.alloc.fire) {
+    next.dataVec  := io.alloc.bits.dataVec
+  }.elsewhen(taskHit & io.task.bits.dataOp.onlyClean){
+    next.dataVec  := VecInit((reg.dataVec.asUInt & ~io.task.bits.dataVec.asUInt).asBools)
+  }.elsewhen(next.isClean) {
+    next.dataVec  := VecInit((reg.dataVec.asUInt & ~reg.task.dataVec.asUInt).asBools)
   }
 
   // Get next wait read beat
@@ -198,7 +210,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   }.elsewhen(txDatHit) {
     next.wSBeat   := reg.wSBeat - 1.U
     HAssert(reg.wSBeat > 0.U)
-    HAssert(reg.isSend | reg.isSave | reg.isClean | reg.isResp)
+    HAssert(reg.isSend | reg.isSave | reg.isClean | reg.isResp | reg.isToFree | reg.isToFree)
   }
 
   // Get next opBeat
@@ -251,7 +263,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
       when(io.releaseDB.fire)             { next.state := reg.task.dataOp.getNextState(CLEAN) }
     }
     is(RESP) {
-      when(io.resp.fire)                  { next.state := reg.task.dataOp.getNextState(RESP) }
+      when(io.resp.fire)                  { next.state := Mux(reg.isZero, TOFREE, ALLOC) }
     }
     is(TOFREE) {
       when(reg.sendall)                   { next.state := FREE }
@@ -304,11 +316,17 @@ class DataCM(implicit p: Parameters) extends DJModule {
     val dsWriDB       = Flipped(Valid(new DCID)) // broadcast signal
     val txDatFire     = Flipped(Valid(new DCID)) // broadcast signal
   })
+  // HAssert is request DataBuffer, size can be zero
+  HAssert.withEn(!io.reqDBIn.bits.isZero,   io.reqDBIn.valid)
+  HAssert.withEn(!io.reqDBOut.bits.isZero,  io.reqDBOut.valid)
+  HAssert.withEn(!io.releaseDB.bits.isZero, io.releaseDB.valid)
+  HAssert.withEn(!io.task.bits.isZero,      io.task.valid & io.task.bits.dataOp.reqs)
 
   /*
    * Module declaration
    */
   val entries = Seq.fill(nrDataCM) { Module(new DataCtrlEntry()) }
+  val taskReg = RegEnable(io.task.bits, io.task.fire)
   val dbgVec  = VecInit(entries.map(_.io.state))
   dontTouch(dbgVec)
 
@@ -335,10 +353,11 @@ class DataCM(implicit p: Parameters) extends DJModule {
     // Alloc
     e.io.alloc.valid        := (io.reqDBIn.valid | taskReqDB) & io.reqDBOut.ready & freeDCID === i.U
     e.io.alloc.bits.hnTxnID := Mux(taskReqDB, io.task.bits.hnTxnID, io.reqDBIn.bits.hnTxnID)
+    e.io.alloc.bits.dataVec := Mux(taskReqDB, io.task.bits.dataVec, io.reqDBIn.bits.dataVec)
     HAssert.withEn(io.reqDBOut.fire, e.io.alloc.fire, cf"DCID[${i.U}]")
     // Task
     e.io.task.valid         := RegNext(io.task.fire)
-    e.io.task.bits          := RegEnable(io.task.bits, io.task.fire)
+    e.io.task.bits          := taskReg
   }
   HAssert.withEn(io.reqDBOut.fire & PopCount(entries.map(_.io.alloc.fire)) === 1.U, io.reqDBIn.fire)
   HAssert.withEn(io.reqDBOut.fire & PopCount(entries.map(_.io.alloc.fire)) === 1.U, io.task.fire & taskReqDB)

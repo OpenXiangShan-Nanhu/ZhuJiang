@@ -123,8 +123,8 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   io.resp.valid           := reg.isRespCmt
   // bits
   io.resp.bits.hnTxnID    := reg.rsp.DBID
+  io.resp.bits.alr        := DontCare
   io.resp.bits.alr.reqs   := reg.rsp.Opcode =/= Comp
-  io.resp.bits.alr.sData  := DontCare
   io.resp.bits.fromRec    := true.B
   io.resp.bits.toRepl     := false.B
   io.resp.bits.taskInst   := reg.taskInst
