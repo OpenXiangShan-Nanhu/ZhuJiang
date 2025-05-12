@@ -146,7 +146,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    * 3rd decode after Commit gets TaskCM response again, save to TaskReg
    */
   // judge decode is valid
-  val waitSecDec  = taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.receive
+  val waitSecDec  = (taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.receive) & valid
   val secDecReady = !waitSecDec
   val secDecValid = RegNext(waitSecDec) & secDecReady & valid
   val trdDecValid = io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID & taskReg.flag.intl.w.secResp & valid
