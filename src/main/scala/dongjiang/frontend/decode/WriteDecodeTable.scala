@@ -38,7 +38,7 @@ object Write_LAN {
     // I I UD -> I I UD
     (sfMiss | llcIs(UD))  -> first(waitRecDone, cbRespIs(I), cdop("read", "save", "clean") | cmtRsp(Comp) | wriLLC(UD)),
     // I V I
-    (srcMiss | othHit | llcIs(I)) -> (tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
+    (srcMiss | othHit | llcIs(I)) -> (waitRecDone | tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
       (cbRespIs(I) | datIs(SnpRespData) | respIs(I_PD)) -> second(cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
       (cbRespIs(I) | datIs(SnpRespData) | respIs(I))    -> second(cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
       (cbRespIs(I) | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl),  cmtRsp(Comp) | wriSNP(false)) // I I I
@@ -56,7 +56,7 @@ object Write_LAN {
     // I I UD -> I I UD
     (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("read", "send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I V I
-    (srcMiss | othHit | llcIs(I)) -> (tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
+    (srcMiss | othHit | llcIs(I)) -> (waitRecDone | tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
       (cbRespIs(I) | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
       (cbRespIs(I) | datIs(SnpRespData) | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
       (cbRespIs(I) | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false))  // I I I

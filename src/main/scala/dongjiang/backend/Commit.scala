@@ -161,7 +161,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   val chiInst     = taskReg.chi.getChiInst(valid)
   val stateInst   = taskReg.dir.getStateInst(taskReg.chi.metaIdOH, valid)
   val taskInst    = WireInit(taskReg.taskInst)
-  taskInst.valid  := taskReg.taskInst.valid & valid
+  taskInst.valid  := taskReg.taskInst.valid & !(taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.receive) & valid
 
   // Decode result
   val decRes      = Decode.decode(chiInst, stateInst, taskInst, secTaskInst)._2
