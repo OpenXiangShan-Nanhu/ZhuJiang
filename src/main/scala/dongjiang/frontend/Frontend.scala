@@ -63,8 +63,8 @@ class Frontend(implicit p: Parameters) extends DJModule {
   val posTable    = Module(new PosTable())
   val block       = Module(new Block())
   // S2: Wait Directory Response
-  val bufReg_s2   = RegInit(0.U.asTypeOf(block.io.task_s1.bits))
-  val shiftReg_s2 = RegInit(0.U.asTypeOf(new Shift(readDirLatency-1)))
+  val shiftReg_s2 = RegInit(0.U.asTypeOf(new Shift(readDirLatency-1))) // Recording task valid number in S2
+  val pipe_s2     = Module(new Pipe(chiselTypeOf(block.io.task_s1.bits), readDirLatency-1))
   // S3: Receive DirResp and Decode
   val decode      = Module(new Decode())
   // S4: Issue Task to Backend
@@ -136,15 +136,16 @@ class Frontend(implicit p: Parameters) extends DJModule {
   block.io.hnIdx_s1         := posTable.io.hnIdx_s1
   block.io.alrUseBuf        := shiftReg_s2.s.orR +& decode.io.cmtTask_s3.valid + issue.io.alrUseBuf
   HardwareAssertion((shiftReg_s2.s.orR +& decode.io.cmtTask_s3.valid + issue.io.alrUseBuf) <= nrIssueBuf.U)
+  pipe_s2.io.enq
 
   // buffer [S2]
-  bufReg_s2                 := Mux(block.io.task_s1.valid, block.io.task_s1.bits, bufReg_s2)
+  pipe_s2.io.enq.valid      := block.io.task_s1.valid
+  pipe_s2.io.enq.bits       := block.io.task_s1.bits
   shiftReg_s2.input(block.io.task_s1.valid)
-  HardwareAssertion(PopCount(shiftReg_s2.s) <= 1.U)
 
   // decode [S3]
-  decode.io.task_s2.valid   := shiftReg_s2.isValid
-  decode.io.task_s2.bits    := bufReg_s2
+  decode.io.task_s2.valid   := pipe_s2.io.deq.valid
+  decode.io.task_s2.bits    := pipe_s2.io.deq.bits
   decode.io.respDir_s3      := io.respDir_s3
 
   // issue [S4]
