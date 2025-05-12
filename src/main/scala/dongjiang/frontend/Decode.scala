@@ -101,7 +101,8 @@ class Decode(implicit p: Parameters) extends DJModule {
   // chi
   io.cmTask_s3.bits.chi             := taskReg_s3.chi
   // set by taskCode_s3
-  io.cmTask_s3.bits.chi.dataVec     := Mux(taskCode_s3.snoop, DataVec.Full, taskReg_s3.chi.dataVec)
+  io.cmTask_s3.bits.chi.channel     := Mux(taskCode_s3.snoop, ChiChannel.SNP, ChiChannel.REQ)
+  io.cmTask_s3.bits.chi.dataVec     := Mux(taskCode_s3.snoop, DataVec.Full,   taskReg_s3.chi.dataVec)
   io.cmTask_s3.bits.chi.opcode      := taskCode_s3.opcode
   io.cmTask_s3.bits.chi.expCompAck  := taskCode_s3.expCompAck
   io.cmTask_s3.bits.chi.retToSrc    := taskCode_s3.retToSrc
