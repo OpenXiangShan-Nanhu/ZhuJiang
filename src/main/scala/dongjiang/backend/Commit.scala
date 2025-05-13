@@ -259,7 +259,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.txDat.Opcode   := taskReg.commit.commitOp
   io.dataTask.bits.txDat.HomeNID  := DontCare // remap in SAM
   io.dataTask.bits.txDat.TxnID    := taskReg.chi.txnID
-  io.dataTask.bits.txDat.SrcID    := taskReg.chi.getNoC(io.config.ci)
+  io.dataTask.bits.txDat.SrcID    := taskReg.chi.getNoC
   io.dataTask.bits.txDat.TgtID    := taskReg.chi.nodeId
   // other bits
   io.dataTask.bits.ds             := taskReg.ds
@@ -278,10 +278,11 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.replTask.bits.dir.sf.wayOH   := taskReg.dir.sf.wayOH
   io.replTask.bits.dir.sf.metaVec.map(_.state).zipWithIndex.foreach {
     case(s, i) =>
-      val metaIdOH = taskReg.chi.metaIdOH
-      val snpVec   = taskReg.dir.getSnpVec(taskReg.snpTgt, metaIdOH)
+      val metaIdOH    = taskReg.chi.metaIdOH
+      val metaIdVec   = VecInit(metaIdOH.asBools)
+      val snpVec      = taskReg.dir.getSnpVec(taskReg.snpTgt, metaIdOH)
       s := PriorityMux(Seq(
-        metaIdOH(i.U) -> taskReg.commit.srcValid,
+        metaIdVec(i)  -> taskReg.commit.srcValid,
         snpVec(i)     -> taskReg.commit.snpValid,
         true.B        -> taskReg.dir.sf.metaVec(i).state
       ))
@@ -331,7 +332,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.txRsp.bits.Resp        := taskReg.commit.resp
   io.txRsp.bits.Opcode      := taskReg.commit.commitOp
   io.txRsp.bits.TxnID       := taskReg.chi.txnID
-  io.txRsp.bits.SrcID       := taskReg.chi.getNoC(io.config.ci)
+  io.txRsp.bits.SrcID       := taskReg.chi.getNoC
   io.txRsp.bits.TgtID       := taskReg.chi.nodeId
 
 

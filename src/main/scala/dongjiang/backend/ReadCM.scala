@@ -120,7 +120,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   io.txReq.bits.ReturnTxnID.get := Mux(reg.task.doDMT, reg.task.chi.txnID,  reg.task.hnTxnID)
   io.txReq.bits.ReturnNID.get   := Mux(reg.task.doDMT, reg.task.chi.nodeId, Fill(io.txReq.bits.ReturnNID.get.getWidth, 1.U)) // If set RetrunNID max value, it will be remap in SAM
   io.txReq.bits.TxnID           := reg.task.hnTxnID
-  io.txReq.bits.SrcID           := reg.task.chi.getNoC(io.config.ci)
+  io.txReq.bits.SrcID           := reg.task.chi.getNoC
 
   /*
    * Send CompAck
@@ -131,7 +131,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   io.txRsp.bits         := DontCare
   io.txRsp.bits.Opcode  := CompAck
   io.txRsp.bits.TxnID   := reg.task.chi.txnID
-  io.txRsp.bits.SrcID   := reg.task.chi.getNoC(io.config.ci)
+  io.txRsp.bits.SrcID   := reg.task.chi.getNoC
   io.txRsp.bits.TgtID   := reg.task.chi.nodeId
 
 

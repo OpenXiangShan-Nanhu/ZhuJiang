@@ -112,7 +112,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   io.txReq.bits.Size    := reg.task.chi.getSize
   io.txReq.bits.Opcode  := reg.task.chi.opcode
   io.txReq.bits.TxnID   := reg.task.hnTxnID
-  io.txReq.bits.SrcID   := reg.task.chi.getNoC(io.config.ci)
+  io.txReq.bits.SrcID   := reg.task.chi.getNoC
 
 
   /*
@@ -137,7 +137,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.txDat.Resp     := reg.task.cbResp
   io.dataTask.bits.txDat.Opcode   := Mux(reg.task.chi.isImmediateWrite, NonCopyBackWriteData, CopyBackWriteData)
   io.dataTask.bits.txDat.TxnID    := reg.task.chi.txnID
-  io.dataTask.bits.txDat.SrcID    := reg.task.chi.getNoC(io.config.ci)
+  io.dataTask.bits.txDat.SrcID    := reg.task.chi.getNoC
   io.dataTask.bits.txDat.TgtID    := reg.task.chi.nodeId
 
 

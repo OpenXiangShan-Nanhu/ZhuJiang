@@ -81,8 +81,8 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
       HAssert.withEn(!task.chi.expCompAck                 , task.chi.isWrite & task.chi.opcode =/= ReqOpcode.WriteEvictOrEvict  , "Request from CC-RNF which ExpCompAck should not be asserted"                 )
     }
     when(task.chi.fromBBN) {
-      HAssert( task.chi.noOrder            , "Requests from BBN should not assert Order")
-      HAssert( task.chi.toLAN(io.config.ci), cf"SrcID => [${task.chi.nodeId}]"              )
+      HAssert( task.chi.noOrder , "Requests from BBN should not assert Order")
+      HAssert( task.chi.toLAN   , cf"SrcID => [${task.chi.nodeId}]"              )
     }
     when(shouldBeFull) {
       HAssert( task.chi.isFullSize                                                                             )

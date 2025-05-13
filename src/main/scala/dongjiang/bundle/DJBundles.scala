@@ -148,20 +148,20 @@ trait HasDataVec extends DJBundle { this: DJBundle =>
 trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
   with HasChiOrderAndExpCompAck with HasChiSnpField with HasDataVec =>
   // REQ
-  val txnID     = UInt(ChiTxnIdBits.W)
-  val memAttr   = new MemAttr()
+  val txnID         = UInt(ChiTxnIdBits.W)
+  val memAttr       = new MemAttr()
   // SNP
-  val fwdNID    = UInt(nodeIdBits.W)
-  val fwdTxnID  = UInt(ChiFwdTxnIdBits.W)
-  val retToSrc  = Bool()
+  val fwdNID        = UInt(nodeIdBits.W)
+  val fwdTxnID      = UInt(ChiFwdTxnIdBits.W)
+  val retToSrc      = Bool()
   // Flag
-  val toLAN     = Bool() // TODO: It should be in CommitTask?
-  def toBBN     = !toLAN
+  val toLAN         = Bool() // TODO: It should be in CommitTask?
+  def toBBN         = !toLAN
 
 
-  def needSendDBID = isAtomic | (isWrite & !reqIs(WriteEvictOrEvict))
+  def needSendDBID  = isAtomic | (isWrite & !reqIs(WriteEvictOrEvict))
 
-  def getNoC = Mux(toLAN, LAN.U, BBN.U)
+  def getNoC        = Mux(toLAN, LAN.U, BBN.U)
 
   def getChiInst(valid: Bool = true.B): ChiInst = {
     val inst = Wire(new ChiInst)

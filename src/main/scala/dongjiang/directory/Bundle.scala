@@ -38,7 +38,7 @@ trait HasDirBaseMsg extends DJBundle { this: DJBundle with HasDirParam =>
   def metaIsInv = !metaIsVal
 
   def allVec: Seq[Bool] = metaVec.map(_.state.asBool)
-  def othVec(metaIdOH: UInt): Seq[Bool] = metaVec.map(_.state.asBool).zipWithIndex.map { case (m, i) => m & !metaIdOH(i.U) }
+  def othVec(metaIdOH: UInt): Seq[Bool] = allVec.zipWithIndex.map { case (v, i) => v & !VecInit(metaIdOH.asBools)(i) }
 
   def srcHit(metaIdOH: UInt): Bool = hit & metaVec(OHToUInt(metaIdOH)).state.asBool & metaIdOH.orR
   def othHit(metaIdOH: UInt): Bool = hit & othVec(metaIdOH).reduce(_ | _)

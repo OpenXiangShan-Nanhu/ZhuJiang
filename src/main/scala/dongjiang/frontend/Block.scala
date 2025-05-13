@@ -105,25 +105,25 @@ class Block(implicit p: Parameters) extends DJModule {
    * Resp to Node
    */
   // needRespReg_s1 is associated with dbid2Rn of Commit.
-  sReceiptReg_s1              := io.chiTask_s0.bits.chi.isRead  & io.chiTask_s0.bits.chi.isEO
-  sDBIDReg_s1                 := io.chiTask_s0.bits.chi.needSendDBID
-  reqIsWEOEReg_s1             := io.chiTask_s0.bits.chi.reqIs(WriteEvictOrEvict)
-  shouldResp_s1               := sReceiptReg_s1 | reqIsWEOEReg_s1 | (sDBIDReg_s1 & io.reqDB_s1.ready)
-  blockByDB_s1                := sDBIDReg_s1 & !io.reqDB_s1.ready
+  sReceiptReg_s1                    := io.chiTask_s0.bits.chi.isRead  & io.chiTask_s0.bits.chi.isEO
+  sDBIDReg_s1                       := io.chiTask_s0.bits.chi.needSendDBID
+  reqIsWEOEReg_s1                   := io.chiTask_s0.bits.chi.reqIs(WriteEvictOrEvict)
+  shouldResp_s1                     := sReceiptReg_s1 | reqIsWEOEReg_s1 | (sDBIDReg_s1 & io.reqDB_s1.ready)
+  blockByDB_s1                      := sDBIDReg_s1 & !io.reqDB_s1.ready
   // Send Req To Data
-  io.reqDB_s1.valid           := validReg_s1 & sDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
-  io.reqDB_s1.bits.dataVec    := DataVec.Full
-  io.reqDB_s1.bits.hnTxnID    := io.hnIdx_s1.getTxnID
+  io.reqDB_s1.valid                 := validReg_s1 & sDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
+  io.reqDB_s1.bits.dataVec          := DataVec.Full
+  io.reqDB_s1.bits.hnTxnID          := io.hnIdx_s1.getTxnID
   // Send Fast Resp To CHI
   io.fastResp_s1.valid              := validReg_s1 & shouldResp_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
   io.fastResp_s1.bits.dataVec       := taskReg_s1.chi.dataVec
   io.fastResp_s1.bits.rsp           := DontCare
-  io.fastResp_s1.bits.rsp .SrcID    := taskReg_s1.chi.getNoC(io.config.ci)
-  io.fastResp_s1.bits.rsp .TgtID    := taskReg_s1.chi.nodeId
-  io.fastResp_s1.bits.rsp .TxnID    := taskReg_s1.chi.txnID
-  io.fastResp_s1.bits.rsp .DBID     := io.hnIdx_s1.getTxnID
-  io.fastResp_s1.bits.rsp .RespErr  := RespErr.NormalOkay
-  io.fastResp_s1.bits.rsp .Opcode   := PriorityMux(Seq(
+  io.fastResp_s1.bits.rsp.SrcID     := taskReg_s1.chi.getNoC
+  io.fastResp_s1.bits.rsp.TgtID     := taskReg_s1.chi.nodeId
+  io.fastResp_s1.bits.rsp.TxnID     := taskReg_s1.chi.txnID
+  io.fastResp_s1.bits.rsp.DBID      := io.hnIdx_s1.getTxnID
+  io.fastResp_s1.bits.rsp.RespErr   := RespErr.NormalOkay
+  io.fastResp_s1.bits.rsp.Opcode    := PriorityMux(Seq(
     sReceiptReg_s1                              -> ReadReceipt,
     reqIsWEOEReg_s1                             -> Comp,
     (sDBIDReg_s1 & taskReg_s1.chi.isOWO)        -> DBIDResp,

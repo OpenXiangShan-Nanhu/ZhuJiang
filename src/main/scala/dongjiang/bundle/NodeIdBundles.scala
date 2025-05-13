@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import dongjiang._
-import xs.utils.debug.HardwareAssertion
+import xs.utils.debug._
 
 trait HasNodeId { this: DJBundle =>
   val fromLAN   = Bool()

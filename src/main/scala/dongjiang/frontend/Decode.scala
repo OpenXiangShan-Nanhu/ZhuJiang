@@ -146,7 +146,7 @@ class Decode(implicit p: Parameters) extends DJModule {
     io.fastData_s3.bits.txDat.Opcode  := CompData
     io.fastData_s3.bits.txDat.HomeNID := DontCare // remap in SAM
     io.fastData_s3.bits.txDat.TxnID   := taskReg_s3.chi.txnID
-    io.fastData_s3.bits.txDat.SrcID   := taskReg_s3.chi.getNoC(io.config.ci)
+    io.fastData_s3.bits.txDat.SrcID   := taskReg_s3.chi.getNoC
     io.fastData_s3.bits.txDat.TgtID   := taskReg_s3.chi.nodeId
     // other bits
     io.fastData_s3.bits.dataOp        := 0.U.asTypeOf(new DataOp)
