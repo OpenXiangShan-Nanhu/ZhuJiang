@@ -18,7 +18,6 @@ import dongjiang.backend.RECSTATE._
 import dongjiang.data._
 import xs.utils.queue.FastQueue
 import chisel3.experimental.BundleLiterals._
-import dongjiang.backend.READSTATE.{CANNEST, FREE, REQDB, SENDREQ}
 
 // ----------------------------------------------------------------------------------------------------- //
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
