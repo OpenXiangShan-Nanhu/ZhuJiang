@@ -34,7 +34,7 @@ case class DmaParams(
   nrBeats   : Int = 2,
   axiEntrySize  : Int = 8,
   readDMT       : Boolean = true,
-  merWrDatAndAck: Boolean = false,  //Whether NCBWrData and CompAck can be merge
+  merWrDatAndAck: Boolean = true,  //Whether NCBWrData and CompAck can be merge
   rniID         : Int = 1,
 ) 
 
