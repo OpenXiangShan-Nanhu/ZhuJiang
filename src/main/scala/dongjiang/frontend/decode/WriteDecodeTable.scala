@@ -19,18 +19,18 @@ import chisel3.util._
 object Write_LAN {
   // WriteNoSnpPtl With EWA
   def writeNoSnpPtl_ewa: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | expCompAck | isOWO, Seq(
-    (sfMiss | llcIs(I)) -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), noCmt)))
+    (sfMiss | llcIs(I)) -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, noCmt)))
   ))
 
   // WriteNoSnpPtl Without EWA
   def writeNoSnpPtl_noEwa: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | expCompAck | isOWO, Seq(
-    (sfMiss | llcIs(I)) -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp))))
+    (sfMiss | llcIs(I)) -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, waitSecDone | cmtRsp(Comp))))
   ))
 
   // WriteUniquePtl With Allocate
   def writeUniquePtl_alloc: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | allocate | ewa | isOWO, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp)))),
+    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, cmtRsp(Comp)))),
     // I I SC -> I I UD
     (sfMiss | llcIs(SC))  -> first(waitRecDone, cbRespIs(I), cdop("read", "save", "clean") | cmtRsp(Comp) | wriLLC(UD)),
     // I I UC -> I I UD
@@ -41,25 +41,25 @@ object Write_LAN {
     (srcMiss | othHit | llcIs(I)) -> (waitRecDone | tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
       (cbRespIs(I) | datIs(SnpRespData) | respIs(I_PD)) -> second(cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
       (cbRespIs(I) | datIs(SnpRespData) | respIs(I))    -> second(cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
-      (cbRespIs(I) | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl),  cmtRsp(Comp) | wriSNP(false)) // I I I
+      (cbRespIs(I) | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp,  cmtRsp(Comp) | wriSNP(false)) // I I I
     ))
   ))
 
   // WriteUnique Without Allocate
   def writeUniquePtl_noAlloc: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | ewa | isOWO, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)))),
+    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, waitSecDone | cmtRsp(Comp)))),
     // I I SC -> I I UD
-    (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I I UC -> I I UD
-    (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I I UD -> I I UD
-    (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("read", "send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(cbRespIs(I) -> second(tdop("read", "send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (waitRecDone | tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
-      (cbRespIs(I) | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
-      (cbRespIs(I) | datIs(SnpRespData) | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
-      (cbRespIs(I) | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false))  // I I I
+      (cbRespIs(I) | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, cmtRsp(Comp) | wriSNP(false)), // I I I
+      (cbRespIs(I) | datIs(SnpRespData) | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, cmtRsp(Comp) | wriSNP(false)), // I I I
+      (cbRespIs(I) | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, cmtRsp(Comp) | wriSNP(false))  // I I I
     ))
   ))
 

@@ -151,6 +151,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   val secDecValid = RegNext(waitSecDec) & secDecReady & valid
   val trdDecValid = io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID & taskReg.flag.intl.w.secResp & !taskReg.commit.valid & valid
   val decValid    = secDecValid | trdDecValid
+  HAssert(!(secDecValid & trdDecValid))
   HAssert.withEn(!io.cmResp.bits.fromRec, trdDecValid)
 
   // Get second taskInst
@@ -167,6 +168,8 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   val decRes      = Decode.decode(chiInst, stateInst, taskInst, secTaskInst)._2
   val secTaskCode = WireInit(decRes._2)
   val cmtCode     = WireInit(decRes._3)
+  HAssert.withEn(chiInst.valid & stateInst.valid & taskInst.valid & !secTaskInst.valid, secDecValid)
+  HAssert.withEn(chiInst.valid & stateInst.valid & taskInst.valid &  secTaskInst.valid, trdDecValid)
   dontTouch(secTaskCode)
   dontTouch(cmtCode)
 
@@ -386,6 +389,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     taskNext := taskAlloc
   }.elsewhen(io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID) {
     taskNext.taskInst := (taskReg.taskInst.asUInt | io.cmResp.bits.taskInst.asUInt).asTypeOf(new TaskInst)
+    HAssert(io.cmResp.bits.taskInst.valid)
     HAssert.withEn(io.cmResp.valid, io.cmResp.bits.fromRec)
   }
   taskNext.flag := flagNext

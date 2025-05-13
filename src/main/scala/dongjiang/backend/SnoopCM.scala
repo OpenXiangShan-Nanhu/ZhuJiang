@@ -48,7 +48,9 @@ class SnpMes(implicit p: Parameters) extends DJBundle {
   def isResp      = state(4)
 }
 
-
+// ----------------------------------------------------------------------------------------------------- //
+// ----------------------------------------- Ctrl Machine Entry ---------------------------------------- //
+// ----------------------------------------------------------------------------------------------------- //
 class SnoopEntry(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
@@ -65,7 +67,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
     // Req To Data
     val reqDB       = Decoupled(new HnTxnID with HasDataVec)
     // For Debug
-    val dbg         = Valid(new ReadState with HasHnTxnID)
+    val dbg         = Valid(new ReadState with HasHnTxnID) // TODO: dont use ReadState
   })
 
 

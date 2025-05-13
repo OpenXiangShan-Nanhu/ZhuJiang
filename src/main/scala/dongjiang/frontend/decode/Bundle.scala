@@ -275,6 +275,7 @@ object Inst {
   def cbRespIsCompAck   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbRespIsAck  := true.B;    temp.asUInt | taskValid }
   def cbRespIs(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | xCBWrDataValid  }
   def hasGotNCBWrData   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(I); temp.asUInt | taskValid | xCBWrDataValid }
+  def emptyResp         : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst()));                                 temp.asUInt | taskValid }
   def noResp            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst()));                                 temp.asUInt }
 }
 
@@ -334,6 +335,8 @@ object Code {
   def second(commitCode: UInt): (UInt, Seq[(UInt, UInt)]) = (noTask, Seq(Inst.noResp -> commitCode))
 
   def second(taskCode: UInt, commitCode: UInt): (UInt, Seq[(UInt, UInt)]) = (taskCode, Seq(Inst.noResp -> commitCode))
+
+  def second(taskCode: UInt, taskInst: UInt, commitCode: UInt): (UInt, Seq[(UInt, UInt)]) = (taskCode, Seq(taskInst -> commitCode))
 }
 
 

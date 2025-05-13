@@ -145,13 +145,14 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
    * Send Resp To Commit
    */
   // valid
-  io.resp.valid         := reg.isRespCmt
+  io.resp.valid               := reg.isRespCmt
   // bits respCmt
-  io.resp.bits          := DontCare
-  io.resp.bits.hnTxnID  := reg.task.hnTxnID
-  io.resp.bits.alr      := reg.task.alr
-  io.resp.bits.fromRec  := false.B
-  io.resp.bits.toRepl   := reg.task.fromRepl
+  io.resp.bits                := DontCare
+  io.resp.bits.hnTxnID        := reg.task.hnTxnID
+  io.resp.bits.alr            := reg.task.alr
+  io.resp.bits.fromRec        := false.B
+  io.resp.bits.toRepl         := reg.task.fromRepl
+  io.resp.bits.taskInst.valid := true.B
 
   /*
    * Modify Ctrl Machine Table

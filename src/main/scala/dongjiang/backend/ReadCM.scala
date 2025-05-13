@@ -146,7 +146,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   io.resp.bits.fromRec  := false.B
   io.resp.bits.toRepl   := false.B
   when(!reg.task.doDMT) {
-    io.resp.bits.taskInst           := DontCare
+    io.resp.bits.taskInst           := 0.U.asTypeOf(new TaskInst)
     io.resp.bits.taskInst.valid     := true.B
     io.resp.bits.taskInst.fwdValid  := false.B
     io.resp.bits.taskInst.channel   := ChiChannel.DAT
@@ -155,6 +155,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
     io.resp.bits.taskInst.fwdResp   := ChiResp.I
   }.otherwise {
     io.resp.bits.taskInst           := 0.U.asTypeOf(new TaskInst)
+    io.resp.bits.taskInst.valid     := true.B
   }
 
   /*
