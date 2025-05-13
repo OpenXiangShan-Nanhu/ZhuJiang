@@ -210,7 +210,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   }.elsewhen(txDatHit) {
     next.wSBeat   := reg.wSBeat - 1.U
     HAssert(reg.wSBeat > 0.U)
-    HAssert(reg.isSend | reg.isSave | reg.isClean | reg.isResp | reg.isToFree | reg.isToFree)
+    HAssert(reg.isSend | reg.isSave | reg.isClean | reg.isResp | reg.isToFree | reg.isAlloc) // TODO: has risk when state is alloc
   }
 
   // Get next opBeat
