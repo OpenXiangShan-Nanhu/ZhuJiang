@@ -138,7 +138,7 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   val dirResHit = dirResVec.asUInt.orR
   HAssert(PopCount(dirResVec) <= 1.U)
   val rspHit    = reg.isValid & io.rxRsp.fire & io.rxRsp.bits.TxnID === reg.rsp.DBID & io.rxRsp.bits.Opcode === CompAck & reg.rsp.Opcode === Comp
-  val datHit    = reg.isValid & io.rxDat.fire & io.rxDat.bits.TxnID === reg.rsp.DBID & (io.rxDat.bits.Opcode === CopyBackWriteData | io.rxDat.bits.Opcode === NonCopyBackWriteData)
+  val datHit    = reg.isValid & io.rxDat.fire & io.rxDat.bits.TxnID === reg.rsp.DBID & (io.rxDat.bits.Opcode === CopyBackWriteData | io.rxDat.bits.Opcode === NonCopyBackWriteData | io.rxDat.bits.Opcode === NCBWrDataCompAck)
   // Store Msg From Frontend
   when(io.alloc.fire) {
     next.rsp              := io.alloc.bits.rsp

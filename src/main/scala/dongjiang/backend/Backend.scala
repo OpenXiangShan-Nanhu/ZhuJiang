@@ -121,6 +121,7 @@ class Backend(implicit p: Parameters) extends DJModule {
    */
   commit.io.cmtTaskVec      <> io.cmtTaskVec
   commit.io.rxRsp           := io.rxRsp
+  commit.io.rxDat           := io.rxDat
   commit.io.replResp        := replCM.io.resp
   commit.io.dataResp        := io.dataResp
 

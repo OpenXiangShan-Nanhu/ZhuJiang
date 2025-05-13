@@ -68,7 +68,8 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     val alloc       = Flipped(Valid(new CommitTask with HasHnTxnID)) // broadcast signal
     // CHI
     val txRsp       = Decoupled(new RespFlit())
-    val rxRsp       = Flipped(Valid(new RespFlit()))
+    val rxRsp       = Flipped(Valid(new RespFlit())) // Receive CompAck
+    val rxDat       = Flipped(Valid(new DataFlit())) // Receive NCBWrDataCompAck
     // Send Task To TaskCM
     val cmTaskVec   = Vec(nrTaskCM, Decoupled(new CMTask))
     // Resp From TaskCM or ReceiveCM
@@ -97,7 +98,9 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   val flagDec     = Wire(new Flag) // Get new flag when decode done
   val secTaskInst = WireInit(0.U.asTypeOf(new TaskInst))
   val secCMTask   = WireInit(0.U.asTypeOf(new CMTask))
-  val compAckHit  = io.rxRsp.valid & io.rxRsp.bits.TxnID === io.hnTxnID & io.rxRsp.bits.Opcode === CompAck
+  val rspAckHit   = io.rxRsp.valid & io.rxRsp.bits.TxnID === io.hnTxnID & io.rxRsp.bits.Opcode === CompAck
+  val datAckHit   = io.rxDat.valid & io.rxDat.bits.TxnID === io.hnTxnID & io.rxDat.bits.Opcode === NCBWrDataCompAck
+  val compAckHit  = rspAckHit | datAckHit
   io.flag         := taskReg.flag
 
   /*
@@ -365,7 +368,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     HAssert.withEn(!taskReg.flag.valid | taskReg.flag.intl.w.data0 | taskReg.flag.intl.w.data1 | taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.secResp | taskReg.flag.intl.w.repl, io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID)
     // task flag chi send
     when(io.txRsp.fire) { flagNext.chi.s_resp := false.B; HAssert(taskReg.flag.chi.s_resp) }
-    when(compAckHit)    { flagNext.chi.w_ack  := false.B; HAssert(taskReg.flag.chi.w_ack | taskReg.chi.reqIs(WriteEvictOrEvict))  }
+    when(compAckHit)    { flagNext.chi.w_ack  := false.B; HAssert.withEn(taskReg.flag.chi.w_ack | taskReg.chi.reqIs(WriteEvictOrEvict), rspAckHit)  }
     // task flag clean and valid
     when(io.alloc.fire & io.alloc.bits.hnTxnID === io.hnTxnID) {
       flagNext.valid  := true.B
@@ -424,6 +427,7 @@ class Commit(implicit p: Parameters) extends DJModule {
     // CHI
     val txRsp       = Decoupled(new RespFlit())
     val rxRsp       = Flipped(Valid(new RespFlit()))
+    val rxDat       = Flipped(Valid(new DataFlit()))
     // Send Task To TaskCM
     val cmTaskVec   = Vec(nrTaskCM, Decoupled(new CMTask))
     // Resp From TaskCM or ReceiveCM
@@ -482,6 +486,7 @@ class Commit(implicit p: Parameters) extends DJModule {
     e.io.hnTxnID  := i.U
     e.io.hnIdx    := i.U.asTypeOf(new HnTxnID).getHnIdx
     e.io.rxRsp    := io.rxRsp
+    e.io.rxDat    := io.rxDat
     e.io.cmResp   := io.cmResp
     e.io.replResp := io.replResp
     e.io.dataResp := io.dataResp
