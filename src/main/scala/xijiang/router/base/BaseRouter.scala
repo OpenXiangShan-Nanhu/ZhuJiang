@@ -136,7 +136,7 @@ trait BaseRouterUtils {
     "DBG" -> 3,
     "HPR" -> p(ZJParametersKey).reqEjectBufDepth,
   )
-  private val ringSeq = RingEncodings.allRingSeq
+  private val ringSeq = if(p(HardwareAssertionKey).enable) RingEncodings.allRingSeq else RingEncodings.allRingSeq.filterNot(_ == "DBG")
   val ringInjectsMap = ringSeq.flatMap(r => Option.when(RouterHelper.testRingRx(node, r))(r -> Wire(Decoupled(flitMap(r))))).toMap
   val ringEjectsMap = ringSeq.flatMap(r => Option.when(RouterHelper.testRingTx(node, r))(r -> Wire(Decoupled(flitMap(r))))).toMap
   ringInjectsMap.foreach(_._2 := DontCare)
