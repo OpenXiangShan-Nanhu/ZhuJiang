@@ -51,8 +51,8 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
   }
 
   private val inbound = hnxLans.map({ lan =>
-    val reqv = lan.rx.req.map(_.valid).getOrElse(false.B)
-    val hprv = lan.rx.hpr.map(_.valid).getOrElse(false.B)
+    val reqv = lan.tx.req.map(_.valid).getOrElse(false.B)
+    val hprv = lan.tx.hpr.map(_.valid).getOrElse(false.B)
     reqv | hprv
   }).reduce(_ | _)
   cg.io.te := io.dfx.func.cgen
