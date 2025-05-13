@@ -149,7 +149,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   val waitSecDec  = (taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.receive) & valid
   val secDecReady = !waitSecDec
   val secDecValid = RegNext(waitSecDec) & secDecReady & valid
-  val trdDecValid = io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID & taskReg.flag.intl.w.secResp & valid
+  val trdDecValid = io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID & taskReg.flag.intl.w.secResp & !taskReg.commit.valid & valid
   val decValid    = secDecValid | trdDecValid
   HAssert.withEn(!io.cmResp.bits.fromRec, trdDecValid)
 
