@@ -98,8 +98,8 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   val flagDec     = Wire(new Flag) // Get new flag when decode done
   val secTaskInst = WireInit(0.U.asTypeOf(new TaskInst))
   val secCMTask   = WireInit(0.U.asTypeOf(new CMTask))
-  val rspAckHit   = io.rxRsp.valid & io.rxRsp.bits.TxnID === io.hnTxnID & io.rxRsp.bits.Opcode === CompAck
-  val datAckHit   = io.rxDat.valid & io.rxDat.bits.TxnID === io.hnTxnID & io.rxDat.bits.Opcode === NCBWrDataCompAck
+  val rspAckHit   = valid & io.rxRsp.valid & io.rxRsp.bits.TxnID === io.hnTxnID & io.rxRsp.bits.Opcode === CompAck
+  val datAckHit   = valid & io.rxDat.valid & io.rxDat.bits.TxnID === io.hnTxnID & io.rxDat.bits.Opcode === NCBWrDataCompAck
   val compAckHit  = rspAckHit | datAckHit
   io.flag         := taskReg.flag
 

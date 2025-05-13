@@ -211,7 +211,7 @@ trait HasDJParam extends HasParseZJParam {
 
   // base
   def getCI       (a: UInt) = a(ci_ua_hi, ci_ua_lo)
-  def getUseAddr  (a: UInt) = if(hnxBankOff == bankId_lo) a(useAddr_hi, bankId_hi + 1) else Cat(a(useAddr_hi, bankId_hi + 1), a(bankId_lo - 1, useAddr_lo))
+  def getUseAddr  (a: UInt) = if(hnxBankOff == offsetBits) a(useAddr_hi, bankId_hi + 1) else Cat(a(useAddr_hi, bankId_hi + 1), a(bankId_lo - 1, useAddr_lo))
   def getBankId   (a: UInt) = a(bankId_hi, bankId_lo)
   def getOffset   (a: UInt) = a(offset_hi, offset_lo)
   // llc

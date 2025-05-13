@@ -82,6 +82,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   /*
    * Print message
    */
+  val sFullAddr = if(nrBank == 0) s"[fullAddr(${djparam.addressBits-1}:0)] = [useAddr(${useAddr_hi}:${offset_hi+1})] + [offset(${offset_hi}:${offset_lo})]"
+  else s"[fullAddr(${djparam.addressBits-1}:0)] = [useAddr1(${useAddr_hi}:${bankId_hi+1})] + [bankId(${bankId_hi}:${bankId_lo})] + [useAddr0(${bankId_lo-1}:${useAddr_lo})] + [offset(${offset_hi}:${offset_lo})]"
+  val sDirBankId = if(djparam.nrDirBank > 1) s"+ [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]" else s""
   print(
     s"""
        |DongJiang Info: {
@@ -106,11 +109,10 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  rniNodeIdSeq: $rniNodeIdSeq
        |  snNodeIdSeq: $snNodeIdSeq
        |  address slice:
-       |    [fullAddr(${djparam.addressBits-1}:0)] = [useAddr1(${useAddr_hi}:${bankId_hi+1})] + [bankId(${bankId_hi}:${bankId_lo})] + [useAddr0(${bankId_lo-1}:${useAddr_lo})] + [offset(${offset_hi}:${offset_lo})]
-       |    [useAddr(${useAddrBits-1}:0)]  = [useAddr1(${useAddrBits-1}:${bankId_lo-offsetBits})] + [useAddr0(${bankId_lo-offsetBits-1}:0)]
-       |                     = [llcTag(${llcTag_ua_hi}:${llcTag_ua_lo})] + [llcSet(${llcSet_ua_hi}:${llcSet_ua_lo})] + [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]
-       |                     = [sfTag(${sfTag_ua_hi}:${sfTag_ua_lo})] + [sfSet(${sfSet_ua_hi}:${sfSet_ua_lo})] + [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]
-       |                     = [posTag(${posTag_ua_hi}:${posTag_ua_lo})] + [posSet(${posSet_ua_hi}:${posSet_ua_lo})] + [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]
+       |    $sFullAddr
+       |    [useAddr(${useAddrBits-1}:0)]  = [llcTag(${llcTag_ua_hi}:${llcTag_ua_lo})] + [llcSet(${llcSet_ua_hi}:${llcSet_ua_lo})] $sDirBankId
+       |                     = [sfTag(${sfTag_ua_hi}:${sfTag_ua_lo})] + [sfSet(${sfSet_ua_hi}:${sfSet_ua_lo})] $sDirBankId
+       |                     = [posTag(${posTag_ua_hi}:${posTag_ua_lo})] + [posSet(${posSet_ua_hi}:${posSet_ua_lo})] $sDirBankId
        |                     = [ci(${ci_ua_hi}:${ci_ua_lo})] + [unUse(${ci_ua_lo-1}:0)]
        |  HnTxnID slice:
        |     [hnTxnID(${hnTxnIDBits-1}:0)] = [dirBank(${dirBank_hn_hi}:${dirBank_hn_lo})] + [posSet(${posSet_hn_hi}:${posSet_hn_lo})] + [posWay(${posWay_hn_hi}:${posWay_hn_lo})]
