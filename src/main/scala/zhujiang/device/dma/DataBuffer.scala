@@ -205,7 +205,7 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
   readRamStage2Pipe.io.enq.bits.DataID := readRamState1Pipe.io.deq.bits.dataID
   readRamStage2Pipe.io.enq.bits.TxnID := readRamState1Pipe.io.deq.bits.txnID
   readRamStage2Pipe.io.enq.bits.BE := maskRam(readRamState1Pipe.io.deq.bits.set)
-  readRamStage2Pipe.io.enq.bits.Opcode := Mux(readRamState1Pipe.io.deq.bits.withAck, DatOpcode.NCBWrDataCompAck, DatOpcode.NonCopyBackWriteData)
+  readRamStage2Pipe.io.enq.bits.Opcode := DatOpcode.NonCopyBackWriteData
   readRamStage2Pipe.io.enq.bits.Data := dataRam.io.rresp.bits.asTypeOf(UInt(dw.W))
   readRamStage2Pipe.io.enq.bits.SrcID := 1.U
   readRamStage2Pipe.io.enq.bits.TgtID := readRamState1Pipe.io.deq.bits.tgtId

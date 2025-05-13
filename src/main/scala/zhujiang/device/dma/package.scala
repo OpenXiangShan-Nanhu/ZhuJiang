@@ -34,7 +34,6 @@ case class DmaParams(
   nrBeats   : Int = 2,
   axiEntrySize  : Int = 8,
   readDMT       : Boolean = true,
-  merWrDatAndAck: Boolean = true,  //Whether NCBWrData and CompAck can be merge
   rniID         : Int = 1,
 ) 
 
@@ -277,7 +276,6 @@ class readWrDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundl
   val tgtId   = UInt(niw.W)
   val txnID   = UInt(12.W)
   val dataID  = UInt(2.W)
-  val withAck = Bool()
 }
 
 class DmaReqFlit(implicit p : Parameters) extends ReqFlit {

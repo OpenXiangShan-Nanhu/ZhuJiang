@@ -69,9 +69,9 @@ class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
   private val rcvIsDBID  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp) & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
   private val rcvIsComp  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.Comp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp) & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
   private val rspTxnid   = io.chiRxRsp.bits.TxnID(log2Ceil(outstanding) - 1, 0)
-  private val  txIsAck   = io.rdDB.fire & io.rdDB.bits.withAck | io.chiTxRsp.fire
+  private val txIsAck    = io.chiTxRsp.fire
 
-  private val tailPtrAdd = txBPtr =/= tailPtr & txAckPtr =/= tailPtr & txDatPtr =/=tailPtr
+  private val tailPtrAdd = txBPtr =/= tailPtr & txAckPtr =/= tailPtr & txDatPtr =/= tailPtr
 
   // private val rxDatPtrAdd  = io.axiW.fire & ((rxDatBeat === 1.U) | (rxDatBeat === 0.U) & !chiEntrys(rxDatPtr.value).double)
   private val rxDatPtrAdd  = io.axiW.fire & io.axiW.bits.last
@@ -130,14 +130,8 @@ class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
   rdDBBdl.set      := Mux(txDatBeat === 0.U, chiEntries(txDatPtr.value).dbSite1, chiEntries(txDatPtr.value).dbSite2)
   rdDBBdl.tgtId    := chiEntries(txDatPtr.value).tgtid
   rdDBBdl.txnID    := chiEntries(txDatPtr.value).dbid
-  if(rni.merWrDatAndAck) {
-    rdDBBdl.withAck  := (txAckPtr === txDatPtr) & (chiEntries(txDatPtr.value).haveRcvComp | (rcvIsComp & (rspTxnid === txDatPtr.value)))
-  } else {
-    rdDBBdl.withAck  := false.B
-  }
   axiBBdl          := 0.U.asTypeOf(axiBBdl)
   axiBBdl.id       := chiEntries(txBPtr.value).awId
-
   txAckBdl         := 0.U.asTypeOf(txAckBdl)
   txAckBdl.SrcID   := rni.rniID.U
   txAckBdl.TxnID   := chiEntries(txAckPtr.value).dbid
@@ -164,7 +158,7 @@ class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
   io.rdDB.bits      := rdDBBdl
   io.rdDB.valid     := (txDatPtr =/= rxDatPtr) & (txDatPtr =/= rxDBIDPtr)
   io.chiTxRsp.bits  := txAckBdl
-  io.chiTxRsp.valid := txAckPtr =/= rxDBIDPtr & !(io.rdDB.fire & io.rdDB.bits.withAck)
+  io.chiTxRsp.valid := txAckPtr =/= rxDBIDPtr
   io.working        := headPtr =/= tailPtr
 
 /* 
@@ -178,7 +172,4 @@ class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
   assert(tailPtr  <= txDatPtr )
   assert(tailPtr  <= txBPtr   )
   assert(tailPtr  <= txAckPtr )
-  if(!rni.merWrDatAndAck) {
-    assert(!io.rdDB.bits.withAck)
-  }
 }
