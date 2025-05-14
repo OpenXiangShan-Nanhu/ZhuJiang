@@ -307,8 +307,14 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   io.sn.tx.data.get.ready := djRxDat.ready && !rnfTxDatToHNF
   snTxDatFlitWire.HomeNID := djNodeId.U
 
+  val djTxRespFlit = dj.io.lan.tx.resp.get.bits.asTypeOf(new RespFlit)
+  val djTxRespFlitWire = WireInit(djTxRespFlit)
   io.rnf.rx.resp.get <> dj.io.lan.tx.resp.get
+  djTxRespFlitWire.SrcID := djNodeId.U
+  io.rnf.rx.resp.get.bits := djTxRespFlitWire
+
   io.rnf.rx.data.get <> io.sn.tx.data.get
+
   val djTxDatFlit = dj.io.lan.tx.data.get.bits.asTypeOf(new DataFlit)
   val djTxDatFlitWire = WireInit(djTxDatFlit) 
   val rnfRxDat = io.rnf.rx.data.get
