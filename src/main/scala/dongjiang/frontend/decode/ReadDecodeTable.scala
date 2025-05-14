@@ -104,9 +104,9 @@ object Read_LAN_DCT_DMT {
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (tdop("reqs") | snpOth(SnpUniqueFwd), Seq(
       (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(UC))    -> second(cdop("clean") | wriSRC(true) | wriSNP(false)), // UC I I
-      (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(UD_PD)) -> second(cdop("clean") | wriSRC(true) | wriSNP(false)), // UD I I
-      (datIs(SnpRespData)       | respIs(I_PD))                 -> second(cdop("send", "clean") | cmtDat(CompData) | resp(UD) | wriSRC(true) | wriSNP(false)), // UD I I // No Fwd
-      (rspIs(SnpResp)           | respIs(I))                    -> second(read(ReadNoSnp) | doDMT, emptyResp, cdop("clean") | wriSRC(true) | wriSNP(false)) // UC I I // No Fwd
+      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(UD_PD)) -> second(cdop("clean") | wriSRC(true) | wriSNP(false)), // UD I I
+      (datIs(SnpRespData)       | respIs(I_PD))                 -> second(cdop("send", "clean") | cmtDat(CompData) | resp(UD_PD) | wriSRC(true) | wriSNP(false)), // UD I I // No Fwd
+      (rspIs(SnpResp)           | respIs(I))                    -> second(read(ReadNoSnp) | doDMT, emptyResp, cdop("clean") | wriSRC(true) | wriSNP(false))       // UC I I // No Fwd
     )),
     // V I I -> UC I I
     (srcHit | othMiss | llcIs(I)) -> first(read(ReadNoSnp) | doDMT, emptyResp, noCmt),

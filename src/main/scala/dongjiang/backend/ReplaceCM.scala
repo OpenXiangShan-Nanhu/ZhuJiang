@@ -44,9 +44,9 @@ trait HasReplMes { this: DJBundle =>
   //                            -------------(SnpRespWithData)------------
   //                                                                     |
   // Replace SnoopFilter:                                                |
-  // State: Free -> ReqPoS -> WriDir -> WaitDir ---> ReplSF -> WaitRepl ---> CleanPoS -> Free
-  //                                             |                              ^
-  //                                             |------(replWayIsInvalid)------|
+  // State: Free -> ReqPoS -> WriDir -> WaitDir ---> ReplSF -> WaitRepl ---> DataTask -> WaitResp -> CleanPoS -> Free
+  //                                             |                                                      ^
+  //                                             |-------------------(replWayIsInvalid)-----------------|
   // No need replace:
   // State: Free -> WriDir -> Free
   //
@@ -285,8 +285,8 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
    * Get Next State
    */
   val cmRespHit   = taskReg.isValid & io.cmResp.valid & io.cmResp.bits.hnTxnID === taskReg.repl.hnTxnID
-  val dataRespHit = taskReg.isValid & io.dataResp.valid & io.dataResp.bits.hnTxnID === Mux(taskReg.alrReplSF, taskReg.repl.hnTxnID, taskReg.hnTxnID)
   val cmRespData  = io.cmResp.bits.taskInst.valid & io.cmResp.bits.taskInst.channel === ChiChannel.DAT
+  val dataRespHit = taskReg.isValid & io.dataResp.valid & io.dataResp.bits.hnTxnID === Mux(taskReg.alrReplSF, taskReg.repl.hnTxnID, taskReg.hnTxnID)
   switch(taskReg.state) {
     // Free
     is(FREE) {
@@ -318,7 +318,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     }
     // Wait TaskCM response
     is(WAITREPL) {
-      when(cmRespHit)                   { taskNext.state := Mux(cmRespData, WRIDIR, CLEANPOS) }
+      when(cmRespHit)                   { taskNext.state := Mux(cmRespData, WRIDIR, DATATASK) }
     }
     // Send DataTask to DataBlock
     is(DATATASK) {
