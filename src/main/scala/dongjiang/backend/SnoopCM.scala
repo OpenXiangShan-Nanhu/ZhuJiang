@@ -178,7 +178,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
     ))
     next.taskInst.opcode    := PriorityMux(Seq(
       datHit -> io.rxDat.bits.Opcode,
-      rspHit -> Mux(reg.taskInst.channel === DAT, reg.taskInst.opcode, io.rxRsp.bits.Opcode),
+      rspHit -> Mux(reg.taskInst.channel === DAT | reg.taskInst.fwdValid, reg.taskInst.opcode, io.rxRsp.bits.Opcode),
       true.B -> reg.taskInst.opcode,
     ))
     next.taskInst.resp      := PriorityMux(Seq(
