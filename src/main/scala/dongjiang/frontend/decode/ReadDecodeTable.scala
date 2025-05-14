@@ -53,7 +53,6 @@ object Read_LAN_DCT_DMT {
       (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(I))   -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpFull), emptyResp, noCmt), // I SC  I
       (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(I))   -> second(cdop("save", "clean") | wriSNP(false) | wriLLC(UD)),      // I  I UD
       (rspIs(SnpResp)           | respIs(SC))                 -> second(read(ReadNoSnp) | doDMT, emptyResp, cdop("clean")),                  // I SC  I
-      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(I))   -> second(cdop("clean")),                                           // I SC  I
       (rspIs(SnpResp)           | respIs(I))                  -> second(read(ReadNoSnp) | doDMT, emptyResp, cdop("clean") | wriSNP(false)),  // I  I  I
       (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(cdop("clean") | wriSNP(false)),                           // I  I  I
     )),
