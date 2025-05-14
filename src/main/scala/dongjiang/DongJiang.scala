@@ -295,19 +295,22 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   dj.io.lan.rx.data.get <> io.rnf.tx.data.get
   val rnfTxDatFlit = io.rnf.tx.data.get.bits.asTypeOf(new DataFlit)
   val snTxDatFlit = io.sn.tx.data.get.bits.asTypeOf(new DataFlit)
+  val snTxDatFlitWire = WireInit(snTxDatFlit)
   val djRxDat = dj.io.lan.rx.data.get
   val rnfTxDatToHNF = io.rnf.tx.data.get.valid && isToHNF(rnfTxDatFlit.TgtID)
   val snTxDatToHNF = io.sn.tx.data.get.valid && isToHNF(snTxDatFlit.TgtID)
   dontTouch(rnfTxDatToHNF)
   dontTouch(snTxDatToHNF)
   djRxDat.valid := rnfTxDatToHNF || snTxDatToHNF
-  djRxDat.bits := Mux(rnfTxDatToHNF, io.rnf.tx.data.get.bits, io.sn.tx.data.get.bits)
+  djRxDat.bits := Mux(rnfTxDatToHNF, io.rnf.tx.data.get.bits, snTxDatFlitWire)
   io.rnf.tx.data.get.ready := djRxDat.ready
   io.sn.tx.data.get.ready := djRxDat.ready && !rnfTxDatToHNF
+  snTxDatFlitWire.HomeNID := djNodeId.U
 
   io.rnf.rx.resp.get <> dj.io.lan.tx.resp.get
   io.rnf.rx.data.get <> io.sn.tx.data.get
   val djTxDatFlit = dj.io.lan.tx.data.get.bits.asTypeOf(new DataFlit)
+  val djTxDatFlitWire = WireInit(djTxDatFlit) 
   val rnfRxDat = io.rnf.rx.data.get
   val snRxDat = io.sn.rx.data.get
   val djTxDatToRNF = dj.io.lan.tx.data.get.valid && isToRNF(djTxDatFlit.TgtID)
@@ -316,7 +319,7 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   dontTouch(djTxDatToRNF)
   dontTouch(snTxDatToRNF)
   rnfRxDat.valid := djTxDatToRNF || snTxDatToRNF
-  rnfRxDat.bits := Mux(djTxDatToRNF, dj.io.lan.tx.data.get.bits, io.sn.tx.data.get.bits)
+  rnfRxDat.bits := Mux(djTxDatToRNF, djTxDatFlitWire, snTxDatFlitWire)
   snRxDat.valid := djTxDatToSN
   snRxDat.bits := dj.io.lan.tx.data.get.bits
   dj.io.lan.tx.data.get.ready := Mux(djTxDatToRNF, rnfRxDat.ready, snRxDat.ready)
