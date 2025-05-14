@@ -65,7 +65,7 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
   hnx.io.flushCache.req.bits := DontCare
   hnx.io.config.closeLLC := false.B
 
-  for((chn, _) <- hnxLans.head.tx.bundleMap.filterNot(_._1 == "DBG")) {
+  for(chn <- nodes.head.ejects.filterNot(_ == "DBG")) {
     val rxSeq = hnxLans.map(_.tx.bundleMap(chn))
     if(rxSeq.size == 1) {
       hnx.io.lan.rx.bundleMap(chn) <> rxSeq.head
@@ -77,10 +77,10 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
   }
 
   private val mems = zjParams.island.filter(n => n.nodeType == NodeType.S)
-  for((chn, _) <- hnxLans.head.rx.bundleMap.filterNot(_._1 == "DBG")) {
+  for(chn <- nodes.head.injects.filterNot(_ == "DBG")) {
     val txBdSeq = hnxLans.map(_.rx.bundleMap(chn))
     val txBd = hnx.io.lan.tx.bundleMap(chn)
-    val tgt = if(chn == "REQ" && mems.nonEmpty) {
+    val tgt = if(chn == "ERQ" && mems.nonEmpty) {
       val addr = txBd.bits.asTypeOf(new HReqFlit).Addr.asTypeOf(new ReqAddrBundle)
       val memSelOH = mems.map(m => m.addrCheck(addr, io.ci))
       val memIds = mems.map(_.nodeId.U(niw.W))
@@ -98,7 +98,7 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
 
     val srcId = Mux1H(friendsHitVec, io.nids)
 
-    val txd = if(chn == "REQ" && mems.nonEmpty) {
+    val txd = if(chn == "ERQ" && mems.nonEmpty) {
       val ori = txBd.bits.asTypeOf(new HReqFlit)
       val res = WireInit(ori)
       val noDmt = ori.ReturnNID.get.andR
