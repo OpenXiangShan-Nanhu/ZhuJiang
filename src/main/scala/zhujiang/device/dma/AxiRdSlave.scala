@@ -104,6 +104,7 @@ class AxiRdSlave(outstanding: Int)(implicit p: Parameters) extends ZJModule with
         e.shift      := uTailE.exAddr(rni.offset - 1, 0)
         e.byteMask   := uTailE.byteMask(rni.offset - 1, 0)
         e.nextShift  := nextAddr
+        e.beat       := uTailE.exAddr(rni.offset - 1)
         e.finish     := false.B
         val notModify  = !uTailE.cache(1)
         val lastEntry  = (uTailE.cnt.get + 1.U) === uTailE.num.get
@@ -120,6 +121,9 @@ class AxiRdSlave(outstanding: Int)(implicit p: Parameters) extends ZJModule with
         e.shift     := e.nextShift
         e.nextShift := (e.nextShift + e.size) & e.byteMask | ~e.byteMask & e.nextShift
         e.finish    := Mux((e.nextShift === e.endShift), true.B, e.finish)
+      }
+      when(io.dAxiR.fire & io.dAxiR.bits.id === i.U){
+        e.beat  := Mux(e.beat === 0.U, 1.U, e.beat)
       }
   }
 
@@ -164,7 +168,7 @@ class AxiRdSlave(outstanding: Int)(implicit p: Parameters) extends ZJModule with
   dataCtrlQ.io.dataIn.bits.data   := io.dAxiR.bits.data
   dataCtrlQ.io.dataIn.bits.idx    := io.dAxiR.bits.id
   dataCtrlQ.io.dataIn.bits.last   := io.dAxiR.bits.last
-  dataCtrlQ.io.dataIn.bits.beat   := dArEntrys(io.dAxiR.bits.id).shift(rni.offset - 1)
+  dataCtrlQ.io.dataIn.bits.beat   := dArEntrys(io.dAxiR.bits.id).beat
   dataCtrlQ.io.dataOut.ready      := io.uAxiR.ready
 
   dataCtrlQ.io.ptr.endShift       := dArEntrys(dataCtrlQ.io.dataOut.bits.idx).endShift

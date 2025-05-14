@@ -180,6 +180,7 @@ class AxiRMstEntry(implicit p: Parameters) extends ZJBundle {
   val endShift    = UInt(rni.offset.W)
   val byteMask    = UInt(rni.offset.W)
   val size        = UInt(6.W)
+  val beat        = UInt(1.W)
   val finish      = Bool()
 }
 

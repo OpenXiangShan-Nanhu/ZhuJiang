@@ -67,7 +67,7 @@ class SendReg(outstanding: Int)(implicit p: Parameters) extends ZJModule {
   sendQueue.io.enq.bits.data   := mergeData
   sendQueue.io.enq.bits.id     := RegNext(io.dataIn.bits.id)
   sendQueue.io.enq.bits.idx    := RegNext(io.dataIn.bits.idx)
-  sendQueue.io.deq.ready       := io.ptr.nextShift === io.ptr.endShift
+  sendQueue.io.deq.ready       := io.ptr.nextShift === io.ptr.endShift && io.dataOut.fire
 
 
   io.dataIn.ready         := sendQueue.io.enq.ready & !(sendQueue.io.deq.valid & !sendQueue.io.deq.ready) || !io.dataIn.bits.last
