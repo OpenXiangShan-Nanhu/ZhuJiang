@@ -29,22 +29,24 @@ object REPLSTATE {
   val REPLHT    = 0x4.U // Replace HnTxnID in DataBlock
   val REPLLLC   = 0x5.U // Send CM Task to SnoopCM
   val REPLSF    = 0x6.U // Send CM Task to WriteCM
-  val WAITREPL  = 0x7.U // Wait replace done
-  val DATATASK  = 0x8.U // Send save and clean to DataBlock
-  val WAITRESP  = 0x9.U // Wait DataBlock Resp
-  val CLEANPOS  = 0xA.U
+  val WAITRWRI  = 0x7.U // Wait replace LLC done
+  val WAITRSNP  = 0x8.U // Wait replace SF done
+  val SAVEDATA  = 0x9.U // Send save and clean to DataBlock
+  val CLEANDATA = 0xA.U // Send clean to DataBlock
+  val WAITRESP  = 0xB.U // Wait DataBlock Resp
+  val CLEANPOS  = 0xC.U
 }
 
 trait HasReplMes { this: DJBundle =>
   // Replace LLC Directory:
-  // State: Free -> ReqPoS -> WriDir -> WaitDir ---> ReplHnTxnID -> ReplLLC -> WaitRepl -> CleanPoS -> Free
+  // State: Free -> ReqPoS -> WriDir -> WaitDir ---> ReplHnTxnID -> ReplLLC -> WaitWri -> CleanPoS -> Free
   //                            ^                |                                            ^
-  //                            |                |-(replWayIsInvalid)-> DataTask -> WaitResp -|
+  //                            |                |-(replWayIsInvalid)-> SaveData -> WaitResp -|
   //                            |
-  //                            -------------(SnpRespWithData)------------
-  //                                                                     |
-  // Replace SnoopFilter:                                                |
-  // State: Free -> ReqPoS -> WriDir -> WaitDir ---> ReplSF -> WaitRepl ---> DataTask -> WaitResp -> CleanPoS -> Free
+  //                            -------------(SnpRespWithData)-----------
+  //                                                                    |
+  // Replace SnoopFilter:                                               |
+  // State: Free -> ReqPoS -> WriDir -> WaitDir ---> ReplSF -> WaitSnp ---> CleanData -> WaitResp -> CleanPoS -> Free
   //                                             |                                                      ^
   //                                             |-------------------(replWayIsInvalid)-----------------|
   // No need replace:
@@ -70,8 +72,12 @@ trait HasReplMes { this: DJBundle =>
   def isReplHnTxnID = state === REPLHT
   def isReplLLC     = state === REPLLLC
   def isReplSF      = state === REPLSF
-  def isWaitRepl    = state === WAITREPL
-  def isDataTask    = state === DATATASK
+  def isWaitWrite   = state === WAITRWRI
+  def isWaitSnp     = state === WAITRSNP
+  def isWaitRepl    = isWaitWrite | isWaitSnp
+  def isSaveData    = state === SAVEDATA
+  def isCleanData   = state === CLEANDATA
+  def isDataTask    = isSaveData | isCleanData
   def isWaitResp    = state === WAITRESP
   def isCleanPoS    = state === CLEANPOS
 }
@@ -264,7 +270,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.valid             := taskReg.isDataTask
   io.dataTask.bits              := DontCare
   io.dataTask.bits.hnTxnID      := Mux(taskReg.alrReplSF, taskReg.repl.hnTxnID, taskReg.hnTxnID)
-  io.dataTask.bits.dataOp.save  := true.B
+  io.dataTask.bits.dataOp.save  := taskReg.isSaveData
   io.dataTask.bits.dataOp.clean := true.B
   io.dataTask.bits.dataVec      := DataVec.Full
 
@@ -302,26 +308,34 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     }
     // Wait Directory write response
     is(WAITDIR) {
-      when(dirRespHit)                  { taskNext.state := Mux(sfRespHit, Mux(needReplSF, REPLSF, CLEANPOS), Mux(needReplLLC, Mux(taskReg.alrReplSF, REPLLLC, REPLHT), DATATASK)) }
+      when(dirRespHit)                  { taskNext.state := Mux(sfRespHit, Mux(needReplSF, REPLSF, CLEANPOS), Mux(needReplLLC, Mux(taskReg.alrReplSF, REPLLLC, REPLHT), SAVEDATA)) }
     }
     // Replace HnTxnID in DataBlock
     is(REPLHT) {
       when(io.replHnTxnID.fire)         { taskNext.state := REPLLLC }
     }
-    // Send replace task to SnoopCM
-    is(REPLSF) {
-      when(io.cmTaskVec(CMID.SNP).fire) { taskNext.state := WAITREPL }
-    }
     // Send replace task to WriteCM
     is(REPLLLC) {
-      when(io.cmTaskVec(CMID.WRI).fire) { taskNext.state := WAITREPL }
+      when(io.cmTaskVec(CMID.WRI).fire) { taskNext.state := WAITRWRI }
     }
-    // Wait TaskCM response
-    is(WAITREPL) {
-      when(cmRespHit)                   { taskNext.state := Mux(cmRespData, WRIDIR, DATATASK) }
+    // Send replace task to SnoopCM
+    is(REPLSF) {
+      when(io.cmTaskVec(CMID.SNP).fire) { taskNext.state := WAITRSNP }
+    }
+    // Wait WriteCM response
+    is(WAITRWRI) {
+      when(cmRespHit)                   { taskNext.state := CLEANPOS }
+    }
+    // Wait SnoopCM response
+    is(WAITRSNP) {
+      when(cmRespHit)                   { taskNext.state := Mux(cmRespData, WRIDIR, CLEANDATA) }
     }
     // Send DataTask to DataBlock
-    is(DATATASK) {
+    is(SAVEDATA) {
+      when(io.dataTask.fire)            { taskNext.state := WAITRESP }
+    }
+    // Send DataTask to DataBlock
+    is(CLEANDATA) {
       when(io.dataTask.fire)            { taskNext.state := WAITRESP }
     }
     // Wait DataBlock response
