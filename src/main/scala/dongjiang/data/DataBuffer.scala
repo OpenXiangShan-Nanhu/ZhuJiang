@@ -12,6 +12,7 @@ import xs.utils.debug._
 import xs.utils.mbist.MbistPipeline
 import xs.utils.queue.FastQueue
 import xs.utils.sram.DualPortSramTemplate
+import zhujiang.utils.SramPwrCtlBoring
 
 class DataBuffer(implicit p: Parameters) extends DJModule {
   /*
@@ -39,8 +40,10 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
     set           = djparam.nrDataBuf,
     way           = djparam.BeatByte,
     hasMbist      = hasMbist,
-    suffix        = "_llc_db"
+    suffix        = "_llc_db",
+    powerCtl      = true
   ))
+  SramPwrCtlBoring.addSink(datBuf.io.pwctl)
   // Mask and replace flag
   val maskRegVec  = Reg(Vec(djparam.nrDataBuf, UInt(djparam.BeatByte.W)))
   val replRegVec  = RegInit(VecInit(Seq.fill(djparam.nrDataBuf) { false.B }))

@@ -16,7 +16,9 @@ import xijiang.router.base.DeviceIcnBundle
 import zhujiang.chi.FlitHelper.connIcn
 import dongjiang.frontend.decode.Decode._
 import xs.utils.debug.HardwareAssertion
+import xs.utils.sram.SramPowerCtl
 import zhujiang.ZJParametersKey
+import zhujiang.utils.SramPwrCtlBoring
 
 
 class DJConfigIO(implicit p: Parameters) extends DJBundle {
@@ -42,6 +44,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
     // ICN
     val lan         = new DeviceIcnBundle(lanNode)
     val bbnOpt      = if(hasBBN) Some(new DeviceIcnBundle(bbnNode.get)) else None
+    val ramPwrCtl   = new SramPowerCtl
   })
   dontTouch(io)
 
@@ -249,6 +252,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   /*
    * HardwareAssertion placePipe
    */
+  SramPwrCtlBoring.getSrc() := io.ramPwrCtl
   HardwareAssertion.placePipe(3)
 }
 
@@ -289,7 +293,8 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   val djNodeId = hnfNodes.head.nodeId
   val dj = Module(new DongJiang(hnfNode))
   dj.io <> DontCare
-  
+
+  dj.io.ramPwrCtl := 0.U.asTypeOf(dj.io.ramPwrCtl)
   dj.io.lan.rx.req.get <> io.rnf.tx.req.get
   dj.io.lan.rx.resp.get <> io.rnf.tx.resp.get
   dj.io.lan.rx.data.get <> io.rnf.tx.data.get

@@ -13,6 +13,7 @@ import xs.utils.sram.{DualPortSramTemplate, SinglePortSramTemplate}
 import freechips.rocketchip.util.ReplacementPolicy
 import xs.utils.mbist.MbistPipeline
 import chisel3.experimental.BundleLiterals._
+import zhujiang.utils.SramPwrCtlBoring
 
 class Shift(implicit p: Parameters) extends DJBundle {
   val read  = UInt(readDirLatency.W)
@@ -65,8 +66,10 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     extraHold   = djparam.dirRamExtraHold,
     outputReg   = true,
     suffix      = s"_${dirType}_meta",
-    hasMbist    = hasMbist
+    hasMbist    = hasMbist,
+    powerCtl    = true
   ))
+  SramPwrCtlBoring.addSink(metaArray.io.pwctl)
 
   val tagArray  = Module(new SinglePortSramTemplate(
     gen         = UInt(param.tagBits.W),
@@ -78,8 +81,10 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     extraHold   = djparam.dirRamExtraHold,
     suffix      = s"_${dirType}_tag",
     outputReg   = true,
-    hasMbist    = hasMbist
+    hasMbist    = hasMbist,
+    powerCtl    = true
   ))
+  SramPwrCtlBoring.addSink(tagArray.io.pwctl)
 
   val replArray = Module(new DualPortSramTemplate(
     gen         = UInt(repl.nBits.W),
@@ -88,8 +93,10 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     shouldReset = true,
     bypassWrite = true,
     suffix      = s"_${dirType}_repl",
-    hasMbist    = hasMbist
+    hasMbist    = hasMbist,
+    powerCtl    = true
   ))
+  SramPwrCtlBoring.addSink(replArray.io.pwctl)
   MbistPipeline.PlaceMbistPipeline(1, desiredName, hasMbist)
 
   dontTouch(metaArray.io)

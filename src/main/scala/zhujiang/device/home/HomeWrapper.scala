@@ -64,6 +64,9 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
   hnx.io.flushCache.req.valid := false.B
   hnx.io.flushCache.req.bits := DontCare
   hnx.io.config.closeLLC := false.B
+  hnx.io.ramPwrCtl.deact := !cg.io.active
+  hnx.io.ramPwrCtl.ret := false.B
+  hnx.io.ramPwrCtl.stop := false.B
 
   for(chn <- nodes.head.ejects.filterNot(_ == "DBG")) {
     val rxSeq = hnxLans.map(_.tx.bundleMap(chn))

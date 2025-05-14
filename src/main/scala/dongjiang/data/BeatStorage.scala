@@ -9,6 +9,7 @@ import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug.HardwareAssertion
 import xs.utils.sram.SinglePortSramTemplate
+import zhujiang.utils.SramPwrCtlBoring
 
 
 class Shift(implicit p: Parameters) extends DJBundle {
@@ -53,8 +54,10 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
     extraHold   = djparam.dataRamExtraHold,
     hasMbist    = hasMbist,
     outputReg   = true,
-    suffix      = "_llc_dat"
+    suffix      = "_llc_dat",
+    powerCtl    = true
   ))
+  SramPwrCtlBoring.addSink(array.io.pwctl)
   val dcidPipe    = Module(new Pipe(UInt(dcIdBits.W), readDsLatency))
   val dbidPipe    = Module(new Pipe(UInt(dbIdBits.W), readDsLatency))
   val shiftReg    = RegInit(0.U.asTypeOf(new Shift))
