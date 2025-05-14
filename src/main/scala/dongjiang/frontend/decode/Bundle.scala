@@ -156,9 +156,9 @@ trait HasTaskCode { this: Bundle with HasOperations with HasPackDataOp =>
   // Snoop
   val retToSrc    = Bool()
   val snpTgt      = UInt(SnpTgt.width.W)
-  def snpAll      = snpTgt(0).asBool
-  def snpOne      = snpTgt(1).asBool
-  def snpOth      = snpTgt(2).asBool
+  def snpAll      = snpTgt === SnpTgt.ALL
+  def snpOne      = snpTgt === SnpTgt.ONE
+  def snpOth      = snpTgt === SnpTgt.OTH
 
   def valid: Bool = opsValid | waitRecDone
 }
