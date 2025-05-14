@@ -133,11 +133,11 @@ class Operations extends Bundle with HasOperations
 trait HasPackOperations { this: Bundle => val ops = new Operations() }
 
 object SnpTgt {
-  val width       = 3
-  val NONE        = "b000".U
-  val ALL         = "b001".U
-  val ONE         = "b010".U // Select first other
-  val OTH         = "b100".U
+  val width       = 2
+  val NONE        = "b00".U
+  val ALL         = "b01".U
+  val ONE         = "b10".U // Select first other
+  val OTH         = "b11".U
 }
 
 trait HasSnpTgt { this: Bundle => val snpTgt = UInt(SnpTgt.width.W) }
@@ -169,13 +169,15 @@ trait HasPackTaskCode { this: Bundle => val taskCode = new TaskCode() }
 
 trait HasWriDirCode { this: Bundle =>
   // Write Directory
-  val wriSF       = Bool()
+  val wriSRC      = Bool()
+  val wriSNP      = Bool()
   val wriLLC      = Bool()
   val srcValid    = Bool()
   val snpValid    = Bool()
   val llcState    = UInt(ChiState.width.W)
 
-  def wriDir      = wriSF | wriLLC
+  def wriSF       = wriSRC | wriSNP
+  def wriDir      = wriSF  | wriLLC
 }
 
 trait HasCommitCode { this: Bundle with HasWriDirCode with HasPackDataOp =>
@@ -314,8 +316,8 @@ object Code {
   def fwdResp (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.fwdResp      := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | sendFwdResp }
 
   // Commit Code Write SF/LLC
-  def wriSRC  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.srcValid  := x.asBool;    temp.wriSF := true.B;   temp.asUInt }
-  def wriSNP  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.snpValid  := x.asBool;    temp.wriSF := true.B;   temp.asUInt }
+  def wriSRC  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.srcValid  := x.asBool;    temp.wriSRC := true.B;   temp.asUInt }
+  def wriSNP  (x: Boolean) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.snpValid  := x.asBool;    temp.wriSNP := true.B;   temp.asUInt }
   def wriLLC  (x: UInt)    : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.llcState  := toState(x);  temp.wriLLC := true.B;  require(x.getWidth == DecodeCHI.width); temp.asUInt }
 
   // Commit Code DataOp

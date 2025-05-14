@@ -279,12 +279,12 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.replTask.bits.dir.sf.metaVec.map(_.state).zipWithIndex.foreach {
     case(s, i) =>
       val metaIdOH    = taskReg.chi.metaIdOH
-      val metaIdVec   = VecInit(metaIdOH.asBools)
+      val srcVec      = VecInit(metaIdOH.asBools)
       val snpVec      = taskReg.dir.getSnpVec(taskReg.snpTgt, metaIdOH)
       s := PriorityMux(Seq(
-        metaIdVec(i)  -> taskReg.commit.srcValid,
-        snpVec(i)     -> taskReg.commit.snpValid,
-        true.B        -> taskReg.dir.sf.metaVec(i).state
+        (srcVec(i) & taskReg.commit.wriSRC) -> taskReg.commit.srcValid, // modify source state
+        (snpVec(i) & taskReg.commit.wriSNP) -> taskReg.commit.snpValid, // modify snoopee state
+        true.B                              -> taskReg.dir.sf.metaVec(i).state
       ))
   }
   // write llc bits

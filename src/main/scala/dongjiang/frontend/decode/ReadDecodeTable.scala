@@ -4,7 +4,7 @@ import dongjiang._
 import dongjiang.frontend._
 import dongjiang.frontend.decode.Decode.DecodeType
 import dongjiang.frontend.decode.Inst._
-import dongjiang.frontend.decode.Code._
+import dongjiang.frontend.decode.Code.{wriSRC, _}
 import dongjiang.frontend.decode.DecodeCHI._
 import dongjiang.bundle._
 import dongjiang.bundle.ChiChannel._
@@ -70,11 +70,11 @@ object Read_LAN_DCT_DMT {
     (sfMiss | llcIs(UD)) -> first(cdop("reqs", "read", "send", "clean") | cmtDat(CompData) | resp(UD_PD) | wriSRC(true) | wriLLC(I)),
     // I V I
     (srcMiss | othHit | llcIs(I))  -> (tdop("reqs") | snpOne(SnpNotSharedDirtyFwd), Seq(
-      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(SC)) -> second(cdop("clean") | wriSRC(true) | wriSNP(true)),  // SC SC I
-      (datIs(SnpRespDataFwded)  | respIs(SC)    | fwdIs(SC)) -> second(cdop("clean") | wriSRC(true) | wriSNP(true)),  // SC SC I
+      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(SC)) -> second(cdop("clean") | wriSRC(true)),  // SC SC I
+      (datIs(SnpRespDataFwded)  | respIs(SC)    | fwdIs(SC)) -> second(cdop("clean") | wriSRC(true)),  // SC SC I
       (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(SC)) -> second(cdop("clean") | wriSRC(true) | wriSNP(false)), // SC I  I
       (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(SC)) -> second(cdop("clean") | wriSRC(true) | wriSNP(false)), // SC I  I
-      (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(SC)) -> second(tdop("send") | wriOrAtm(WriteNoSnpFull), emptyResp, waitSecDone | cdop("clean") | wriSRC(true) | wriSNP(true)),  // SC SC I
+      (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(SC)) -> second(tdop("send") | wriOrAtm(WriteNoSnpFull), emptyResp, waitSecDone | cdop("clean") | wriSRC(true)),  // SC SC I
       (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(SC)) -> second(tdop("send") | wriOrAtm(WriteNoSnpFull), emptyResp, waitSecDone | cdop("clean") | wriSRC(true) | wriSNP(false)), // SC I  I
       (rspIs(SnpResp)           | respIs(I))                 -> second(read(ReadNoSnp) | doDMT, emptyResp, cdop("clean") | wriSRC(true) | wriSNP(false)) // UC I  I // No Fwd
     )),
@@ -111,8 +111,8 @@ object Read_LAN_DCT_DMT {
     (srcHit | othMiss | llcIs(I)) -> first(read(ReadNoSnp) | doDMT, emptyResp, noCmt),
     // V V I
     (srcHit | othHit | llcIs(I))  -> (tdop("reqs") | snpOth(SnpUniqueFwd), Seq(
-      (rspIs(SnpRespFwded)  | respIs(I) | fwdIs(UC))  -> second(cdop("clean") | noCmt), // UC I I
-      (rspIs(SnpResp)       | respIs(I))              -> second(read(ReadNoSnp) | doDMT, emptyResp, cdop("clean") | wriSNP(false)) // UC I I // No Fwd
+      (rspIs(SnpRespFwded)  | respIs(I) | fwdIs(UC))  -> second(cdop("clean") | wriSRC(true) | wriSNP(false)), // UC I I
+      (rspIs(SnpResp)       | respIs(I))              -> second(read(ReadNoSnp) | doDMT, emptyResp, cdop("clean") | wriSRC(true)  | wriSNP(false)) // UC I I // No Fwd
     )),
   ))
 

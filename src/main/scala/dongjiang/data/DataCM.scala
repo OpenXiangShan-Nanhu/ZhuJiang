@@ -361,7 +361,7 @@ class DataCM(implicit p: Parameters) extends DJModule {
   }
   HAssert.withEn(io.reqDBOut.fire & PopCount(entries.map(_.io.alloc.fire)) === 1.U, io.reqDBIn.fire)
   HAssert.withEn(io.reqDBOut.fire & PopCount(entries.map(_.io.alloc.fire)) === 1.U, io.task.fire & taskReqDB)
-  HAssert.withEn(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === io.task.bits.hnTxnID).reduce(_ | _), io.task.fire & !taskReqDB)
+  HAssert.withEn(PopCount(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === io.task.bits.hnTxnID)) === 1.U, io.task.fire & !taskReqDB)
   HAssert.withEn(io.task.bits.dataOp.valid ^ io.task.bits.dataOp.repl, io.task.valid)
 
   /*
