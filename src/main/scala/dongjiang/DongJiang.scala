@@ -325,7 +325,11 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   dj.io.lan.tx.data.get.ready := Mux(djTxDatToRNF, rnfRxDat.ready, snRxDat.ready)
   io.sn.tx.data.get.ready := rnfRxDat.ready && !djTxDatToRNF
 
+  val djTxSnpFlit = dj.io.lan.tx.snoop.get.bits.asTypeOf(new SnoopFlit)
+  val djTxSnpFlitWire = WireInit(djTxSnpFlit)
   io.rnf.rx.snoop.get <> dj.io.lan.tx.snoop.get
+  djTxSnpFlitWire.SrcID := djNodeId.U
+  io.rnf.rx.snoop.get.bits := djTxSnpFlitWire
 
   val djTxReq = dj.io.lan.tx.req.get
   val djTxReqFlit = djTxReq.asTypeOf(new HReqFlit)
