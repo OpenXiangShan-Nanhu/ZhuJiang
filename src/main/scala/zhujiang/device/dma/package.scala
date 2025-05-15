@@ -4,10 +4,11 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.router.base.DeviceIcnBundle
-import zhujiang.{ZJBundle, ZJModule}
+import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 import xs.utils.FastArbiter
 import zhujiang.axi._
 import zhujiang.chi._
+import xijiang.Node
 
 
 object Burst {
@@ -28,26 +29,27 @@ object Burst {
 }
 
 case class DmaParams(
-  pageBits  : Int = 12,
-  offset    : Int = 6,
-  idBits    : Int = 12,
-  nrBeats   : Int = 2,
   axiEntrySize  : Int = 8,
   readDMT       : Boolean = true,
   rniID         : Int = 1,
-) 
+  node          : Node,
+  offset        : Int = 6
+){
+  lazy val pageBits = 12
+  lazy val idBits   = node.axiDevParams.get.extPortParams.getOrElse(AxiParams()).idBits
+}
 
 
-class AxiRdEntry(isPipe: Boolean)(implicit P: Parameters) extends ZJBundle {
-  private val rni = zjParams.dmaParams
+class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends ZJBundle {
+  private val rni = DmaParams(node = node)
   val preAddr  = UInt((raw - rni.pageBits).W)
   val exAddr   = UInt(rni.pageBits.W)
   val endAddr  = UInt(rni.pageBits.W)
   val id       = UInt(rni.idBits.W)
   val byteMask = UInt(rni.pageBits.W)
   val len      = UInt(8.W)
-  val firstTxn = if(!isPipe) Some(UInt(log2Ceil(dw/8).W)) else None
-  val lastTxn  = if(!isPipe) Some(UInt(log2Ceil(dw/8).W)) else None
+//  val firstTxn = if(!isPipe) Some(UInt(log2Ceil(dw/8).W)) else None
+//  val lastTxn  = if(!isPipe) Some(UInt(log2Ceil(dw/8).W)) else None
   val cnt      = if(!isPipe) Some(UInt(8.W))              else None
   val range    = if(isPipe)  Some(UInt(rni.pageBits.W))   else None
   val num      = if(!isPipe) Some(UInt(8.W))              else None
@@ -105,8 +107,8 @@ class AxiRdEntry(isPipe: Boolean)(implicit P: Parameters) extends ZJBundle {
   }
 }
 
-class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
-  private val rni = zjParams.dmaParams
+class AxiWrEntry(isPipe : Boolean, node: Node)(implicit p: Parameters) extends ZJBundle {
+  private val rni = DmaParams(node = node)
   val preAddr     = UInt((raw - rni.pageBits).W)
   val exAddr      = UInt(rni.pageBits.W)
   val endAddr     = UInt(rni.pageBits.W)
@@ -171,8 +173,8 @@ class AxiWrEntry(isPipe : Boolean)(implicit p: Parameters) extends ZJBundle {
 }
 
 
-class AxiRMstEntry(implicit p: Parameters) extends ZJBundle {
-  private val rni = zjParams.dmaParams
+class AxiRMstEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
+  private val rni = DmaParams(node = node)
   val id          = UInt(rni.idBits.W)
   val last        = Bool()
   val shift       = UInt(rni.offset.W)
@@ -184,33 +186,33 @@ class AxiRMstEntry(implicit p: Parameters) extends ZJBundle {
   val finish      = Bool()
 }
 
-class DataCtrl(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
-  private val rni = zjParams.dmaParams
-  val data   = UInt(dw.W)
-  val id     = UInt(rni.idBits.W)
-  val idx    = UInt(log2Ceil(outstanding).W)
-  val resp   = UInt(2.W)
-}
+//class DataCtrl(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
+//  private val rni = zjParams.dmaParams
+//  val data   = UInt(dw.W)
+//  val id     = UInt(rni.idBits.W)
+//  val idx    = UInt(log2Ceil(outstanding).W)
+//  val resp   = UInt(2.W)
+//}
 
-class CHIREntry(dmt : Boolean, outstanding: Int)(implicit p : Parameters) extends ZJBundle {
-  private val rni    = zjParams.dmaParams
+class CHIREntry(node: Node)(implicit p : Parameters) extends ZJBundle {
+  private val rni    = DmaParams(node = node)
   val arId           = UInt(rni.idBits.W)
-  val idx            = UInt(log2Ceil(outstanding).W)
+  val idx            = UInt(log2Ceil(node.outstanding).W)
   val double         = Bool()
   val addr           = UInt(raw.W)
   val size           = UInt(3.W)
-  val nid            = UInt(log2Ceil(outstanding).W)
-  val dbSite1        = UInt(log2Ceil(outstanding).W)
-  val dbSite2        = UInt(log2Ceil(outstanding).W)
+  val nid            = UInt(log2Ceil(node.outstanding).W)
+  val dbSite1        = UInt(log2Ceil(node.outstanding).W)
+  val dbSite2        = UInt(log2Ceil(node.outstanding).W)
   val memAttr        = new MemAttr
   val haveWrDB1      = Bool()
   val haveWrDB2      = Bool()
   val sendComp       = Bool()
   val fromDCT        = Bool()
   val rcvDatComp     = Bool()
-  val haveSendAck    = if(dmt) Some(Bool())      else None
-  val homeNid        = if(dmt) Some(UInt(niw.W)) else None
-  val dbid           = if(dmt) Some(UInt(12.W))  else None
+  val haveSendAck    = if(rni.readDMT) Some(Bool())      else None
+  val homeNid        = if(rni.readDMT) Some(UInt(niw.W)) else None
+  val dbid           = if(rni.readDMT) Some(UInt(12.W))  else None
 
   def ARMesInit[T <: ARFlit](b: T): CHIREntry = {
     this                   := 0.U.asTypeOf(this)
@@ -280,23 +282,22 @@ class readWrDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundl
 }
 
 class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
-  private val rni  = zjParams.dmaParams
-  def RReqInit[T <: CHIREntry](c : T, i : UInt): ReqFlit = {
+  def RReqInit[T <: CHIREntry](c : T, i : UInt, node: Node): ReqFlit = {
+    val rni        = DmaParams(node = node)
     this          := 0.U.asTypeOf(this)
     this.Addr     := c.addr
     this.Opcode   := Mux(!c.memAttr.allocate & !c.memAttr.cacheable, ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
-    this.SrcID    := zjParams.dmaParams.rniID.U
+    this.SrcID    := rni.rniID.U
     this.Order    := Mux(c.memAttr.device, "b11".U, "b00".U)
     this.TxnID    := i
     this.Size     := Mux(c.double, 6.U, c.size)
     this.MemAttr  := c.memAttr.asUInt
     this.SnpAttr  := Mux(c.memAttr.device, 0.U, 1.U)
-    if(zjParams.dmaParams.readDMT){
-      this.ExpCompAck := Mux(c.memAttr.device, false.B, true.B)
-    } else {this.ExpCompAck := false.B}
+    this.ExpCompAck := Mux(c.memAttr.device, false.B, true.B)
     this
   }
-  def wReqInit[T <: CHIWEntry](c : T, i : UInt): ReqFlit = {
+  def wReqInit[T <: CHIWEntry](c : T, i : UInt, node: Node): ReqFlit = {
+    val rni          = DmaParams(node = node)
     this            := 0.U.asTypeOf(this)
     this.Addr       := c.addr
     this.Opcode     := Mux(!c.memAttr.allocate & !c.memAttr.cacheable, ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteUniquePtl)
@@ -305,45 +306,47 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
     this.MemAttr    := c.memAttr.asUInt
     this.ExpCompAck := true.B
     this.Order      := "b10".U
-    this.SrcID      := zjParams.dmaParams.rniID.U
+    this.SrcID      := rni.rniID.U
     this.SnpAttr    := Mux(c.memAttr.device, 0.U, 1.U)
     this
   }
 }
 class DmaRspFlit(implicit p: Parameters) extends RespFlit {
-  def compAckInit[T <: CHIREntry](c : T) : RespFlit = {
+  def compAckInit[T <: CHIREntry](c : T, node: Node) : RespFlit = {
+    val rni          = DmaParams(node = node)
     this.Opcode     := RspOpcode.CompAck
     this.TxnID      := c.dbid.get
     this.TgtID      := c.homeNid.get
-    this.SrcID      := zjParams.dmaParams.rniID.U
+    this.SrcID      := rni.rniID.U
     this
   }
 }
 
-class AxiWMstEntry(implicit p: Parameters) extends ZJBundle {
+class AxiWMstEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
+  private val rni = DmaParams(node = node)
   val shift     = UInt(6.W)
   val nextShift = UInt(6.W)
   val mask      = UInt(6.W)
   val size      = UInt(6.W)
   val burst     = UInt(2.W)
-  val id        = UInt(zjParams.dmaParams.idBits.W)
+  val id        = UInt(rni.idBits.W)
   val last      = Bool()
   val dontMerge = Bool()
   val specWrap  = Bool()
   val fullWrap  = Bool()
 }
 
-class CHIWEntry(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
-  private val rni    = zjParams.dmaParams
-  val awId           = UInt(log2Ceil(rni.axiEntrySize).W)
+class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
+  private val rni    = DmaParams(node = node)
+  val awId           = UInt(log2Ceil(node.outstanding).W)
   val double         = Bool()
   val size           = UInt(3.W)
   val memAttr        = new MemAttr
   val tgtid          = UInt(niw.W)
   val addr           = UInt(raw.W)
   val dbid           = UInt(12.W)
-  val dbSite1        = UInt(log2Ceil(outstanding).W)
-  val dbSite2        = UInt(log2Ceil(outstanding).W)
+  val dbSite1        = UInt(log2Ceil(node.outstanding).W)
+  val dbSite2        = UInt(log2Ceil(node.outstanding).W)
   val haveRcvComp    = Bool()
 
   def awMesInit[T <: AWFlit](aw : T): CHIWEntry = {
@@ -360,13 +363,13 @@ class CHIWEntry(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   }
 }
 
-class RdDBEntry(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
-  private val rni   = zjParams.dmaParams
+class RdDBEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
+  private val rni   = DmaParams(node = node)
   val arID          = UInt(rni.idBits.W)
-  val idx           = UInt(log2Ceil(outstanding).W)
+  val idx           = UInt(log2Ceil(node.outstanding).W)
   val double        = Bool()
-  val dbSite1       = UInt(log2Ceil(outstanding).W)
-  val dbSite2       = UInt(log2Ceil(outstanding).W)
+  val dbSite1       = UInt(log2Ceil(node.outstanding).W)
+  val dbSite2       = UInt(log2Ceil(node.outstanding).W)
 
   def rdDBInit[T <: CHIREntry](b: T): RdDBEntry = {
     this.arID    := b.arId

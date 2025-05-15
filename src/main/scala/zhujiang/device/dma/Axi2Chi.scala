@@ -16,7 +16,7 @@ import xs.utils.mbist.MbistPipeline
 
 class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
-  private val rni = zjParams.dmaParams
+  private val rni = DmaParams(node = node, offset = log2Ceil(zjParams.cachelineBytes))
   require(node.nodeType == NodeType.RI || node.nodeType == NodeType.RH)
   require(rni.idBits >= log2Ceil(node.outstanding))
   require(axiParams.dataBits == dw)
@@ -25,17 +25,19 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   val icn     = IO(new DeviceIcnBundle(node))
   val working = IO(Output(Bool()))
 
+
+
   if(p(DebugOptionsKey).EnableDebug) {
     dontTouch(axi)
     dontTouch(icn)
     dontTouch(working)
   }
   //SubModule
-  private val axiRdSlave  = Module(new AxiRdSlave(node.outstanding))
-  private val axiWrSlave  = Module(new AxiWrSlave(node.outstanding))
-  private val chiRdMaster = Module(new ChiRdMaster(node.outstanding))
-  private val chiWrMaster = Module(new ChiWrMaster(node.outstanding))
-  private val rdDB        = Module(new DataBufferForRead(axiParams = axiParams, bufferSize = node.outstanding, ctrlSize = node.outstanding))
+  private val axiRdSlave  = Module(new AxiRdSlave(node))
+  private val axiWrSlave  = Module(new AxiWrSlave(node))
+  private val chiRdMaster = Module(new ChiRdMaster(node))
+  private val chiWrMaster = Module(new ChiWrMaster(node))
+  private val rdDB        = Module(new DataBufferForRead(node))
   private val wrDB        = Module(new DataBufferForWrite(bufferSize = node.outstanding, ctrlSize = node.outstanding))
 
   private val arbReqOut   = Wire(chiWrMaster.io.chiReq.cloneType)

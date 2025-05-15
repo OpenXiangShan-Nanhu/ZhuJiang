@@ -12,20 +12,17 @@ import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
 
 class MergeDataIn(implicit p: Parameters) extends ZJBundle {
-  val rni        = zjParams.dmaParams
   val data       = UInt(dw.W) 
   val strb       = UInt(bew.W)
   val fixMerge   = Bool()
   val beat       = UInt(1.W)
 }
 class MergeDataOut(implicit p: Parameters) extends ZJBundle {
-  val rni   = zjParams.dmaParams
   val data  = UInt(dw.W)
   val strb  = UInt(bew.W)
   val beat  = UInt(1.W)
 }
 class MergeReg(implicit p: Parameters) extends ZJModule {
-  private val rni = zjParams.dmaParams
   val io          = IO(new Bundle {
     val dataIn    = Flipped(Decoupled(new MergeDataIn))
     val dataOut   = Decoupled(new MergeDataOut)

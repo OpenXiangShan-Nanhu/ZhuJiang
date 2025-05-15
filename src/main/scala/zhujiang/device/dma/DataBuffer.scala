@@ -10,6 +10,7 @@ import zhujiang.chi.DataFlit
 import xs.utils.sram.DualPortSramTemplate
 import zhujiang.chi.ReqOpcode
 import zhujiang.chi.DatOpcode
+import xijiang._
 
 class ChiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private class ChiDataBufferFreelistPtr extends CircularQueuePtr[ChiDataBufferFreelistPtr](bufferSize)
@@ -120,17 +121,18 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   io.relSet.bits := readRamStage1Pipe.io.deq.bits.set
 }
 
-class DataBufferForRead(axiParams: AxiParams, bufferSize: Int, ctrlSize: Int)(implicit p: Parameters) extends ZJModule {
+class DataBufferForRead(node: Node)(implicit p: Parameters) extends ZJModule {
+  private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
   val io = IO(new Bundle {
     val alloc = Flipped(Decoupled(Bool()))
     val axiR = Decoupled(new RFlit(axiParams))
-    val wrDB = Flipped(Decoupled(new writeRdDataBuffer(bufferSize)))
-    val rdDB = Flipped(Decoupled(new readRdDataBuffer(bufferSize, axiParams)))
-    val allocRsp = Valid(new DataBufferAlloc(bufferSize))
+    val wrDB = Flipped(Decoupled(new writeRdDataBuffer(node.outstanding)))
+    val rdDB = Flipped(Decoupled(new readRdDataBuffer(node.outstanding, axiParams)))
+    val allocRsp = Valid(new DataBufferAlloc(node.outstanding))
   })
 
-  private val dataBuffer = Module(new ChiDataBufferRdRam(axiParams, bufferSize))
-  private val freelist = Module(new ChiDataBufferFreelist(ctrlSize, bufferSize))
+  private val dataBuffer = Module(new ChiDataBufferRdRam(axiParams, node.outstanding))
+  private val freelist = Module(new ChiDataBufferFreelist(node.outstanding, node.outstanding))
 
   freelist.io.req.valid := io.alloc.valid
   freelist.io.req.bits := io.alloc.bits

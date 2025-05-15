@@ -12,13 +12,14 @@ import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, UIntToMask}
 import dongjiang.utils.StepRREncoder
 
-class ChiRdMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
-  private val rni = zjParams.dmaParams
-  private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = rni.idBits)
-  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(outstanding), userBits = axiParams.idBits)
-  require(axiParams.idBits >= log2Ceil(outstanding))
+class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
+  private val rni = DmaParams(node = node)
+  private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
+  private val axiParamsUser = AxiParams(addrBits = axiParams.addrBits, idBits = axiParams.idBits, userBits = axiParams.idBits, dataBits = axiParams.dataBits,
+    attr = axiParams.attr, lenBits = axiParams.lenBits, qosBits = axiParams.qosBits, regionBits = axiParams.regionBits)
+  require(axiParams.idBits >= log2Ceil(node.outstanding))
 
-  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](outstanding)
+  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](node.outstanding)
 
   private object CirQChiEntryPtr {
     def apply(f: Bool, v: UInt): CirQChiEntryPtr = {
@@ -31,19 +32,19 @@ class ChiRdMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
   val io = IO(new Bundle {
     val axiAr    = Flipped(Decoupled(new ARFlit(axiParamsUser)))
     val reqDB    = Decoupled(Bool())
-    val respDB   = Input(Valid(new DataBufferAlloc(outstanding)))
+    val respDB   = Input(Valid(new DataBufferAlloc(node.outstanding)))
     val chiReq   = Decoupled(new ReqFlit)
     val chiRxRsp = Flipped(Decoupled(new RespFlit))
     val chiTxRsp = if(rni.readDMT) Some(Decoupled(new RespFlit)) else None
     val chiDat   = Flipped(Decoupled(new DataFlit))
-    val wrDB     = Decoupled(new writeRdDataBuffer(outstanding))
-    val rdDB     = Decoupled(new readRdDataBuffer(outstanding, axiParams))
+    val wrDB     = Decoupled(new writeRdDataBuffer(node.outstanding))
+    val rdDB     = Decoupled(new readRdDataBuffer(node.outstanding, axiParams))
     val working  = Output(Bool())
   })
 /* 
  * Reg/Wire Define
  */
-  private val chiEntries     = Reg(Vec(outstanding, new CHIREntry(dmt = rni.readDMT, outstanding = outstanding)))
+  private val chiEntries     = Reg(Vec(node.outstanding, new CHIREntry(node)))
   private val chiEntriesNext = WireInit(chiEntries)
   // Pointer
   private val headPtr     = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
@@ -55,21 +56,21 @@ class ChiRdMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
   private val txDatPtr    = RegInit(0.U(1.W))
   //Wire Define
   private val rcvIsRct   = io.chiRxRsp.fire & io.chiRxRsp.bits.Opcode === RspOpcode.ReadReceipt
-  private val dataTxnid  = io.chiDat.bits.TxnID(log2Ceil(outstanding) - 1, 0)
+  private val dataTxnid  = io.chiDat.bits.TxnID(log2Ceil(node.outstanding) - 1, 0)
   private val txReqBdl   = WireInit(0.U.asTypeOf(new DmaReqFlit))
   private val txDatBdl   = WireInit(0.U.asTypeOf(io.rdDB.bits))
-  private val rdDBQBdl   = WireInit(0.U.asTypeOf(new RdDBEntry(outstanding)))
+  private val rdDBQBdl   = WireInit(0.U.asTypeOf(new RdDBEntry(node)))
   private val txRspBdl   = WireInit(0.U.asTypeOf(new DmaRspFlit))
   //Pipe Reg
-  private val selIdx     = WireInit(0.U(log2Ceil(outstanding).W))
-  private val rdDBQueue  = Module(new Queue(gen = new RdDBEntry(outstanding), entries = 2, flow = false, pipe = true))
+  private val selIdx     = WireInit(0.U(log2Ceil(node.outstanding).W))
+  private val rdDBQueue  = Module(new Queue(gen = new RdDBEntry(node), entries = 2, flow = false, pipe = true))
   // Vec Define
-  private val headPtrMask = UIntToMask(headPtr.value, outstanding)
-  private val tailPtrMask = UIntToMask(tailPtr.value, outstanding)
+  private val headPtrMask = UIntToMask(headPtr.value, node.outstanding)
+  private val tailPtrMask = UIntToMask(tailPtr.value, node.outstanding)
   private val headXorTail = headPtrMask ^ tailPtrMask
   private val validVec   = Mux(headPtr.flag ^ tailPtr.flag, ~headXorTail, headXorTail)
-  private val blockVec   = WireInit(VecInit.fill(outstanding){false.B})
-  private val sendDBVec  = WireInit(VecInit.fill(outstanding){false.B})
+  private val blockVec   = WireInit(VecInit.fill(node.outstanding){false.B})
+  private val sendDBVec  = WireInit(VecInit.fill(node.outstanding){false.B})
 
 /* 
  * Pointer logic
@@ -161,9 +162,9 @@ class ChiRdMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
   }
 
   rdDBQBdl.rdDBInit(chiEntries(selIdx))
-  txReqBdl.RReqInit(chiEntries(txReqPtr.value), txReqPtr.value)
+  txReqBdl.RReqInit(chiEntries(txReqPtr.value), txReqPtr.value, node)
   txDatBdl.SetBdl(rdDBQueue.io.deq.bits, txDatPtr)
-  txRspBdl.compAckInit(chiEntries(txRspPtr.value))
+  txRspBdl.compAckInit(chiEntries(txRspPtr.value), node)
 
 /* 
  * IO Connection

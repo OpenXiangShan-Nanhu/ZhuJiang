@@ -11,11 +11,12 @@ import xs.utils.sram._
 import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
 
-class AxiRdSlave(outstanding: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
-  private val rni = zjParams.dmaParams
-  private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = rni.idBits)
-  private val axiParamsUser = AxiParams(dataBits = dw, addrBits = raw, idBits = log2Ceil(outstanding), userBits = axiParams.idBits)
-  require(axiParams.idBits >= log2Ceil(outstanding))
+class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
+  private val rni = DmaParams(node = node)
+  private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
+  private val axiParamsUser = AxiParams(addrBits = axiParams.addrBits, idBits = log2Ceil(node.outstanding), userBits = axiParams.idBits, dataBits = axiParams.dataBits,
+    attr = axiParams.attr, lenBits = axiParams.lenBits, qosBits = axiParams.qosBits, regionBits = axiParams.regionBits)
+  require(axiParams.idBits >= log2Ceil(node.outstanding))
 
   private class CirQAxiEntryPtr extends CircularQueuePtr[CirQAxiEntryPtr](rni.axiEntrySize)
   private object CirQAxiEntryPtr {
@@ -26,7 +27,7 @@ class AxiRdSlave(outstanding: Int)(implicit p: Parameters) extends ZJModule with
         ptr
     }
   }
-  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](outstanding)
+  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](node.outstanding)
   private object CirQChiEntryPtr {
   def apply(f: Bool, v: UInt): CirQChiEntryPtr = {
         val ptr = Wire(new CirQChiEntryPtr)
@@ -49,18 +50,18 @@ class AxiRdSlave(outstanding: Int)(implicit p: Parameters) extends ZJModule with
 /* 
  * Reg and Wire define
  */
-  private val uArEntrys = Reg(Vec(rni.axiEntrySize, new AxiRdEntry(isPipe = false)))
+  private val uArEntrys = Reg(Vec(rni.axiEntrySize, new AxiRdEntry(isPipe = false, node = node)))
   private val uHeadPtr  = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
   private val uTailPtr  = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
 
-  private val dArEntrys = Reg(Vec(outstanding, new AxiRMstEntry))
+  private val dArEntrys = Reg(Vec(node.outstanding, new AxiRMstEntry(node)))
   private val dHeadPtr  = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
   private val dTailPtr  = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
 
-  private val rxArPipe  = Module(new Queue(gen = new AxiRdEntry(isPipe = true), entries = 2, pipe = false, flow = false))
-  private val dataCtrlQ = Module(new SendReg(outstanding))
+  private val rxArPipe  = Module(new Queue(gen = new AxiRdEntry(isPipe = true, node = node), entries = 2, pipe = false, flow = false))
+  private val dataCtrlQ = Module(new SendReg(node))
 
-  private val rxArBdl   = WireInit(0.U.asTypeOf(new AxiRdEntry(isPipe = true)))
+  private val rxArBdl   = WireInit(0.U.asTypeOf(new AxiRdEntry(isPipe = true, node = node)))
   private val txArBdl   = WireInit(0.U.asTypeOf(io.dAxiAr.bits))
   
   private val uTailE    = uArEntrys(uTailPtr.value)

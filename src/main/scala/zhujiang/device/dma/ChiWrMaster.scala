@@ -12,11 +12,11 @@ import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, UIntToMask}
 
 
-class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
-  private val rni = zjParams.dmaParams
-  private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = rni.idBits)
+class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
+  private val rni = DmaParams(node = node)
+  private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
 
-  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](outstanding)
+  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](node.outstanding)
   private object CirQChiEntryPtr {
   def apply(f: Bool, v: UInt): CirQChiEntryPtr = {
         val ptr = Wire(new CirQChiEntryPtr)
@@ -28,15 +28,15 @@ class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
 
   val io = IO(new Bundle {
     val reqDB    = Decoupled(Bool())
-    val respDB   = Input(Valid(new DataBufferAlloc(outstanding)))
+    val respDB   = Input(Valid(new DataBufferAlloc(node.outstanding)))
     val axiAw    = Flipped(Decoupled(new AWFlit(axiParams)))
     val axiW     = Flipped(Decoupled(new WFlit(axiParams))) 
     val axiB     = Decoupled(new BFlit(axiParams))
     val chiReq   = Decoupled(new ReqFlit)
     val chiRxRsp = Flipped(Decoupled(new RespFlit))
     val chiTxRsp = Decoupled(new RespFlit)
-    val rdDB     = Decoupled(new readWrDataBuffer(outstanding)) 
-    val wrDB     = Decoupled(new writeWrDataBuffer(outstanding))
+    val rdDB     = Decoupled(new readWrDataBuffer(node.outstanding))
+    val wrDB     = Decoupled(new writeWrDataBuffer(node.outstanding))
     val working  = Output(Bool())
   })
 
@@ -44,7 +44,7 @@ class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
  * Reg/Wire Define
  */
   //AxiWr to ChiWr entrys
-  private val chiEntries     = Reg(Vec(outstanding, new CHIWEntry(outstanding)))
+  private val chiEntries     = Reg(Vec(node.outstanding, new CHIWEntry(node)))
   private val chiEntriesNext = WireInit(chiEntries)
   //Pointer
   private val headPtr   = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
@@ -68,7 +68,7 @@ class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
   private val rcvResp    = io.chiRxRsp.fire & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
   private val rcvIsDBID  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp) & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
   private val rcvIsComp  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.Comp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp) & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
-  private val rspTxnid   = io.chiRxRsp.bits.TxnID(log2Ceil(outstanding) - 1, 0)
+  private val rspTxnid   = io.chiRxRsp.bits.TxnID(log2Ceil(node.outstanding) - 1, 0)
   private val txIsAck    = io.chiTxRsp.fire
 
   private val tailPtrAdd = txBPtr =/= tailPtr & txAckPtr =/= tailPtr & txDatPtr =/= tailPtr
@@ -79,8 +79,8 @@ class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
   private val rxDatBeatAdd = (chiEntries(rxDatPtr.value).double & (rxDatBeat === 0.U) || rxDatBeat === 1.U) & io.wrDB.fire
   private val txDatBeatAdd = (chiEntries(txDatPtr.value).double & (txDatBeat === 0.U) || txDatBeat === 1.U) & io.rdDB.fire
 
-  private val headPtrMask = UIntToMask(headPtr.value, outstanding)
-  private val tailPtrMask = UIntToMask(tailPtr.value, outstanding)
+  private val headPtrMask = UIntToMask(headPtr.value, node.outstanding)
+  private val tailPtrMask = UIntToMask(tailPtr.value, node.outstanding)
   private val headXorTail = headPtrMask ^ tailPtrMask
   private val validVec   = Mux(headPtr.flag ^ tailPtr.flag, ~headXorTail, headXorTail)
   
@@ -125,7 +125,7 @@ class ChiWrMaster(outstanding: Int)(implicit p: Parameters) extends ZJModule wit
     }
   }
 
-  txReqBdl.wReqInit(chiEntries(txReqPtr.value), txReqPtr.value)
+  txReqBdl.wReqInit(chiEntries(txReqPtr.value), txReqPtr.value, node)
   rdDBBdl.dataID   := Mux((txDatBeat === 0.U) & !chiEntries(txDatPtr.value).addr(rni.offset - 1), 0.U, 2.U)
   rdDBBdl.set      := Mux(txDatBeat === 0.U, chiEntries(txDatPtr.value).dbSite1, chiEntries(txDatPtr.value).dbSite2)
   rdDBBdl.tgtId    := chiEntries(txDatPtr.value).tgtid

@@ -208,7 +208,6 @@ case class ZJParameters(
   splitFlit:Boolean = true,
   r2rPos: Seq[Int] = Seq(),
   nodeParams: Seq[NodeParam] = Seq(),
-  dmaParams: DmaParams = DmaParams(),
   c2cParams: C2cParams = C2cParams(),
   tfbParams: Option[TrafficBoardParams] = Some(TrafficBoardParams()),
   tfsParams: Option[TrafficSimParams] = None,
