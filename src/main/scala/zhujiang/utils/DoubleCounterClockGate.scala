@@ -21,8 +21,8 @@ class DoubleCounterClockGate(ckenWindow:Int = 7, idleWindow:Int = 7) extends Mod
   io.ock := cg.io.Q
   cg.io.E := cken | io.inbound
   io.active := active
-  cken := Mux(cken, ckenWindowCnt.orR || idleWindowCnt.orR, io.inbound)
-  active := Mux(active, ckenWindowCnt.orR || idleWindowCnt.orR, io.inbound)
+  cken := Mux(io.inbound, true.B, Mux(cken, ckenWindowCnt.orR || idleWindowCnt.orR, false.B))
+  active := Mux(io.inbound, true.B, Mux(active, ckenWindowCnt.orR || idleWindowCnt.orR, false.B))
   when(io.inbound) {
     ckenWindowCnt := Fill(ckenWindowCnt.getWidth, true.B)
   }.elsewhen(ckenWindowCnt.orR) {
