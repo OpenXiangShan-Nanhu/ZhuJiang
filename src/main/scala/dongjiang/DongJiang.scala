@@ -349,6 +349,7 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   dontTouch(djTxReqFlitWire)
   io.sn.rx.req.get.valid := djTxReq.valid
   djTxReq.ready := io.sn.rx.req.get.ready
+  djTxReqFlitWire.SrcID := djNodeId.U
   djTxReqFlitWire.ReturnNID.get := Mux(djTxReqFlit.ReturnNID.get === 0xFF.U, djNodeId.U, djTxReqFlit.ReturnNID.get)
   io.sn.rx.req.get.bits := djTxReqFlitWire
 
