@@ -191,7 +191,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
    * Receive alloc task from TaskBuffer
    */
   // get base message
-  val allocTag_s0     = io.alloc_s0.bits.Addr.posTag
+  val allocTag_s0     = io.alloc_s0.bits.Addr.posTag; dontTouch(allocTag_s0)
   // match pos tag
   val matTagVec_s0    = Cat(esVec.map(s => s.valid & s.tagVal & s.tag === allocTag_s0).reverse)
   val matTagWay_s0    = PriorityEncoder(matTagVec_s0)
@@ -223,7 +223,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
     allocReg_s1.bits  := io.alloc_s0.bits
     allocWayReg_s1    := Mux(canNest_s0, matTagWay_s0, freeWay_s0)
   }
-  HardwareAssertion.withEn(io.alloc_s0.bits.Addr.tag =/= allocReg_s1.bits.Addr.tag, io.alloc_s0.valid & allocReg_s1.valid)
+  HardwareAssertion.withEn(io.alloc_s0.bits.Addr.posTag =/= allocReg_s1.bits.Addr.posTag, io.alloc_s0.valid & allocReg_s1.valid, cf"${io.alloc_s0.bits.Addr.posTag} === ${allocReg_s1.bits.Addr.posTag}")
 
   /*
    * Retrun ack to TaskBuffer and Block
