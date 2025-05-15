@@ -149,24 +149,34 @@ trait NocIOHelper {
   lazy val ccnIO: Seq[SocketIcnSideBundle] = ccnDrv.map(drv => IO(new SocketIcnSideBundle(drv.node)(p)))
   lazy val hwaIO: Option[ExtAxiBundle] = hwaDrv.map(drv => IO(Flipped(new ExtAxiBundle(drv.params))))
 
+  private def attrStr(attr:String, idx:Int, size:Int):String = {
+    if(attr != "") {
+      s"_$attr"
+    } else if(size == 1) {
+      s""
+    } else {
+      s"_$idx"
+    }
+  }
+
   def runIOAutomation(): Unit = {
     ddrIO.zip(ddrDrv).zipWithIndex.foreach({ case ((a, b), i) =>
-      val portName = s"m_axi_mem_${b.params.attr}"
-      a.suggestName(portName)
+      val attr = attrStr(b.params.attr, i, ddrIO.size)
+      a.suggestName(s"m_axi_mem$attr")
       a <> b
       dontTouch(a)
       dontTouch(b)
     })
     cfgIO.zip(cfgDrv).zipWithIndex.foreach({ case ((a, b), i) =>
-      val portName = s"m_axi_cfg_${b.params.attr}"
-      a.suggestName(portName)
+      val attr = attrStr(b.params.attr, i, cfgIO.size)
+      a.suggestName(s"m_axi_cfg$attr")
       a <> b
       dontTouch(a)
       dontTouch(b)
     })
     dmaIO.zip(dmaDrv).zipWithIndex.foreach({ case ((a, b), i) =>
-      val portName = s"s_axi_${b.params.attr}"
-      a.suggestName(portName)
+      val attr = attrStr(b.params.attr, i, dmaIO.size)
+      a.suggestName(s"s_axi$attr")
       b <> a
       dontTouch(a)
       dontTouch(b)
