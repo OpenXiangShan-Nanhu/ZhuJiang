@@ -19,7 +19,7 @@ import chisel3.util._
 object Write_LAN {
   // WriteNoSnpPtl With EWA
   def writeNoSnpPtl_ewa: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | expCompAck | isOWO, Seq(
-    (sfMiss | llcIs(I)) -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, noCmt)))
+    (sfMiss | llcIs(I)) -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), emptyResp, cmtRsp(Comp))))
   ))
 
   // WriteNoSnpPtl Without EWA
