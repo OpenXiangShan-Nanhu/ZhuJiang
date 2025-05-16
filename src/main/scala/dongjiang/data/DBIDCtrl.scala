@@ -124,14 +124,20 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
   // Set pool deq ready
   pool.io.deq0.ready          := io.req.valid & io.req.bits.dataVec(0) & hasTwo
   pool.io.deq1.ready          := io.req.valid & io.req.bits.dataVec(1) & hasTwo
-  // Replace dbid in reg
-  when(io.replHnTxnID.fire) {
-    dbidRegVec2(newReplId)(0) := dbidRegVec2(oldReplId)(0)
-    dbidRegVec2(newReplId)(1) := dbidRegVec2(oldReplId)(1)
-  // Save dbid from pool
-  }.elsewhen(io.req.fire) {
-    dbidRegVec2(reqId)(0)     := pool.io.deq0.bits
-    dbidRegVec2(reqId)(1)     := pool.io.deq1.bits
+  // modify DBID
+  dbidRegVec2.zipWithIndex.foreach { case(vec2, i) =>
+    val replHit = io.replHnTxnID.fire & newReplId === i.U
+    val reqHit  = io.req.fire         & reqId === i.U
+    // Replace dbid in reg
+    when(replHit) {
+      vec2(0)   := dbidRegVec2(oldReplId)(0)
+      vec2(1)   := dbidRegVec2(oldReplId)(1)
+    // Save dbid from pool
+    }.elsewhen(reqHit) {
+      vec2(0)   := pool.io.deq0.bits
+      vec2(1)   := pool.io.deq1.bits
+    }
+    HAssert(!(replHit & reqHit))
   }
   // HAssert
   HAssert.withEn(pool.io.deq0.fire, io.req.fire & io.req.bits.dataVec(0))
