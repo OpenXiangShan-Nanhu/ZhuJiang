@@ -224,9 +224,9 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    * Priority: data > data0 > data1
    */
   // data task valid
-  val dtVal0  = valid & taskReg.flag.valid & taskReg.flag.intl.s.data0
-  val dtVal1  = valid & taskReg.flag.valid & taskReg.flag.intl.s.data1 & !taskReg.flag.intl.w.repl
-  val dtVal   = dtVal0 | dtVal1
+  val dtVal0  = valid  & taskReg.flag.valid & taskReg.flag.intl.s.data0
+  val dtVal1  = valid  & taskReg.flag.valid & taskReg.flag.intl.s.data1 & !taskReg.flag.intl.w.repl
+  val dtVal   = dtVal0 & dtVal1
   // dontTouch
   dontTouch(dtVal0)
   dontTouch(dtVal1)
