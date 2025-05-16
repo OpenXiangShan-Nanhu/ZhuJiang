@@ -76,7 +76,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
  * Pointer logic
  */
   private val txReqPtrAdd       = io.chiReq.fire
-  private val rxRspPtrAdd       = io.chiReq.fire & (io.chiReq.bits.Order === 0.U) | rcvIsRct
+  private val rxRspPtrAdd       = rcvIsRct
   private val rxRspPtrAddDouble = io.chiReq.fire & (io.chiReq.bits.Order === 0.U) & rcvIsRct
   private val txRspPtrAdd       = chiEntries(txRspPtr.value).haveSendAck.get & validVec(txRspPtr.value)
 
@@ -142,7 +142,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
           en.homeNid.get   := io.chiDat.bits.HomeNID
           en.dbid.get      := io.chiDat.bits.DBID
         }
-        when(io.chiTxRsp.get.fire & txRspPtr.value === i.U){
+        when(io.chiTxRsp.get.fire & txRspPtr.value === i.U || io.chiReq.fire & en.memAttr.device & (io.chiReq.bits.TxnID === i.U)){
           en.haveSendAck.get := true.B
         }
       }
@@ -172,7 +172,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   io.axiAr.ready              := !isFull(headPtr, tailPtr)
   io.reqDB.valid              := reqDBPtr =/= headPtr
   io.reqDB.bits               := chiEntries(reqDBPtr.value).double
-  io.chiReq.valid             := (txReqPtr =/= reqDBPtr) & ((rxRspPtr === txReqPtr) | rcvIsRct & (rxRspPtr =/= txReqPtr))
+  io.chiReq.valid             := (txReqPtr === rxRspPtr || rcvIsRct) & txReqPtr =/= reqDBPtr
   io.chiReq.bits              := txReqBdl
   io.wrDB.bits.data           := io.chiDat.bits.Data
   io.wrDB.bits.set            := Mux(chiEntries(dataTxnid).double & io.chiDat.bits.DataID === 2.U, chiEntries(dataTxnid).dbSite2, chiEntries(dataTxnid).dbSite1)

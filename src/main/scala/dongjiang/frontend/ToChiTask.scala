@@ -64,7 +64,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
       HAssert(!task.chi.snoopMe   , "Requests from RNI should not assert SnoopMe"                                                                                                                         )
       HAssert.withEn( task.chi.snpAttr   , (task.chi.opcode === ReqOpcode.ReadOnce  || task.chi.opcode === ReqOpcode.WriteUniquePtl)  , "Request from RNI access Cacheable mem should be assert SnpAttr"           )
       HAssert.withEn(!task.chi.snpAttr   , (task.chi.opcode === ReqOpcode.ReadNoSnp || task.chi.opcode === ReqOpcode.WriteNoSnpPtl )  , "Request from RNI access Non-Cacheable mem should not assert SnpAttr"      )
-      HAssert.withEn( task.chi.noOrder   , task.chi.isRead                                                                            , "Requests from RNI should use EndpointOrder(EO) in read transactions"      )
+      HAssert.withEn( task.chi.isEO   , task.chi.isRead                                                                            , "Requests from RNI should use EndpointOrder(EO) in read transactions"      )
       HAssert.withEn( task.chi.isOWO     , task.chi.isWrite                                                                           , "Requests from RNI should use OrderedWriteOrder(OWO) in write transactions")
     }
     when(task.chi.fromCcRni & (task.chi.reqIs(ReadNoSnp) | task.chi.reqIs(WriteNoSnpPtl))) {

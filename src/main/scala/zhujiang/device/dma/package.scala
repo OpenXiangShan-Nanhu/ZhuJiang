@@ -288,7 +288,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
     this.Addr     := c.addr
     this.Opcode   := Mux(!c.memAttr.allocate & !c.memAttr.cacheable, ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
     this.SrcID    := rni.rniID.U
-    this.Order    := Mux(c.memAttr.device, "b11".U, "b00".U)
+    this.Order    := "b11".U
     this.TxnID    := i
     this.Size     := Mux(c.double, 6.U, c.size)
     this.MemAttr  := c.memAttr.asUInt
