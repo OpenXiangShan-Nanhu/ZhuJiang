@@ -35,7 +35,7 @@ object Read_LAN_DCT_DMT {
   def readNoSnp2: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck | noOrder, readNoSnp0._2)
 
   // ReadOnce
-  def readOnce: DecodeType = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | noOrder, Seq(
+  def readOnce: DecodeType = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | isEO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | doDMT, emptyResp, noCmt),
     // I I SC -> I I SC
