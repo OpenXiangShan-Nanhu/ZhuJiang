@@ -273,6 +273,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.dataOp.save  := taskReg.isSaveData
   io.dataTask.bits.dataOp.clean := true.B
   io.dataTask.bits.dataVec      := DataVec.Full
+  io.dataTask.bits.ds           := taskReg.repl.ds
 
   /*
    * Clean PoS
@@ -365,14 +366,14 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
 
   /*
    * Get next sResp
-   * ---------------------
-   * | wSF | wLLC | Resp |
-   * |-------------------|
-   * |  I  |  I   |  T   |
-   * |  V  |  I   |  T   |
-   * |  I  |  V   |  F   |
-   * |  V  |  V   |  X   |
-   * ---------------------
+   * ----------------------
+   * | wSF | wLLC | sResp |
+   * |--------------------|
+   * |  I  |  I   |   T   |
+   * |  V  |  I   |   T   |
+   * |  I  |  V   |   F   |
+   * |  V  |  V   |   X   |
+   * ----------------------
    */
   when(io.resp.fire) {
     taskNext.sResp    := false.B
