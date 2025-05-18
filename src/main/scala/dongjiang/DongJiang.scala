@@ -291,6 +291,7 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   }
 
   val djNodeId = hnfNodes.head.nodeId
+  val snNodeId = snNodes.head.nodeId
   val dj = Module(new DongJiang(hnfNode))
   dj.io <> DontCare
 
@@ -336,6 +337,9 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   djTxDatFlitWire.HomeNID := djNodeId.U
   dj.io.lan.tx.data.get.ready := Mux(djTxDatToRNF, rnfRxDat.ready, snRxDat.ready)
   io.sn.tx.data.get.ready := rnfRxDat.ready && !djTxDatToRNF
+  when(dj.io.lan.tx.data.get.valid) {
+    assert(djTxDatToRNF || djTxDatToSN, "djTxDatToRNF or djTxDatToSN must be true")
+  }
 
   val djTxSnpFlit = dj.io.lan.tx.snoop.get.bits.asTypeOf(new SnoopFlit)
   val djTxSnpFlitWire = WireInit(djTxSnpFlit)
@@ -351,6 +355,7 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   io.sn.rx.req.get.valid := djTxReq.valid
   djTxReq.ready := io.sn.rx.req.get.ready
   djTxReqFlitWire.SrcID := djNodeId.U
+  djTxReqFlitWire.TgtID := snNodeId.U
   djTxReqFlitWire.ReturnNID.get := Mux(djTxReqFlit.ReturnNID.get === 0xFF.U, djNodeId.U, djTxReqFlit.ReturnNID.get)
   io.sn.rx.req.get.bits := djTxReqFlitWire
 
