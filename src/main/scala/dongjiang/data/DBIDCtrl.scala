@@ -119,13 +119,14 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
    * Receive req
    */
   // Set req ready
-  val hasTwo                  = pool.io.deq0.valid & pool.io.deq1.valid
-  io.req.ready                := hasTwo // Waste a DB to simplify ready judgment condition
+  val hasTwo          = pool.io.deq0.valid & pool.io.deq1.valid
+  io.req.ready        := hasTwo // Waste a DB to simplify ready judgment condition
   // Set pool deq ready
-  pool.io.deq0.ready          := io.req.valid & io.req.bits.dataVec(0) & hasTwo
-  pool.io.deq1.ready          := io.req.valid & io.req.bits.dataVec(1) & hasTwo
-  // modify DBID
-  dbidRegVec2.zipWithIndex.foreach { case(vec2, i) =>
+  pool.io.deq0.ready  := io.req.valid & io.req.bits.dataVec(0) & hasTwo
+  pool.io.deq1.ready  := io.req.valid & io.req.bits.dataVec(1) & hasTwo
+  // Get dbid next
+  val dbidNextVec2    = WireInit(dbidRegVec2)
+  dbidNextVec2.zipWithIndex.foreach { case(vec2, i) =>
     val replHit = io.replHnTxnID.fire & newReplId === i.U
     val reqHit  = io.req.fire         & reqId === i.U
     // Replace dbid in reg
@@ -139,6 +140,10 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
     }
     HAssert(!(replHit & reqHit))
   }
+  // Modify dbid
+  when(io.req.valid | io.replHnTxnID.valid) {
+    dbidRegVec2 := dbidNextVec2
+  }
   // HAssert
   HAssert.withEn(pool.io.deq0.fire, io.req.fire & io.req.bits.dataVec(0))
   HAssert.withEn(pool.io.deq1.fire, io.req.fire & io.req.bits.dataVec(1))
@@ -150,11 +155,11 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
    * Receive release
    */
   // Set pool enq valid
-  pool.io.enq0.valid      := io.release.valid & io.release.bits.dataVec(0)
-  pool.io.enq1.valid      := io.release.valid & io.release.bits.dataVec(1)
+  pool.io.enq0.valid  := io.release.valid & io.release.bits.dataVec(0)
+  pool.io.enq1.valid  := io.release.valid & io.release.bits.dataVec(1)
   // Set pool enq bits
-  pool.io.enq0.bits       := dbidRegVec2(relId)(0)
-  pool.io.enq1.bits       := dbidRegVec2(relId)(1)
+  pool.io.enq0.bits   := dbidRegVec2(relId)(0)
+  pool.io.enq1.bits   := dbidRegVec2(relId)(1)
   // Set dbid valid in reg
   validRegVec2.zipWithIndex.foreach { case(v, i) =>
     val reqHit  = io.req.fire         & reqId === i.U
