@@ -293,7 +293,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
     this.Size     := Mux(c.double, 6.U, c.size)
     this.MemAttr  := c.memAttr.asUInt
     this.SnpAttr  := Mux(c.memAttr.device, 0.U, 1.U)
-    this.ExpCompAck := Mux(c.memAttr.device, false.B, true.B)
+    this.ExpCompAck := Mux(c.memAttr.device || !c.memAttr.cacheable, false.B, true.B)
     this
   }
   def wReqInit[T <: CHIWEntry](c : T, i : UInt, node: Node): ReqFlit = {
@@ -307,7 +307,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
     this.ExpCompAck := true.B
     this.Order      := "b10".U
     this.SrcID      := rni.rniID.U
-    this.SnpAttr    := Mux(c.memAttr.device, 0.U, 1.U)
+    this.SnpAttr    := Mux(c.memAttr.device | !c.memAttr.cacheable, 0.U, 1.U)
     this
   }
 }
