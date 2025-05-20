@@ -289,7 +289,7 @@ case class Node(
       ""
     }
 
-    val bankStr = if (nodeType == NodeType.HF || nodeType == NodeType.S) {
+    val bankStr = if (nodeType == NodeType.HF) {
       s"""    bank: $bankId
          |""".stripMargin
     } else {
@@ -310,8 +310,10 @@ case class Node(
       ""
     }
 
-    val addrStr = if(nodeType == NodeType.HI && !defaultHni || nodeType == NodeType.CC) {
-      s"""    addrSets: 0x${addrSets.map(elm => (s"0x${elm._1.toHexString}", s"0x${elm._2.toHexString}"))}
+    val addrStr = if(nodeType == NodeType.HI && !defaultHni || nodeType == NodeType.CC || nodeType == NodeType.S) {
+      s"""    addrSets: {
+         |${addrSets.map(elm => String.format(s"      0x%0${11}X, 0x%0${11}X", elm._1, elm._2)).reduce((a:String, b:String) => s"$a\n$b")}
+         |    }
          |""".stripMargin
     } else {
       ""
