@@ -76,8 +76,8 @@ trait HasDirMsg extends DJBundle { this: DJBundle =>
     oneVec     := PriorityEncoderOH(othVec)
     val snpVec = PriorityMux(Seq(
       (snpTgt === SnpTgt.ALL) -> allVec,
-      (snpTgt === SnpTgt.ONE) -> othVec,
-      (snpTgt === SnpTgt.OTH) -> oneVec,
+      (snpTgt === SnpTgt.ONE) -> oneVec,
+      (snpTgt === SnpTgt.OTH) -> othVec,
       true.B                  -> 0.U.asTypeOf(allVec)
     ))
     snpVec
