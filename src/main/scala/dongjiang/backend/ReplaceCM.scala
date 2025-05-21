@@ -365,16 +365,19 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   HAssert.withEn(taskReg.isWaitRepl | taskReg.isWaitResp, taskReg.isValid & dataRespHit)
 
   /*
-   * Get next sResp
-   * ----------------------
-   * | wSF | wLLC | sResp |
-   * |--------------------|
-   * |  I  |  I   |   T   |
-   * |  V  |  I   |   T   |
-   * |  I  |  V   |   F   |
-   * |  V  |  V   |   X   |
-   * ----------------------
-   */
+  * Get next sResp
+  * ----------------------
+  * | wSF | wLLC | sResp |
+  * |--------------------|
+  * |  I  |  I   |   T   |
+  * |  V  |  I   |   T   |
+  * |  I  |  V   |   F   |
+  * |  V  |  V   |   X   |
+  * ----------------------
+  * Node:
+  *  The above table applies only to cases where substitutions may be required
+  *  X: This does not happen with the Exclusive policy
+  */
   when(io.resp.fire) {
     taskNext.sResp    := false.B
     taskNext.alrSResp := taskReg.state =/= FREE
@@ -386,7 +389,8 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     val wriSFVal      = io.writeDir.bits.sf.valid  & io.writeDir.bits.sf.bits.metaIsVal
     val wriLLCVal     = io.writeDir.bits.llc.valid & io.writeDir.bits.llc.bits.metaIsVal
     taskNext.sResp    := PriorityMux(Seq(
-      taskReg.alrSResp          -> false.B,
+      (taskNext.state === FREE) -> true.B,  // No need replace
+      taskReg.alrSResp          -> false.B, // already send resp
       (!wriSFVal & !wriLLCVal)  -> true.B,
       ( wriSFVal & !wriLLCVal)  -> true.B,
       (!wriSFVal &  wriLLCVal)  -> false.B
@@ -401,6 +405,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     // HAssert
     HAssert(!taskReg.sResp)
   }
+
 
   /*
    * Get new write directory message
