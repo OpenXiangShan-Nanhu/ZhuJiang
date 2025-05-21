@@ -54,6 +54,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
       val valid     = Bool()
       val value     = UInt(TASKSTATE.width.W)
       val release   = Bool()
+      val nid       = UInt(nidBits.W)
     })
   })
 
@@ -91,10 +92,11 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
     }
   }
   // Output State
-  io.state.valid   := taskReg.isValid
-  io.state.release := RegNext(taskReg.isValid) & taskReg.isFree
-  io.state.addr    := taskReg.addr
-  io.state.value   := taskReg.state
+  io.state.valid    := taskReg.isValid
+  io.state.release  := RegNext(taskReg.isValid) & taskReg.isFree
+  io.state.addr     := taskReg.addr
+  io.state.value    := taskReg.state
+  io.state.nid      := nidReg.getOrElse(0.U)
   HAssert(!(io.state.valid & io.state.release))
 
   /*
@@ -171,10 +173,10 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
    * Send Task & Req
    */
   val taskVec_s0              = VecInit(entries.map(_.io.chiTask_s0))
-  val releaseVec              = VecInit(entries.map(_.io.state.release))
+  val cancelVec               = VecInit(entries.map(_.io.state).map(s => s.value === FREE | s.value === SLEEP | s.nid =/= 0.U))
   // select task by StepRREncoder to send in s0
   selRREncoder.io.inVec       := VecInit(taskVec_s0.map(_.valid))
-  selRREncoder.io.enable      := releaseVec(selRREncoder.io.vipIdx)
+  selRREncoder.io.enable      := cancelVec(selRREncoder.io.vipIdx)
   val selId_s0                = selRREncoder.io.outIdx
   taskVec_s0.zipWithIndex.foreach { case(t, i) => t.ready := selId_s0 === i.U }
   // connect
