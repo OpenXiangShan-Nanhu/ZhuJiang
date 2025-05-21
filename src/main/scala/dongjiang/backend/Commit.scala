@@ -1,4 +1,4 @@
- package dongjiang.backend
+  package dongjiang.backend
 
 import chisel3._
 import chisel3.util._
@@ -15,19 +15,36 @@ import dongjiang.data._
 import zhujiang.chi.ReqOpcode._
 import dongjiang.frontend._
 import dongjiang.frontend.decode._
+import dongjiang.backend.CmtState._
 import chisel3.experimental.BundleLiterals._
 
 // ----------------------------------------------------------------------------------------------------- //
 // ------------------------------------------- Commit Flag --------------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
+object CmtState {
+  val width     = 4
+  val FREE      = 0x0.U
+  val WAITDATA  = 0x1.U
+  val SETFLAG0  = 0x2.U
+  val WAIT0     = 0x3.U
+  val TRDDEC    = 0x4.U
+  val SETFLAG1  = 0x5.U
+  val WAIT1     = 0x6.U
+  val FTHDEC    = 0x7.U
+  val SETFLAG2  = 0x8.U
+  val COMMIT    = 0x9.U
+  val CLEAN     = 0xA.U
+}
+
 class Flag(implicit p: Parameters) extends DJBundle {
   val intl = new DJBundle {
     // internal send
     val s = new DJBundle {
+      val task      = Bool() // Send Task To TaskCM for the first time
+      val secTask   = Bool() // Send Task To TaskCM for the second time
       val data0     = Bool() // Send Data Task(reqs, read, send)
       val data1     = Bool() // Send Data Task(save, clean)  // Note: Need wait repl done
       val wriDir    = Bool() // Send Write Task To Replace   // Note: Need wait data0 done
-      val secTask   = Bool() // Send Task To TaskCM
       // TODO: val dataFwd = Bool() // Send CompData in SnpFwd
     }
     // internal wait
@@ -45,13 +62,11 @@ class Flag(implicit p: Parameters) extends DJBundle {
     val s_resp      = Bool() // Send Resp(Comp, SnpResp) To RN/HN
     val w_ack       = Bool() // Wait CompAck From RN
   }
-  // other
-  val clean         = Bool() // Clean PoS Tag and Dir Lock
-  val valid         = Bool() // Valid
+  // Free -> WaitData -> SetFlag0 -> Wait0 -> ThirdDecode -> SetFlag1 -> Wait1 -> FourthDec -> SetFlag2 -> Commit -> Clean -> Free
+  //                  ^                    ^              ^                    ^            ^                     ^        ^
+  //               dataResp             cmResp        decMes.fire            cmResp     decMes.fire         allFlagDone  cleanPoS.fire
+  val state         = UInt(CmtState.width.W)
 }
-
-trait HasFlag { this: DJBundle => val flag = new Flag }
-
 
 // ----------------------------------------------------------------------------------------------------- //
 // ------------------------------------------- Commit Entry -------------------------------------------- //
@@ -66,6 +81,9 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     val hnIdx       = Input(new HnIndex)
     // Commit Task In
     val alloc       = Flipped(Valid(new CommitTask with HasHnTxnID)) // broadcast signal
+    // Decode
+    val decMes      = Decoupled(new PackDecList with HasPackTaskInst { val isThird = Bool() } )
+    val decRes      = Input(new PackDecList)
     // CHI
     val txRsp       = Decoupled(new RespFlit())
     val rxRsp       = Flipped(Valid(new RespFlit())) // Receive CompAck
@@ -90,141 +108,44 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val taskReg     = RegInit((new CommitTask with HasFlag).Lit(_.flag.valid -> false.B))
-  val valid       = WireInit(taskReg.flag.valid)
-  val flagNext    = WireInit(taskReg.flag)
+  // task
+  val taskReg     = Reg(new CommitTask)
   val taskNext    = WireInit(taskReg)
-  val taskAlloc   = Wire(new CommitTask with HasFlag)
-  val flagDec     = Wire(new Flag) // Get new flag when decode done
-  val secTaskInst = WireInit(0.U.asTypeOf(new TaskInst))
-  val secCMTask   = WireInit(0.U.asTypeOf(new CMTask))
+  val decListNext = WireInit(taskReg.decList)
+  // flag
+  val flagReg     = RegInit(new Flag().Lit(_.state -> FREE))
+  val flagNext    = WireInit(flagReg)
+  val flagDec     = WireInit(flagReg)
+  val valid       = WireInit(flagReg.state =/= FREE)
+  // inst
+  val instReg     = RegInit(new TaskInst().Lit(_.valid -> false.B))
+  val instNext    = WireInit(instReg)
+  // other
+  val cmTask      = WireInit(0.U.asTypeOf(new CMTask))
   val rspAckHit   = valid & io.rxRsp.valid & io.rxRsp.bits.TxnID === io.hnTxnID & io.rxRsp.bits.Opcode === CompAck
   val datAckHit   = valid & io.rxDat.valid & io.rxDat.bits.TxnID === io.hnTxnID & io.rxDat.bits.Opcode === NCBWrDataCompAck
   val compAckHit  = rspAckHit | datAckHit
-  io.flag         := taskReg.flag
+  io.flag         := flagReg
 
   /*
-   * Receive Commit Task from Frontend
+   * Get Decode Result
    */
-  val alloc                     = io.alloc.bits
-  // task base message
-  taskAlloc.chi                 := alloc.chi
-  taskAlloc.dir                 := alloc.dir
-  taskAlloc.alr                 := alloc.alr
-  taskAlloc.taskCode            := DontCare
-  taskAlloc.taskInst            := DontCare
-  taskAlloc.commit              := alloc.commit
-  taskAlloc.snpTgt              := alloc.snpTgt
-  taskAlloc.ds                  := alloc.ds
-  // task flag internal send
-  taskAlloc.flag.intl.s.data0   := alloc.commit.dataOp.data0 & !taskAlloc.alr.sData
-  taskAlloc.flag.intl.s.data1   := alloc.commit.dataOp.data1 & !(alloc.commit.wriLLC & !alloc.dir.llc.hit) // not replace llc
-  taskAlloc.flag.intl.s.wriDir  := alloc.commit.wriDir
-  taskAlloc.flag.intl.s.secTask := false.B
-  // task flag internal wait
-  taskAlloc.flag.intl.w.receive := alloc.taskCode.waitRecDone
-  taskAlloc.flag.intl.w.cmResp  := alloc.taskCode.opsValid
-  taskAlloc.flag.intl.w.secResp := false.B
-  taskAlloc.flag.intl.w.repl    := alloc.commit.wriDir
-  taskAlloc.flag.intl.w.data0   := alloc.commit.dataOp.data0
-  taskAlloc.flag.intl.w.data1   := alloc.alr.cleanDB | (alloc.commit.dataOp.data1 & !(alloc.commit.wriLLC & !alloc.dir.llc.hit)) // not replace llc
-  // task flag chi send
-  taskAlloc.flag.chi.s_resp     := alloc.commit.sendResp & alloc.commit.channel === ChiChannel.RSP
-  // task flag chi wait
-  taskAlloc.flag.chi.w_ack      := alloc.chi.expCompAck & !alloc.chi.reqIs(WriteEvictOrEvict)
-  // task flag clean and valid
-  taskAlloc.flag.clean          := false.B
-  taskAlloc.flag.valid          := true.B
-  // check decode result from Frontend Decode
-  when(io.alloc.valid) {
-    HardwareAssertion.withEn(alloc.commit.asUInt === 0.U, !alloc.commit.valid)
-    HardwareAssertion.withEn(alloc.commit.sendResp, io.alloc.bits.alr.sData)
-    HardwareAssertion.withEn(alloc.commit.channel === ChiChannel.DAT, alloc.commit.dataOp.send)
-  }
-
-
-  /*
-   * 1st decode after Decode completes, execute result in backend
-   * 2nd decode after Commit gets TaskCM & ReceiveCM response, save to TaskReg
-   * 3rd decode after Commit gets TaskCM response again, save to TaskReg
-   */
-  // judge decode is valid
-  val waitSecDec  = (taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.receive) & valid
-  val secDecReady = !waitSecDec
-  val secDecValid = RegNext(waitSecDec) & secDecReady & valid
-  val trdDecValid = io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID & taskReg.flag.intl.w.secResp & !taskReg.commit.valid & valid
-  val decValid    = secDecValid | trdDecValid
-  HAssert(!(secDecValid & trdDecValid))
-  HAssert.withEn(!io.cmResp.bits.fromRec, trdDecValid)
-
-  // Get second taskInst
-  when(trdDecValid) {
-    secTaskInst   := io.cmResp.bits.taskInst
-  }
-  // Get other inst
-  val chiInst     = taskReg.chi.getChiInst(valid)
-  val stateInst   = taskReg.dir.getStateInst(taskReg.chi.metaIdOH, valid)
-  val taskInst    = WireInit(taskReg.taskInst)
-  taskInst.valid  := taskReg.taskInst.valid & !(taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.receive) & valid
-
-  // Decode result
-  val decRes      = Decode.decode(chiInst, stateInst, taskInst, secTaskInst)._2
-  val secTaskCode = WireInit(decRes._2)
-  val cmtCode     = WireInit(decRes._3)
-  HAssert.withEn(chiInst.valid & stateInst.valid & taskInst.valid & !secTaskInst.valid, secDecValid)
-  HAssert.withEn(chiInst.valid & stateInst.valid & taskInst.valid &  secTaskInst.valid, trdDecValid)
-  dontTouch(secTaskCode)
+  val getDecRes           = Module(new GetDecRes())
+  val fstCode             = getDecRes.io.taskCode
+  val secCode             = getDecRes.io.secTaskCode
+  val cmtCode             = getDecRes.io.commitCode
+  getDecRes.io.list.valid := valid
+  getDecRes.io.list.bits  := taskReg.decList
+  dontTouch(fstCode)
+  dontTouch(secCode)
   dontTouch(cmtCode)
-
-  // get 2nd deocode result
-  when(secDecValid) {
-    taskNext.taskCode     := secTaskCode
-    when(!cmtCode.waitSecDone) {
-      taskNext.commit     := cmtCode
-    }
-    // HAssert
-    HAssert(!taskReg.taskCode.valid)
-    HAssert(!taskReg.commit.valid)
-    HAssert.withEn(taskNext.taskCode.valid, cmtCode.waitSecDone)
-    HAssert.withEn(cmtCode.asUInt === 0.U | cmtCode.waitSecDone, !cmtCode.valid)
-  }.elsewhen(trdDecValid) {
-    taskNext.taskCode     := 0.U.asTypeOf(new TaskCode)
-    taskNext.commit       := cmtCode
-    // HAssert
-    HAssert(taskReg.taskCode.valid)
-    HAssert(!taskReg.commit.valid)
-    HAssert.withEn(cmtCode.asUInt === 0.U | cmtCode.waitSecDone, !cmtCode.valid)
-  }
-
-  /*
-   * Get new flag when decode done
-   */
-  // task flag internal send
-  flagDec.intl.s.data0    := taskNext.commit.dataOp.data0
-  flagDec.intl.s.data1    := taskNext.commit.dataOp.data1 & !(taskNext.commit.wriLLC & !taskReg.dir.llc.hit) // not replace llc
-  flagDec.intl.s.wriDir   := taskNext.commit.wriDir
-  flagDec.intl.s.secTask  := taskNext.taskCode.opsValid
-  // task flag internal wait
-  flagDec.intl.w.receive  := false.B
-  flagDec.intl.w.cmResp   := false.B
-  flagDec.intl.w.secResp  := taskNext.taskCode.opsValid
-  flagDec.intl.w.repl     := taskNext.commit.wriDir
-  flagDec.intl.w.data0    := taskNext.commit.dataOp.data0
-  flagDec.intl.w.data1    := taskNext.commit.dataOp.data1 & !(taskNext.commit.wriLLC & !taskReg.dir.llc.hit) // not replace llc
-  // task flag chi send
-  flagDec.chi.s_resp      := taskNext.commit.sendResp & taskNext.commit.channel === ChiChannel.RSP
-  // task flag chi wait
-  flagDec.chi.w_ack       := taskReg.flag.chi.w_ack & !compAckHit
-  // task flag clean and valid
-  flagDec.clean           := false.B
-  flagDec.valid           := true.B
-
+  
   /*
    * Send DataTask
    * Priority: data > data0 > data1
    */
   // data task valid
-  val doingData0 = !taskReg.flag.intl.s.data0 & taskReg.flag.intl.w.data0
+  val doingData0 = !taskReg.flag.intl.s.data0  & taskReg.flag.intl.w.data0
   val dtVal0     = valid  & taskReg.flag.valid & taskReg.flag.intl.s.data0
   val dtVal1     = valid  & taskReg.flag.valid & taskReg.flag.intl.s.data1 & !taskReg.flag.intl.w.repl & !doingData0
   val dtVal      = dtVal0 & dtVal1
@@ -238,16 +159,16 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits                := DontCare
   // dataOp
   when(dtVal) {
-    io.dataTask.bits.dataOp       := taskReg.commit.dataOp
+    io.dataTask.bits.dataOp       := cmtCode.dataOp
   }.elsewhen(dtVal0) {
     io.dataTask.bits.dataOp       := 0.U.asTypeOf(new DataOp)
-    io.dataTask.bits.dataOp.reqs  := taskReg.commit.dataOp.reqs
-    io.dataTask.bits.dataOp.read  := taskReg.commit.dataOp.read
-    io.dataTask.bits.dataOp.send  := taskReg.commit.dataOp.send
+    io.dataTask.bits.dataOp.reqs  := cmtCode.dataOp.reqs
+    io.dataTask.bits.dataOp.read  := cmtCode.dataOp.read
+    io.dataTask.bits.dataOp.send  := cmtCode.dataOp.send
   }.otherwise {
     io.dataTask.bits.dataOp       := 0.U.asTypeOf(new DataOp)
-    io.dataTask.bits.dataOp.save  := taskReg.commit.dataOp.save
-    io.dataTask.bits.dataOp.clean := taskReg.commit.dataOp.clean
+    io.dataTask.bits.dataOp.save  := cmtCode.dataOp.save
+    io.dataTask.bits.dataOp.clean := cmtCode.dataOp.clean
   }
   when(io.dataTask.valid) {
     HardwareAssertion(PopCount(io.dataTask.bits.dataOp.asUInt) =/= 0.U)
@@ -256,8 +177,8 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   // txDat
   // TODO: SnpRespData
   io.dataTask.bits.txDat.DBID     := io.hnTxnID
-  io.dataTask.bits.txDat.Resp     := taskReg.commit.resp
-  io.dataTask.bits.txDat.Opcode   := taskReg.commit.commitOp
+  io.dataTask.bits.txDat.Resp     := cmtCode.resp
+  io.dataTask.bits.txDat.Opcode   := cmtCode.commitOp
   io.dataTask.bits.txDat.HomeNID  := DontCare // remap in SAM
   io.dataTask.bits.txDat.TxnID    := taskReg.chi.txnID
   io.dataTask.bits.txDat.SrcID    := taskReg.chi.getNoC
@@ -271,67 +192,73 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    * Send write directory task to ReplaceCM
    */
   // valid and hnTxnID
-  io.replTask.valid               := valid & taskReg.flag.intl.s.wriDir & !taskReg.flag.intl.w.data0
+  io.replTask.valid               := valid & flagReg.intl.s.wriDir & !flagReg.intl.w.data0
   io.replTask.bits.hnTxnID        := io.hnTxnID
   // write sf bits
-  io.replTask.bits.wriSF          := taskReg.commit.wriSF
+  val snpTgt                      = Mux(secCode.snoop, secCode.snpTgt, fstCode.snpTgt)
+  io.replTask.bits.wriSF          := cmtCode.wriSF
   io.replTask.bits.dir.sf.hit     := taskReg.dir.sf.hit
   io.replTask.bits.dir.sf.wayOH   := taskReg.dir.sf.wayOH
   io.replTask.bits.dir.sf.metaVec.map(_.state).zipWithIndex.foreach {
     case(s, i) =>
       val metaIdOH    = taskReg.chi.metaIdOH
       val srcVec      = VecInit(metaIdOH.asBools)
-      val snpVec      = taskReg.dir.getSnpVec(taskReg.snpTgt, metaIdOH)
+      val snpVec      = taskReg.dir.getSnpVec(snpTgt, metaIdOH)
       s := PriorityMux(Seq(
-        (srcVec(i) & taskReg.commit.wriSRC) -> taskReg.commit.srcValid, // modify source state
-        (snpVec(i) & taskReg.commit.wriSNP) -> taskReg.commit.snpValid, // modify snoopee state
-        true.B                              -> (taskReg.dir.sf.metaVec(i).state & taskReg.dir.sf.hit)
+        (srcVec(i) & cmtCode.wriSRC) -> cmtCode.srcValid, // modify source state
+        (snpVec(i) & cmtCode.wriSNP) -> cmtCode.snpValid, // modify snoopee state
+        true.B                       -> (taskReg.dir.sf.hit & taskReg.dir.sf.metaVec(i).state)
       ))
   }
   // write llc bits
-  io.replTask.bits.wriLLC         := taskReg.commit.wriLLC
+  io.replTask.bits.wriLLC         := cmtCode.wriLLC
   io.replTask.bits.dir.llc.hit    := taskReg.dir.llc.hit
   io.replTask.bits.dir.llc.wayOH  := taskReg.dir.llc.wayOH
-  io.replTask.bits.dir.llc.metaVec.head.state := taskReg.commit.llcState
+  io.replTask.bits.dir.llc.metaVec.head.state := cmtCode.llcState
 
   /*
    * Send second CMTask to TaskCM
    */
+  val taskCode = Mux(secCode.valid, secCode, fstCode)
   // chi
-  secCMTask.chi                   := taskReg.chi
-  secCMTask.chi.channel           := Mux(taskReg.taskCode.snoop, ChiChannel.SNP, ChiChannel.REQ)
-  secCMTask.chi.opcode            := taskReg.taskCode.opcode
-  secCMTask.chi.expCompAck        := taskReg.taskCode.expCompAck
-  secCMTask.chi.retToSrc          := taskReg.taskCode.retToSrc
+  cmTask.chi                      := taskReg.chi
+  cmTask.chi.channel              := Mux(taskCode.snoop, ChiChannel.SNP, ChiChannel.REQ)
+  cmTask.chi.dataVec              := Mux(taskCode.snoop, DataVec.Full,   taskReg.chi.dataVec)
+  cmTask.chi.opcode               := taskCode.opcode
+  cmTask.chi.expCompAck           := taskCode.expCompAck
+  cmTask.chi.retToSrc             := taskCode.retToSrc
   // other
-  secCMTask.hnTxnID               := io.hnTxnID
-  secCMTask.alr                   := taskReg.alr
-  secCMTask.dataOp                := taskReg.taskCode.dataOp
-  secCMTask.ds                    := taskReg.ds
-  secCMTask.snpVec                := taskReg.dir.getSnpVec(taskReg.taskCode.snpTgt, taskReg.chi.metaIdOH)
-  secCMTask.fromRepl              := false.B
-  secCMTask.cbResp                := taskReg.dir.llc.metaVec.head.cbResp
-  secCMTask.doDMT                 := taskReg.taskCode.doDMT
+  cmTask.hnTxnID                  := io.hnTxnID
+  cmTask.alr.reqs                 := taskReg.alr.reqs
+  cmTask.alr.sData                := DontCare
+  cmTask.alr.cleanDB              := DontCare
+  cmTask.dataOp                   := taskCode.dataOp
+  cmTask.ds                       := taskReg.ds
+  cmTask.snpVec                   := taskReg.dir.getSnpVec(taskCode.snpTgt, taskReg.chi.metaIdOH)
+  cmTask.fromRepl                 := false.B
+  cmTask.cbResp                   := taskReg.dir.llc.metaVec.head.cbResp
+  cmTask.doDMT                    := taskCode.doDMT
   // alloc
-  io.cmTaskVec(CMID.SNP).valid    := valid & taskReg.flag.intl.s.secTask & taskReg.taskCode.snoop
-  io.cmTaskVec(CMID.READ).valid   := valid & taskReg.flag.intl.s.secTask & taskReg.taskCode.read
-  io.cmTaskVec(CMID.DL).valid     := valid & taskReg.flag.intl.s.secTask & taskReg.taskCode.dataless
-  io.cmTaskVec(CMID.WRI).valid    := valid & taskReg.flag.intl.s.secTask & taskReg.taskCode.wriOrAtm
-  io.cmTaskVec.foreach(_.bits     := secCMTask)
-  HardwareAssertion(PopCount(io.cmTaskVec.map(_.fire)) <= 1.U)
+  io.cmTaskVec(CMID.SNP).valid    := valid & (flagReg.intl.s.task | flagReg.intl.s.secTask) & taskCode.snoop
+  io.cmTaskVec(CMID.READ).valid   := valid & (flagReg.intl.s.task | flagReg.intl.s.secTask) & taskCode.read
+  io.cmTaskVec(CMID.DL).valid     := valid & (flagReg.intl.s.task | flagReg.intl.s.secTask) & taskCode.dataless
+  io.cmTaskVec(CMID.WRI).valid    := valid & (flagReg.intl.s.task | flagReg.intl.s.secTask) & taskCode.wriOrAtm
+  io.cmTaskVec.foreach(_.bits     := cmTask)
+  HAssert(PopCount(io.cmTaskVec.map(_.fire)) <= 1.U)
+  HAssert.withEn(!(flagReg.intl.s.task & flagReg.intl.s.secTask), valid)
 
 
   /*
    * Send CHI.RSP
    */
   // valid
-  io.txRsp.valid            := valid & taskReg.flag.chi.s_resp
+  io.txRsp.valid            := valid & flagReg.chi.s_resp
   // bits
   io.txRsp.bits             := DontCare
   io.txRsp.bits.DBID        := io.hnTxnID
-  io.txRsp.bits.FwdState    := taskReg.commit.fwdResp
-  io.txRsp.bits.Resp        := taskReg.commit.resp
-  io.txRsp.bits.Opcode      := taskReg.commit.commitOp
+  io.txRsp.bits.FwdState    := cmtCode.fwdResp
+  io.txRsp.bits.Resp        := cmtCode.resp
+  io.txRsp.bits.Opcode      := cmtCode.commitOp
   io.txRsp.bits.TxnID       := taskReg.chi.txnID
   io.txRsp.bits.SrcID       := taskReg.chi.getNoC
   io.txRsp.bits.TgtID       := taskReg.chi.nodeId
@@ -341,78 +268,193 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    * Clean PoS
    */
   // valid
-  io.cleanPoS.valid         := valid & taskReg.flag.clean
+  io.cleanPoS.valid         := valid & flagReg.state === CLEAN
   // bits
   io.cleanPoS.bits.hnIdx    := io.hnIdx
   io.cleanPoS.bits.channel  := taskReg.chi.channel
 
   /*
+   * Decode when get resp
+   *
+   * Node:
+   *  1st decode after get task from CHI
+   *  2nd decode after Decode completes, execute result in backend
+   *  3rd decode after Commit gets TaskCM & ReceiveCM response
+   *  4th decode after Commit gets TaskCM response again
+   */
+  when(io.decMes.fire) {
+    decListNext                 := io.decRes.decList
+  }
+  io.decMes.valid               := flagReg.state === TRDDEC | flagReg.state === FTHDEC
+  io.decMes.bits.isThird        := flagReg.state === TRDDEC
+  io.decMes.bits.decList        := taskReg.decList
+  io.decMes.bits.taskInst       := instReg
+  io.decMes.bits.taskInst.valid := io.decMes.valid
+  // HAssert
+  HAssert.withEn(instReg.valid, io.decMes.valid)
+  HAssert.withEn(taskReg.decList(0) === io.decRes.decList(0), io.decMes.fire)
+  HAssert.withEn(taskReg.decList(1) === io.decRes.decList(1), io.decMes.fire)
+  HAssert.withEn(taskReg.decList(2) === io.decRes.decList(2), io.decMes.fire & flagReg.state =/= TRDDEC)
+  HAssert.withEn(taskReg.decList(3) === io.decRes.decList(3), io.decMes.fire & flagReg.state =/= FTHDEC)
+
+  /*
+   * Get new flag when decode done
+   */
+  // parse decode result
+  val noTask      = 0.U.asTypeOf(new TaskCode)
+  val noCmt       = 0.U.asTypeOf(new CommitCode)
+  val taskCodeDec = Mux(flagReg.state === SETFLAG0, fstCode, noTask)
+  val secCodeDec  = Mux(flagReg.state === SETFLAG1, secCode, noTask)
+  val cmtCodeDec  = PriorityMux(Seq(
+    (flagReg.state === SETFLAG0 &  fstCode.valid)        -> noCmt,
+    (flagReg.state === SETFLAG0 & !fstCode.valid)        -> cmtCode,
+    (flagReg.state === SETFLAG1 &  cmtCode.waitSecDone)  -> noCmt,
+    (flagReg.state === SETFLAG1 & !cmtCode.waitSecDone)  -> cmtCode,
+    (flagReg.state === SETFLAG2)                         -> cmtCode
+  ))
+  // task flag internal send
+  flagDec.intl.s.task     := taskCodeDec.opsValid
+  flagDec.intl.s.secTask  := secCodeDec.opsValid
+  flagDec.intl.s.data0    := cmtCodeDec.dataOp.data0 & !taskReg.alr.sData
+  flagDec.intl.s.data1    := cmtCodeDec.dataOp.data1 & !(cmtCodeDec.wriLLC & !taskReg.dir.llc.hit) // not replace llc
+  flagDec.intl.s.wriDir   := cmtCodeDec.wriDir
+  // task flag internal wait
+  val recHit              =  valid & io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID & io.cmResp.bits.fromRec
+  flagDec.intl.w.receive  := flagReg.intl.w.receive & !recHit
+  flagDec.intl.w.cmResp   := flagDec.intl.s.task
+  flagDec.intl.w.secResp  := flagDec.intl.s.secTask
+  flagDec.intl.w.repl     := flagDec.intl.s.wriDir
+  flagDec.intl.w.data0    := flagDec.intl.s.data0
+  flagDec.intl.w.data1    := flagDec.intl.s.data1
+  // task flag chi send
+  flagDec.chi.s_resp      := cmtCodeDec.sendResp & cmtCodeDec.channel === ChiChannel.RSP
+  // task flag chi wait
+  flagDec.chi.w_ack       := flagReg.chi.w_ack & !compAckHit
+  // HAssert
+  HAssert.withEn(flagReg.intl.w.receive, recHit)
+  HAssert.withEn(taskReg.chi.isWrite, taskCodeDec.waitRecDone)
+  HAssert.withEn(!(io.alloc.bits.alr.cleanDB &  io.alloc.bits.alr.sData), io.alloc.valid)
+  HAssert.withEn(io.alloc.bits.alr.reqs, io.alloc.valid & (io.alloc.bits.alr.cleanDB | io.alloc.bits.alr.sData))
+  HAssert.withEn(fstCode.waitRecDone, flagReg.state === SETFLAG0 & taskReg.alr.cleanDB)
+  HAssert.withEn(cmtCodeDec.dataOp.send, cmtCodeDec.sendResp & cmtCodeDec.channel =/= ChiChannel.RSP)
+
+  /*
    * Get next flag
    */
-  when(io.alloc.fire & io.alloc.bits.hnTxnID === io.hnTxnID) {
-    flagNext := taskAlloc.flag
-  }.elsewhen(decValid) {
-    flagNext := flagDec
+  val allocHit = io.alloc.fire & io.alloc.bits.hnTxnID === io.hnTxnID
+  // flag
+  when(allocHit) {
+    flagNext                := 0.U.asTypeOf(new Flag) // clear
+    flagNext.intl.w.receive := io.alloc.bits.chi.isWrite
+    flagNext.intl.w.data0   := io.alloc.bits.alr.sData
+    flagNext.intl.w.data1   := io.alloc.bits.alr.cleanDB
+    flagNext.chi.w_ack      := io.alloc.bits.chi.expCompAck & !io.alloc.bits.chi.reqIs(WriteEvictOrEvict)
+  }.elsewhen(flagReg.state === SETFLAG0 | flagReg.state === SETFLAG1 | flagReg.state === SETFLAG2) {
+    flagNext                := flagDec
   }.otherwise {
     // task flag internal send
-    when(io.dataTask.fire & dtVal0)         { flagNext.intl.s.data0   := false.B; HAssert(taskReg.flag.intl.s.data0)   }
-    when(io.dataTask.fire & dtVal1)         { flagNext.intl.s.data1   := false.B; HAssert(taskReg.flag.intl.s.data1)   }
-    when(io.replTask.fire)                  { flagNext.intl.s.wriDir  := false.B; HAssert(taskReg.flag.intl.s.wriDir)  }
-    when(Cat(io.cmTaskVec.map(_.fire)).orR) { flagNext.intl.s.secTask := false.B; HAssert(taskReg.flag.intl.s.secTask) }
+    when(Cat(io.cmTaskVec.map(_.fire)).orR) { flagNext.intl.s.task    := false.B; HAssert.withEn(flagReg.intl.s.task,    flagReg.intl.w.cmResp)  }
+    when(Cat(io.cmTaskVec.map(_.fire)).orR) { flagNext.intl.s.secTask := false.B; HAssert.withEn(flagReg.intl.s.secTask, flagReg.intl.w.secResp) }
+    when(io.dataTask.fire & dtVal0)         { flagNext.intl.s.data0   := false.B; HAssert(flagReg.intl.s.data0)   }
+    when(io.dataTask.fire & dtVal1)         { flagNext.intl.s.data1   := false.B; HAssert(flagReg.intl.s.data1)   }
+    when(io.replTask.fire)                  { flagNext.intl.s.wriDir  := false.B; HAssert(flagReg.intl.s.wriDir)  }
     // task flag internal wait
-    when(io.cmResp.fire   & io.cmResp.bits.hnTxnID   === io.hnTxnID &  io.cmResp.bits.fromRec) { flagNext.intl.w.receive := false.B; HAssert(taskReg.flag.intl.w.receive) }
-    when(io.cmResp.fire   & io.cmResp.bits.hnTxnID   === io.hnTxnID & !io.cmResp.bits.fromRec) { flagNext.intl.w.cmResp  := false.B; HAssert.withEn(taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.secResp, valid) }
-    when(io.cmResp.fire   & io.cmResp.bits.hnTxnID   === io.hnTxnID & !io.cmResp.bits.fromRec) { flagNext.intl.w.secResp := false.B; HAssert.withEn(taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.secResp, valid) }
-    when(io.replResp.fire & io.replResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.repl    := false.B; HAssert(taskReg.flag.intl.w.repl) }
-    when(io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.data0   := taskReg.flag.intl.s.data0 }
-    when(io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.data1   := taskReg.flag.intl.s.data1 }
+    when(io.cmResp.fire   & io.cmResp.bits.hnTxnID   === io.hnTxnID &  io.cmResp.bits.fromRec) { flagNext.intl.w.receive := false.B; HAssert(flagReg.intl.w.receive) }
+    when(io.cmResp.fire   & io.cmResp.bits.hnTxnID   === io.hnTxnID & !io.cmResp.bits.fromRec) { flagNext.intl.w.cmResp  := false.B; HAssert.withEn(flagReg.intl.w.cmResp | flagReg.intl.w.secResp, valid) }
+    when(io.cmResp.fire   & io.cmResp.bits.hnTxnID   === io.hnTxnID & !io.cmResp.bits.fromRec) { flagNext.intl.w.secResp := false.B; HAssert.withEn(flagReg.intl.w.cmResp | flagReg.intl.w.secResp, valid) }
+    when(io.replResp.fire & io.replResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.repl    := false.B; HAssert(flagReg.intl.w.repl) }
+    when(io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.data0   := flagReg.intl.s.data0 }
+    when(io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID) { flagNext.intl.w.data1   := flagReg.intl.s.data1 }
     // when task is (1)invalid or (2)wait data or (3)wait cm resp or (4) wait replace resp can get data resp
-    HAssert.withEn(!taskReg.flag.valid | taskReg.flag.intl.w.data0 | taskReg.flag.intl.w.data1 | taskReg.flag.intl.w.cmResp | taskReg.flag.intl.w.secResp | taskReg.flag.intl.w.repl, io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID)
+    HAssert.withEn(!valid | flagReg.intl.w.data0 | flagReg.intl.w.data1 | flagReg.intl.w.cmResp | flagReg.intl.w.secResp | flagReg.intl.w.repl, io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID)
     // task flag chi send
-    when(io.txRsp.fire) { flagNext.chi.s_resp := false.B; HAssert(taskReg.flag.chi.s_resp) }
-    when(compAckHit)    { flagNext.chi.w_ack  := false.B; HAssert.withEn(taskReg.flag.chi.w_ack | taskReg.chi.reqIs(WriteEvictOrEvict), rspAckHit)  }
-    // task flag clean and valid
-    when(io.alloc.fire & io.alloc.bits.hnTxnID === io.hnTxnID) {
-      flagNext.valid  := true.B
-      flagNext.clean  := false.B
-      HAssert(!taskReg.flag.valid)
-    }.elsewhen(io.cleanPoS.fire) {
-      flagNext.valid  := false.B
-      flagNext.clean  := false.B
-      HAssert(taskReg.flag.valid)
-      HAssert(taskReg.flag.clean)
-    }.elsewhen(taskReg.flag.valid) {
-      flagNext.clean  := !taskReg.flag.intl.asUInt.orR & !taskReg.flag.chi.asUInt.orR // all flag is false
-      HAssert(taskReg.flag.valid)
+    when(io.txRsp.fire) { flagNext.chi.s_resp := false.B; HAssert(flagReg.chi.s_resp) }
+    when(compAckHit)    { flagNext.chi.w_ack  := false.B; HAssert.withEn(flagReg.chi.w_ack | taskReg.chi.reqIs(WriteEvictOrEvict), rspAckHit)  }
+  }
+
+  // state
+  val getAllDataResp    = !flagReg.intl.w.data0 & !flagReg.intl.w.data1
+  val willGetAllCMResp  = PopCount(Seq(flagReg.intl.w.cmResp, flagReg.intl.w.secResp, flagReg.intl.w.receive)) === 1.U & io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID
+  val getAllCMResp      = (!flagReg.intl.w.cmResp & !flagReg.intl.w.secResp & !flagReg.intl.w.receive) | willGetAllCMResp
+  val allFlagDone       = flagReg.intl.asUInt === 0.U & flagReg.chi.asUInt === 0.U
+  switch(flagReg.state) {
+    is(FREE) {
+      when(allocHit)          { flagNext.state := WAITDATA }
+    }
+    is(WAITDATA) {
+      when(getAllDataResp)    { flagNext.state := SETFLAG0 }
+    }
+    is(SETFLAG0) {
+      when(true.B)            { flagNext.state := Mux(cmtCodeDec.valid , COMMIT, WAIT0) }
+    }
+    is(WAIT0) {
+      when(getAllCMResp)      { flagNext.state := TRDDEC }
+    }
+    is(TRDDEC) {
+      when(io.decMes.fire)    { flagNext.state := SETFLAG1 }
+    }
+    is(SETFLAG1) {
+      when(true.B)            { flagNext.state := Mux(cmtCodeDec.valid , COMMIT, WAIT1) }
+    }
+    is(WAIT1) {
+      when(getAllCMResp)      { flagNext.state := FTHDEC }
+    }
+    is(FTHDEC) {
+      when(io.decMes.fire)    { flagNext.state := SETFLAG2 }
+    }
+    is(SETFLAG2) {
+      when(true.B)            { flagNext.state := COMMIT }
+    }
+    is(COMMIT) {
+      when(allFlagDone)       { flagNext.state := CLEAN }
+    }
+    is(CLEAN) {
+      when(io.cleanPoS.fire)  { flagNext.state := FREE }
     }
   }
+  HAssert.withEn(flagReg.state === FREE, allocHit)
 
   /*
    * Get new task
    */
-  when(io.alloc.fire & io.alloc.bits.hnTxnID === io.hnTxnID) {
-    taskNext := taskAlloc
-  }.elsewhen(io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID) {
-    taskNext.taskInst := (taskReg.taskInst.asUInt | io.cmResp.bits.taskInst.asUInt).asTypeOf(new TaskInst)
-    HAssert(io.cmResp.bits.taskInst.valid)
-    HAssert.withEn(io.cmResp.valid, io.cmResp.bits.fromRec)
+  when(allocHit) {
+    taskNext          := io.alloc.bits
+    HAssert(flagReg.state === FREE)
+  }.otherwise {
+    taskNext          := taskReg
+    taskNext.decList  := decListNext
   }
-  taskNext.flag := flagNext
 
   /*
-   * Set new task
+   * Get new task inst
    */
-  val set = io.alloc.fire & io.alloc.bits.hnTxnID === io.hnTxnID | valid; dontTouch(set)
+  when(allocHit) {
+    instNext := 0.U.asTypeOf(new TaskInst)
+  }.elsewhen(io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID) {
+    when(flagReg.state <= WAIT0) {
+      instNext := (instReg.asUInt | io.cmResp.bits.taskInst.asUInt).asTypeOf(new TaskInst)
+    }.elsewhen(flagReg.state === WAIT1) {
+      instNext := io.cmResp.bits.taskInst
+    }
+    HAssert(io.cmResp.bits.taskInst.valid)
+  }
+
+  /*
+   * Set new reg
+   */
+  val set = allocHit | valid; dontTouch(set)
   when(set) {
     taskReg := taskNext
+    flagReg := flagNext
+    instReg := instNext
   }
 
   /*
    * Check timeout
    */
   HAssert.checkTimeout(!valid, TIMEOUT_COMMIT, cf"\n\nTIMEOUT: " +
-    cf"\nInternal Send: ${taskReg.flag.intl.s}\nInternal Wait: ${taskReg.flag.intl.w}\n" +
-    cf"CHI: ${taskReg.flag.chi}\n${taskReg.chi.getChiInst()}\n${taskReg.dir.getStateInst(taskReg.chi.metaIdOH)}\n\n")
+    cf"\nInternal Send: ${flagReg.intl.s}\nInternal Wait: ${flagReg.intl.w}\n" +
+    cf"CHI: ${flagReg.chi}\n${taskReg.chi.getChiInst}\n${taskReg.dir.getStateInst(taskReg.chi.metaIdOH)}\n\n")
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -479,6 +521,35 @@ class Commit(implicit p: Parameters) extends DJModule {
    * Receive Commit Task from Frontend
    */
   entries.map(_.io.alloc).grouped(nrPoS).zip(io.cmtTaskVec).foreach { case(alloc, task) => alloc.foreach(_ := task) }
+
+  /*
+   * Decode
+   */
+  val decListVec        = VecInit(entries.map(_.io.decMes.bits.decList))
+  val decInstVec        = VecInit(entries.map(_.io.decMes.bits.taskInst))
+  // Decode ID
+  val trdDecId          = PriorityEncoder(entries.map(e => e.io.decMes.valid &  e.io.decMes.bits.isThird))
+  val fthDecId          = PriorityEncoder(entries.map(e => e.io.decMes.valid & !e.io.decMes.bits.isThird))
+  // Decode
+  val trdDecocde        = Wire(new PackDecList)
+  val fthDecocde        = Wire(new PackDecList)
+  trdDecocde.decList    := decListVec(trdDecId)
+  fthDecocde.decList    := decListVec(fthDecId)
+  // Result
+  val trdRes            = trdDecocde.thirdDec (decInstVec(trdDecId), trdDecId)
+  val fthRes            = fthDecocde.fourthDec(decInstVec(fthDecId), fthDecId)
+  entries.zipWithIndex.foreach { case(e, i) =>
+    val isThird         = e.io.decMes.bits.isThird
+    e.io.decRes.decList := Mux(isThird, trdRes, fthRes)
+    e.io.decMes.ready   := Mux(isThird, trdDecId === i.U, fthDecId === i.U)
+  }
+  dontTouch(trdDecId)
+  dontTouch(fthDecId)
+  dontTouch(trdDecocde)
+  dontTouch(fthDecocde)
+  dontTouch(trdRes)
+  dontTouch(fthRes)
+
 
   /*
    * Connect Commit <- IO

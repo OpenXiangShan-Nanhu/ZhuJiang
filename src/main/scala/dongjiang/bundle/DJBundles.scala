@@ -163,9 +163,9 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
 
   def getNoC        = Mux(toLAN, LAN.U, BBN.U)
 
-  def getChiInst(valid: Bool = true.B): ChiInst = {
+  def getChiInst: ChiInst = {
     val inst = Wire(new ChiInst)
-    inst.valid      := valid
+    inst.valid      := true.B
     inst.channel    := channel
     inst.fromLAN    := fromLAN
     inst.toLAN      := toLAN
@@ -204,3 +204,16 @@ trait HasAlready { this: DJBundle =>
   }
 }
 
+/*
+ * HasDecList
+ */
+trait HasDecList { this: DJBundle =>
+  val decList = MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W))
+
+  def firstDec  (inst: ChiInst)             : MixedVec[UInt] = { val list = WireInit(decList); list(0) := Decode.decode("chi",     decList, inst.asUInt); list }
+  def secondDec (inst: StateInst)           : MixedVec[UInt] = { val list = WireInit(decList); list(1) := Decode.decode("state",   decList, inst.asUInt); list }
+  def thirdDec  (inst: TaskInst, idx: UInt) : MixedVec[UInt] = { val list = WireInit(decList); list(2) := Decode.decode("task",    decList, inst.asUInt, idx); list }
+  def fourthDec (inst: TaskInst, idx: UInt) : MixedVec[UInt] = { val list = WireInit(decList); list(3) := Decode.decode("secTask", decList, inst.asUInt, idx); list }
+}
+
+class PackDecList(implicit p: Parameters) extends DJBundle with HasDecList

@@ -16,8 +16,7 @@ import zhujiang.chi.ReqOpcode._
 import dongjiang.frontend._
 import dongjiang.frontend.decode._
 
-class CommitTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasPackDirMsg with HasAlready
-  with HasPackTaskCode with HasPackTaskInst with HasPackCmtCode with HasSnpTgt with HasDsIdx
+class CommitTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasPackDirMsg with HasAlready with HasDsIdx with HasDecList
 
 class CMTask(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPackChi
   with HasAlready with HasPackDataOp with HasDsIdx {

@@ -34,8 +34,6 @@ class Block(implicit p: Parameters) extends DJModule {
     val reqDB_s1      = Decoupled(new HnTxnID with HasDataVec)
     // Resp to RN: ReadReceipt, DBIDResp, CompDBIDResp
     val fastResp_s1   = Decoupled(new FastResp())
-    // Block Message(The number of resources already used)
-    val alrUseBuf     = Input(UInt((issueBufBits+1).W))
   })
   dontTouch(io)
 
@@ -49,13 +47,11 @@ class Block(implicit p: Parameters) extends DJModule {
   val reqIsWEOEReg_s1     = RegInit(false.B)  // Req is WriteEvictOrEvict
   val shouldResp_s1       = Wire(Bool())      // shouled send fast resp to Backend
   val blockByDB_s1        = Wire(Bool())      // block by no DataBuffer
-  val rsvdReg_s1          = RegInit(false.B)  // block by issue
   val block_s1            = Wire(new Bundle {
-    val rsvd              = Bool()
     val pos               = Bool()
     val dir               = Bool()
     val resp              = Bool()
-    def all = rsvd | pos | dir | resp
+    def all = pos | dir | resp
   })
   dontTouch(block_s1)
 
@@ -70,14 +66,6 @@ class Block(implicit p: Parameters) extends DJModule {
   /*
    * Block logic
    */
-  // willUseBufNum = S1 + S2 + IssueBuf already use number
-  val alrUseBuf_s0  = (validReg_s1 & !block_s1.all) + io.alrUseBuf; dontTouch(alrUseBuf_s0)
-  val freeBufNum_s0 = nrIssueBuf.U - alrUseBuf_s0; dontTouch(freeBufNum_s0)
-  HardwareAssertion(alrUseBuf_s0 <= nrIssueBuf.U)
-  // Reserve an extra entry for the snp task
-  rsvdReg_s1        := Mux(io.chiTask_s0.bits.chi.isSnp, freeBufNum_s0 === 0.U, freeBufNum_s0 <= 1.U)
-  // block
-  block_s1.rsvd     := rsvdReg_s1
   block_s1.pos      := io.posBlock_s1
   block_s1.dir      := taskReg_s1.chi.memAttr.cacheable & !io.readDir_s1.ready
   block_s1.resp     := blockByDB_s1 | (shouldResp_s1 & !io.fastResp_s1.ready)
@@ -97,7 +85,7 @@ class Block(implicit p: Parameters) extends DJModule {
   /*
    * Read Directory
    */
-  io.readDir_s1.valid         := validReg_s1 & taskReg_s1.chi.memAttr.cacheable & !(block_s1.rsvd | block_s1.pos | block_s1.resp)
+  io.readDir_s1.valid         := validReg_s1 & taskReg_s1.chi.memAttr.cacheable & !(block_s1.pos | block_s1.resp)
   io.readDir_s1.bits.addr     := taskReg_s1.addr
   io.readDir_s1.bits.hnIdx    := io.hnIdx_s1
 
@@ -111,11 +99,11 @@ class Block(implicit p: Parameters) extends DJModule {
   shouldResp_s1                     := sReceiptReg_s1 | reqIsWEOEReg_s1 | (sDBIDReg_s1 & io.reqDB_s1.ready)
   blockByDB_s1                      := sDBIDReg_s1 & !io.reqDB_s1.ready
   // Send Req To Data
-  io.reqDB_s1.valid                 := validReg_s1 & sDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
+  io.reqDB_s1.valid                 := validReg_s1 & sDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.pos | block_s1.dir)
   io.reqDB_s1.bits.dataVec          := DataVec.Full
   io.reqDB_s1.bits.hnTxnID          := io.hnIdx_s1.getTxnID
   // Send Fast Resp To CHI
-  io.fastResp_s1.valid              := validReg_s1 & shouldResp_s1 & !(block_s1.rsvd | block_s1.pos | block_s1.dir)
+  io.fastResp_s1.valid              := validReg_s1 & shouldResp_s1 & !(block_s1.pos | block_s1.dir)
   io.fastResp_s1.bits.dataVec       := taskReg_s1.chi.dataVec
   io.fastResp_s1.bits.rsp           := DontCare
   io.fastResp_s1.bits.rsp.SrcID     := taskReg_s1.chi.getNoC

@@ -104,6 +104,8 @@ class TaskInst extends Bundle {
 
 trait HasPackTaskInst { this: Bundle => val taskInst = new TaskInst() }
 
+class PackTaskInst extends Bundle with HasPackTaskInst
+
 object CMID {
   lazy val SNP  = 0
   lazy val WRI  = 1
@@ -278,7 +280,6 @@ object Inst {
   def cbRespIs(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | xCBWrDataValid  }
   def hasGotNCBWrData   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(I); temp.asUInt | taskValid | xCBWrDataValid }
   def emptyResp         : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst()));                                 temp.asUInt | taskValid }
-  def noResp            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst()));                                 temp.asUInt }
 }
 
 
@@ -328,15 +329,15 @@ object Code {
   def noCmt : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.asUInt }
 
   // Use In Decode Table
-  def first(commitCode: UInt): (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]) = (noTask, Seq(Inst.noResp -> (noTask, Seq(Inst.noResp -> commitCode))))
+  def first(commitCode: UInt): (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]) = (noTask, Seq(Inst.emptyResp -> (noTask, Seq(Inst.emptyResp -> commitCode))))
 
-  def first(taskCode: UInt, commitCode: UInt): (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]) = (taskCode, Seq(Inst.noResp -> (noTask, Seq(Inst.noResp -> commitCode))))
+  def first(taskCode: UInt, commitCode: UInt): (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]) = (taskCode, Seq(Inst.emptyResp -> (noTask, Seq(Inst.emptyResp -> commitCode))))
 
-  def first(taskCode: UInt, taskInst: UInt, commitCode: UInt): (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]) = (taskCode, Seq(taskInst -> (noTask, Seq(Inst.noResp -> commitCode))))
+  def first(taskCode: UInt, taskInst: UInt, commitCode: UInt): (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]) = (taskCode, Seq(taskInst -> (noTask, Seq(Inst.emptyResp -> commitCode))))
 
-  def second(commitCode: UInt): (UInt, Seq[(UInt, UInt)]) = (noTask, Seq(Inst.noResp -> commitCode))
+  def second(commitCode: UInt): (UInt, Seq[(UInt, UInt)]) = (noTask, Seq(Inst.emptyResp -> commitCode))
 
-  def second(taskCode: UInt, commitCode: UInt): (UInt, Seq[(UInt, UInt)]) = (taskCode, Seq(Inst.noResp -> commitCode))
+  def second(taskCode: UInt, commitCode: UInt): (UInt, Seq[(UInt, UInt)]) = (taskCode, Seq(Inst.emptyResp -> commitCode))
 
   def second(taskCode: UInt, taskInst: UInt, commitCode: UInt): (UInt, Seq[(UInt, UInt)]) = (taskCode, Seq(taskInst -> commitCode))
 }
@@ -362,8 +363,7 @@ object Decode {
   private val taskInst   = new TaskInst().getWidth
   private val commitCode = new CommitCode().getWidth
 
-  def decode(chi: ChiInst, state: StateInst, task: TaskInst, secTask: TaskInst)(implicit p: Parameters, s: SourceInfo) = {
-
+  def parse = {
     val chiInstVec      = WireInit(VecInit(Seq.fill(l_ci) { 0.U(chiInst.W) }))
     val stateInstVec2   = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { 0.U(stateInst.W) }) }))
     val taskCodeVec2    = WireInit(VecInit(Seq.fill(l_ci) { VecInit(Seq.fill(l_si) { 0.U(taskCode.W)  }) }))
@@ -374,113 +374,134 @@ object Decode {
 
     val table = Read_LAN_DCT_DMT.table ++ Dataless_LAN.table ++ Write_LAN.table
 
-    table.zipWithIndex.foreach {
-      case(t0, i) =>
+    table.zipWithIndex.foreach { case(t0, i) =>
+      // require
+      require(t0._1.getWidth == chiInst, s"($i) Width [${t0._1.getWidth}] =/= ChiInst Width [$chiInst]")
+      // connect
+      chiInstVec(i) := t0._1
+      t0._2.zipWithIndex.foreach { case(t1, j) =>
         // require
-        require(t0._1.getWidth == chiInst, s"($i) Width [${t0._1.getWidth}] =/= ChiInst Width [$chiInst]")
+        require(t1._1.getWidth    == stateInst, s"($i, $j) Width [${t1._1.getWidth}] =/= StateInst Width [$stateInst]")
+        require(t1._2._1.getWidth == taskCode,  s"($i, $j) Width [${t1._2._1.getWidth}] =/= TaskCode Width [$taskCode]")
         // connect
-        chiInstVec(i) := t0._1
-        t0._2.zipWithIndex.foreach {
-          case(t1, j) =>
+        stateInstVec2(i)(j) := t1._1
+        taskCodeVec2(i)(j)  := t1._2._1
+        t1._2._2.zipWithIndex.foreach { case(t2, k) =>
+          // require
+          require(t2._1.getWidth    == taskInst, s"($i, $j, $k) Width [${t2._1.getWidth}] =/= TaskInst Width [$taskInst]")
+          require(t2._2._1.getWidth == taskCode, s"($i, $j, $k) Width [${t2._2._1.getWidth}] =/= SecTaskCode Width [$taskCode]")
+          // connect
+          taskInstVec3(i)(j)(k) := t2._1
+          secCodeVec3(i)(j)(k)  := t2._2._1
+          t2._2._2.zipWithIndex.foreach { case(t3, l) =>
             // require
-            require(t1._1.getWidth    == stateInst, s"($i, $j) Width [${t1._1.getWidth}] =/= StateInst Width [$stateInst]")
-            require(t1._2._1.getWidth == taskCode,  s"($i, $j) Width [${t1._2._1.getWidth}] =/= TaskCode Width [$taskCode]")
+            require(t3._1.getWidth == taskInst,   s"($i, $j, $k, $l) Width [${t3._1.getWidth}] =/= SecTaskInst Width [$taskInst]")
+            require(t3._2.getWidth == commitCode, s"($i, $j, $k, $l) Width [${t3._2.getWidth}] =/= CommitCode Width [$commitCode]")
             // connect
-            stateInstVec2(i)(j) := t1._1
-            taskCodeVec2(i)(j)  := t1._2._1
-            t1._2._2.zipWithIndex.foreach {
-              case(t2, k) =>
-                // require
-                require(t2._1.getWidth    == taskInst, s"($i, $j, $k) Width [${t2._1.getWidth}] =/= TaskInst Width [$taskInst]")
-                require(t2._2._1.getWidth == taskCode, s"($i, $j, $k) Width [${t2._2._1.getWidth}] =/= SecTaskCode Width [$taskCode]")
-                // connect
-                taskInstVec3(i)(j)(k) := t2._1
-                secCodeVec3(i)(j)(k)  := t2._2._1
-                t2._2._2.zipWithIndex.foreach {
-                  case(t3, l) =>
-                    // require
-                    require(t3._1.getWidth == taskInst,   s"($i, $j, $k, $l) Width [${t3._1.getWidth}] =/= SecTaskInst Width [$taskInst]")
-                    require(t3._2.getWidth == commitCode, s"($i, $j, $k, $l) Width [${t3._2.getWidth}] =/= CommitCode Width [$commitCode]")
-                    // connect
-                    secInstVec4(i)(j)(k)(l)     := t3._1
-                    commitCodeVec4(i)(j)(k)(l)  := t3._2
-                }
-            }
+            secInstVec4(i)(j)(k)(l)     := t3._1
+            commitCodeVec4(i)(j)(k)(l)  := t3._2
+          }
         }
+      }
     }
-
-    // First Input ChiInst
-    val stateInstVec_0    = ParallelLookUp(chi.asUInt, chiInstVec.zip(stateInstVec2))
-    val taskCodeVec_0     = ParallelLookUp(chi.asUInt, chiInstVec.zip(taskCodeVec2))
-
-    val taskInstVec2_0    = ParallelLookUp(chi.asUInt, chiInstVec.zip(taskInstVec3))
-    val secCodeVec2_0     = ParallelLookUp(chi.asUInt, chiInstVec.zip(secCodeVec3))
-
-    val secInstVec3_0     = ParallelLookUp(chi.asUInt, chiInstVec.zip(secInstVec4))
-    val cmtCodeVec3_0     = ParallelLookUp(chi.asUInt, chiInstVec.zip(commitCodeVec4))
-    val cmtCodeVec_0      = cmtCodeVec3_0.map(_.head.head)
-
-    // Second Input StateInst
-    val taskCode_1        = ParallelLookUp(state.asUInt, stateInstVec_0.zip(taskCodeVec_0))
-
-    val taskInstVec_1     = ParallelLookUp(state.asUInt, stateInstVec_0.zip(taskInstVec2_0))
-    val secCodeVec_1      = ParallelLookUp(state.asUInt, stateInstVec_0.zip(secCodeVec2_0))
-
-    val secInstVec2_1     = ParallelLookUp(state.asUInt, stateInstVec_0.zip(secInstVec3_0))
-    val cmtCodeVec2_1     = ParallelLookUp(state.asUInt, stateInstVec_0.zip(cmtCodeVec3_0))
-
-    // Third Input TaskInst
-    val secCode_2         = ParallelLookUp(task.asUInt, taskInstVec_1.zip(secCodeVec_1))
-
-    val secInstVec_2      = ParallelLookUp(task.asUInt, taskInstVec_1.zip(secInstVec2_1))
-    val cmtCodeVec_2      = ParallelLookUp(task.asUInt, taskInstVec_1.zip(cmtCodeVec2_1))
-
-    // Fourth Input SecTaskInst
-    val cmtCode_3         = ParallelLookUp(secTask.asUInt, secInstVec_2.zip(cmtCodeVec_2))
-
-
-    // Result
-    val taskRes = taskCode_1.asTypeOf(new TaskCode())
-    val secRes  = secCode_2.asTypeOf(new TaskCode())
-    val cmtRes  = cmtCode_3.asTypeOf(new CommitCode())
-
-    // HardwareAssertion valid
-    HardwareAssertion.withEn(chi.valid & state.valid & task.valid, secTask.valid, cf"When SecTaskInst is valid, ChiInst[${chi.valid}] StateInst[${state.valid}] TaskInst[${task.valid}] should be valid")
-    HardwareAssertion.withEn(chi.valid & state.valid,  task.valid, cf"When TaskInst is valid,  ChiInst[${chi.valid}] StateInst[${state.valid}] should be valid")
-    HardwareAssertion.withEn(chi.valid,  state.valid, cf"When StateInst is valid, ChiInst[${chi.valid}] should be valid")
-    // HardwareAssertion result
-    // chiInstVecCf
-    var chiInstVecCf = cf""
-    chiInstVec.zipWithIndex.foreach { case(inst, i) =>
-      chiInstVecCf = chiInstVecCf + cf"[$i] -> [${inst.asTypeOf(new ChiInst)}]\n"
-    }
-    // stateInstVecCf
-    var stateInstVecCf = cf""
-    stateInstVec_0.zipWithIndex.foreach { case (inst, i) =>
-      stateInstVecCf = stateInstVecCf + cf"[$i] -> [${inst.asTypeOf(new StateInst)}]\n"
-    }
-    // taskInstVecCf
-    var taskInstVecCf = cf""
-    taskInstVec_1.zipWithIndex.foreach { case (inst, i) =>
-      taskInstVecCf = taskInstVecCf + cf"[$i] -> [${inst.asTypeOf(new TaskInst)}]\n"
-    }
-    // secInstVecCf
-    var secInstVecCf = cf""
-    secInstVec_2.zipWithIndex.foreach { case (inst, i) =>
-      secInstVecCf = secInstVecCf + cf"[$i] -> [${inst.asTypeOf(new TaskInst)}]\n"
-    }
-    HardwareAssertion.withEn(PopCount(Cat(chiInstVec.map(_.asUInt === chi.asUInt))) === 1.U,       chi.valid,
-      cf"\n\nDECODE [ChiInst] ERROR\n\nChiInst:\n$chi\n\nAll Legal ChiInsts:\n" + chiInstVecCf + cf"\n")
-    HardwareAssertion.withEn(PopCount(Cat(stateInstVec_0.map(_.asUInt === state.asUInt))) === 1.U, state.valid,
-      cf"\n\nDECODE [StateInst] ERROR\n\nChiInst:\n$chi\nStateInst Invalid:\n$state\n\nAll Legal StateInsts:\n" + stateInstVecCf + cf"\n")
-    HardwareAssertion.withEn(PopCount(Cat(taskInstVec_1.map(_.asUInt === task.asUInt))) === 1.U,   task.valid,
-      cf"\n\nDECODE [TaskInst] ERROR\n\nChiInst:\n$chi\nStateInst:\n$state\nTaskInst:\n$task\n\nAll Legal TaskInsts:\n" + taskInstVecCf + cf"\n")
-    HardwareAssertion.withEn(PopCount(Cat(secInstVec_2.map(_.asUInt === secTask.asUInt))) === 1.U, secTask.valid,
-      cf"\n\nDECODE [SecTaskInst] ERROR\n\nChiInst:\n$chi\nStateInst:\n$state\nTaskInst:\n$task\nSecond TaskInst:\n$secTask\n\nAll Legal SecTaskInsts:\n" + secInstVecCf + cf"\n")
-
-    // Return
-    ((stateInstVec_0.map(_.asTypeOf(new StateInst)), taskCodeVec_0.map(_.asTypeOf(new TaskCode)), cmtCodeVec_0.map(_.asTypeOf(new CommitCode))), (taskRes, secRes, cmtRes))
+    ((chiInstVec, stateInstVec2, taskInstVec3, secInstVec4), (taskCodeVec2, secCodeVec3, commitCodeVec4))
   }
 
-  def decode(chi: ChiInst)(implicit p: Parameters, s: SourceInfo):(Seq[StateInst], Seq[TaskCode], Seq[CommitCode]) = decode(chi, 0.U.asTypeOf(new StateInst), 0.U.asTypeOf(new TaskInst), 0.U.asTypeOf(new TaskInst))._1
+  def decode(instType: String, decList:MixedVec[UInt], inst: UInt, idx: UInt = 0.U)(implicit p: Parameters, s: SourceInfo): UInt = {
+
+    require(decList.length == 4)
+
+    require(instType == "chi" | instType == "state" | instType == "task" | instType == "secTask")
+
+    val (chiInstVec, stateInstVec2, taskInstVec3, secInstVec4) = parse._1
+
+    /*
+     * ChiInst
+     */
+    if(instType == "chi") {
+      require(inst.getWidth == chiInst)
+      var chiInstVecCf    = cf""
+      val _chi            = inst.asTypeOf(new ChiInst)
+      // chiInstVecCf
+      chiInstVec.zipWithIndex.foreach { case (inst, i) => chiInstVecCf = chiInstVecCf + cf"[$i] -> [${inst.asTypeOf(new ChiInst)}]\n" }
+      // HAssert
+      HAssert.withEn(PopCount(Cat(chiInstVec.map(_.asUInt === inst))) === 1.U, _chi.valid,
+        cf"\n\nDECODE [ChiInst] ERROR In Decode\n\nChiInst:\n${_chi}\n\nAll Legal ChiInsts:\n" + chiInstVecCf + cf"\n")
+      // get index
+      PriorityEncoder(chiInstVec.map(_ === inst))
+    /*
+     * StateInst
+     */
+    } else if(instType == "state") {
+      require(inst.getWidth == stateInst)
+      var stateInstVecCf  = cf""
+      val stateInstVec    = stateInstVec2(decList(0))
+      val oriChi          = chiInstVec(decList(0)).asTypeOf(new ChiInst)
+      val _state          = inst.asTypeOf(new StateInst)
+      // stateInstVecCf
+      stateInstVec.zipWithIndex.foreach { case (inst, i) => stateInstVecCf = stateInstVecCf + cf"[$i] -> [${inst.asTypeOf(new StateInst)}]\n" }
+      // HAssert
+      HAssert.withEn(PopCount(Cat(stateInstVec.map(_.asUInt === inst))) === 1.U, _state.valid,
+        cf"\n\nDECODE [StateInst] ERROR In Decode\n\nChiInst:\n$oriChi\nStateInst Invalid:\n${_state}\n\nAll Legal StateInsts:\n" + stateInstVecCf + cf"\n")
+      // get index
+      PriorityEncoder(stateInstVec.map(_ === inst))
+    /*
+     * TaskInst
+     */
+    } else if(instType == "task") {
+      var taskInstVecCf   = cf""
+      val taskInstVec     = taskInstVec3(decList(0))(decList(1))
+      val oriChi          = chiInstVec(decList(0)).asTypeOf(new ChiInst)
+      val oriState        = stateInstVec2(decList(0))(decList(1)).asTypeOf(new StateInst)
+      val _task           = inst.asTypeOf(new TaskInst)
+      // taskInstVecCf
+      taskInstVec.zipWithIndex.foreach { case (inst, i) => taskInstVecCf = taskInstVecCf + cf"[$i] -> [${inst.asTypeOf(new TaskInst)}]\n" }
+      // HAssert
+      HAssert.withEn(PopCount(Cat(taskInstVec.map(_.asUInt === inst))) === 1.U, _task.valid,
+        cf"\n\nDECODE [TaskInst] ERROR In Commit[$idx]\n\nChiInst:\n$oriChi\nStateInst:\n$oriState\nTaskInst:\n${_task}\n\nAll Legal TaskInsts:\n" + taskInstVecCf + cf"\n")
+      // get index
+      PriorityEncoder(taskInstVec.map(_ === inst))
+    /*
+     * Second TaskInst
+     */
+    } else {
+      require(inst.getWidth == taskInst)
+      var secInstVecCf    = cf""
+      val secTaskInstVec  = secInstVec4(decList(0))(decList(1))(decList(2))
+      val oriChi          = chiInstVec(decList(0)).asTypeOf(new ChiInst)
+      val oriState        = stateInstVec2(decList(0))(decList(1)).asTypeOf(new StateInst)
+      val oriTask         = taskInstVec3(decList(0))(decList(1))(decList(2)).asTypeOf(new TaskInst)
+      val _secTask        = inst.asTypeOf(new TaskInst)
+      // taskInstVecCf
+      secTaskInstVec.zipWithIndex.foreach { case (inst, i) => secInstVecCf = secInstVecCf + cf"[$i] -> [${inst.asTypeOf(new TaskInst)}]\n" }
+      // HAssert
+      HAssert.withEn(PopCount(Cat(secTaskInstVec.map(_.asUInt === inst))) === 1.U, _secTask.valid,
+        cf"\n\nDECODE [SecTaskInst] ERROR In Commit[$idx]\n\nChiInst:\n$oriChi\nStateInst:\n$oriState\nTaskInst:\n$oriTask\nSecond TaskInst:\n${_secTask}\n\nAll Legal SecTaskInsts:\n" + secInstVecCf + cf"\n")
+      // get index
+      PriorityEncoder(secTaskInstVec.map(_ === inst))
+    }
+  }
+}
+
+// Get Decode Result
+class GetDecRes(implicit val p: Parameters) extends Module {
+  val io = IO(new Bundle {
+    val list        = Flipped(Valid(MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W))))
+    val taskCode    = Output(new TaskCode)
+    val secTaskCode = Output(new TaskCode)
+    val commitCode  = Output(new CommitCode)
+  })
+  dontTouch(io)
+
+  val l = io.list.bits
+  val ((chiInstVec, stateInstVec2, taskInstVec3, secInstVec4), (taskCodeVec2, secCodeVec3, commitCodeVec4)) = Decode.parse
+
+  io.taskCode     := taskCodeVec2(l(0))(l(1)).asTypeOf(new TaskCode)
+  io.secTaskCode  := secCodeVec3(l(0))(l(1))(l(2)).asTypeOf(new TaskCode)
+  io.commitCode   := commitCodeVec4(l(0))(l(1))(l(2))(l(3)).asTypeOf(new CommitCode)
+
+  HAssert.withEn(chiInstVec(l(0)).asTypeOf(new ChiInst).valid,                      io.list.valid, "CHI Instruction access out of bounds")
+  HAssert.withEn(stateInstVec2(l(0))(l(1)).asTypeOf(new StateInst).valid,           io.list.valid, "State Instruction access out of bounds")
+  HAssert.withEn(taskInstVec3(l(0))(l(1))(l(2)).asTypeOf(new TaskInst).valid,       io.list.valid, "Task Instruction access out of bounds")
+  HAssert.withEn(secInstVec4(l(0))(l(1))(l(2))(l(3)).asTypeOf(new TaskInst).valid,  io.list.valid, "Second Task Instruction access out of bounds")
 }

@@ -45,7 +45,6 @@ class Backend(implicit p: Parameters) extends DJModule {
     val updPosTag       = Valid(new Addr with HasAddrValid with HasPackHnIdx)
     // Frontend -> Commit/TaskCM
     val cmtTaskVec      = Vec(djparam.nrDirBank, Flipped(Valid(new CommitTask with HasHnTxnID)))
-    val cmTaskVec       = Vec(nrTaskCM, Flipped(Decoupled(new CMTask)))
     // Update PoS Message
     val updPosNest      = Valid(new PosCanNest)
     val cleanPos        = Valid(new PosClean)
@@ -146,27 +145,27 @@ class Backend(implicit p: Parameters) extends DJModule {
   /*
    * Connect replCM
    */
-  snoopCM.io.alloc          <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.SNP), replCM.io.cmTaskVec(CMID.SNP), io.cmTaskVec(CMID.SNP)))
+  snoopCM.io.alloc          <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.SNP), replCM.io.cmTaskVec(CMID.SNP)))
   snoopCM.io.rxRsp          := io.rxRsp
   snoopCM.io.rxDat          := io.rxDat
 
   /*
    * Connect writeCM
    */
-  writeCM.io.alloc          <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.WRI), replCM.io.cmTaskVec(CMID.WRI), io.cmTaskVec(CMID.WRI)))
+  writeCM.io.alloc          <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.WRI), replCM.io.cmTaskVec(CMID.WRI)))
   writeCM.io.rxRsp          := io.rxRsp
   writeCM.io.dataResp       := io.dataResp
 
   /*
    * Connect readCM
    */
-  readCM.io.alloc           <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.READ), io.cmTaskVec(CMID.READ)))
+  readCM.io.alloc           <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.READ)))
   readCM.io.rxDat           := io.rxDat
 
   /*
    * Connect datalessCM
    */
-  datalessCM.io.alloc       <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.DL), io.cmTaskVec(CMID.DL)))
+  datalessCM.io.alloc       <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.DL)))
   datalessCM.io.rxRsp       := io.rxRsp
 
   /*

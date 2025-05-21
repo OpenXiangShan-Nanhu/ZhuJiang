@@ -19,7 +19,7 @@ class Directory(implicit p: Parameters) extends DJModule {
     // Read from frontends
     val readVec     = Vec(djparam.nrDirBank, Flipped(Decoupled(new Addr with HasPackHnIdx)))
     // Resp to frontends
-    val rRespVec    = Vec(djparam.nrDirBank, Valid(new PackDirMsg))
+    val rRespVec    = Vec(djparam.nrDirBank, Valid(new DirMsg))
     // Write From backend
     val write       = Flipped(Decoupled(new DJBundle {
       val llc       = Valid(new DirEntry("llc") with HasPackHnIdx)
@@ -83,9 +83,9 @@ class Directory(implicit p: Parameters) extends DJModule {
    * Connect IO
    */
   // Read Resp
-  io.rRespVec.map(_.valid).zip(llcs.map(_.io.resp)).foreach        { case(a, b) => a := b.valid }
-  io.rRespVec.map(_.bits.dir.llc).zip(llcs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
-  io.rRespVec.map(_.bits.dir.sf ).zip( sfs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
+  io.rRespVec.map(_.valid).zip(llcs.map(_.io.resp)).foreach    { case(a, b) => a := b.valid }
+  io.rRespVec.map(_.bits.llc).zip(llcs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
+  io.rRespVec.map(_.bits.sf ).zip( sfs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
 
   // Store Write LLC Resp DirBank
   wriLLCBankPipe.io.enq.valid := io.write.fire & io.write.bits.llc.valid & !io.write.bits.llc.bits.hit

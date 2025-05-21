@@ -30,10 +30,9 @@ class Frontend(implicit p: Parameters) extends DJModule {
     val fastData_s3   = Decoupled(new DataTask)
     // DIR Read/Resp
     val readDir_s1    = Decoupled(new Addr with HasPackHnIdx)
-    val respDir_s3    = Flipped(Valid(new PackDirMsg))
+    val respDir_s3    = Flipped(Valid(new DirMsg))
     // To Backend
     val cmtTask_s3    = Valid(new CommitTask with HasHnTxnID)
-    val cmTaskVec     = Vec(nrTaskCM, Decoupled(new CMTask))
     // Get addr from PoS
     val getAddrVec    = Vec(3, Flipped(new GetAddr())) // txReq + txSnp + writeDir
     // Update PoS Message
@@ -57,18 +56,16 @@ class Frontend(implicit p: Parameters) extends DJModule {
   val req2Task    = Module(new ReqToChiTask())
   val snp2Task    = Module(new SnpToChiTask())
   // S0
+//  val hprTaskBuf  = Module(new TaskBuffer(nrHprTaskBuf, sort = true))
   val reqTaskBuf  = Module(new TaskBuffer(nrReqTaskBuf, sort = true))
   val snpTaskBuf  = Module(new TaskBuffer(nrSnpTaskBuf, sort = false))
   // S1
   val posTable    = Module(new PosTable())
   val block       = Module(new Block())
   // S2: Wait Directory Response
-  val shiftReg_s2 = RegInit(0.U.asTypeOf(new Shift(readDirLatency-1))) // Recording task valid number in S2
   val pipe_s2     = Module(new Pipe(chiselTypeOf(block.io.task_s1.bits), readDirLatency-1))
   // S3: Receive DirResp and Decode
   val decode      = Module(new Decode())
-  // S4: Issue Task to Backend
-  val issue       = Module(new Issue())
 
   /*
    * Connect
@@ -79,7 +76,6 @@ class Frontend(implicit p: Parameters) extends DJModule {
   posTable.io.config        := io.config
   block.io.config           := io.config
   decode.io.config          := io.config
-  issue.io.config           := io.config
   // dirBank
   posTable.io.dirBank       := io.dirBank
 
@@ -92,7 +88,6 @@ class Frontend(implicit p: Parameters) extends DJModule {
   io.respComp_s3            := decode.io.respComp_s3
   io.fastData_s3            <> decode.io.fastData_s3
   io.cmtTask_s3             := decode.io.cmtTask_s3
-  io.cmTaskVec              <> issue.io.cmTaskVec
   io.working                := reqTaskBuf.io.working | snpTaskBuf.io.working | posTable.io.working
 
   // req2Task
@@ -134,22 +129,15 @@ class Frontend(implicit p: Parameters) extends DJModule {
   block.io.chiTask_s0       := fastArb(Seq(snpTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0))
   block.io.posBlock_s1      := posTable.io.block_s1
   block.io.hnIdx_s1         := posTable.io.hnIdx_s1
-  block.io.alrUseBuf        := shiftReg_s2.s.orR +& decode.io.cmtTask_s3.valid + issue.io.alrUseBuf
-  HardwareAssertion((shiftReg_s2.s.orR +& decode.io.cmtTask_s3.valid + issue.io.alrUseBuf) <= nrIssueBuf.U)
-  pipe_s2.io.enq
 
   // buffer [S2]
   pipe_s2.io.enq.valid      := block.io.task_s1.valid
   pipe_s2.io.enq.bits       := block.io.task_s1.bits
-  shiftReg_s2.input(block.io.task_s1.valid)
 
   // decode [S3]
   decode.io.task_s2.valid   := pipe_s2.io.deq.valid
   decode.io.task_s2.bits    := pipe_s2.io.deq.bits
   decode.io.respDir_s3      := io.respDir_s3
-
-  // issue [S4]
-  issue.io.cmTask_s3        := decode.io.cmTask_s3
 
   /*
    * HardwareAssertion placePipe
