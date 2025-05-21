@@ -19,7 +19,7 @@ trait HasDataOp { this: Bundle =>
   // flag
   // if set repl, dont care other flag or operation
   val reqs      = Bool() // Request DataCM and DataBuffer
-  val repl      = Bool() // Replace, exchanging data between ata storage and data buffer
+  val repl      = Bool() // Replace, exchanging data between data storage and data buffer
   // operation (need resp to Backend when all done)
   // If both read and save are true, they will be executed concurrently to complete the cache line replacement operation.
   val read      = Bool() // data storage  -> data buffer
