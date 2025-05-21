@@ -334,6 +334,7 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   rnfRxDat.bits := Mux(djTxDatToRNF, djTxDatFlitWire, snTxDatFlitWire)
   snRxDat.valid := djTxDatToSN
   snRxDat.bits := dj.io.lan.tx.data.get.bits
+  djTxDatFlitWire.SrcID := djNodeId.U
   djTxDatFlitWire.HomeNID := djNodeId.U
   dj.io.lan.tx.data.get.ready := Mux(djTxDatToRNF, rnfRxDat.ready, snRxDat.ready)
   io.sn.tx.data.get.ready := rnfRxDat.ready && !djTxDatToRNF
