@@ -10,7 +10,7 @@ import dongjiang.bundle._
 import xs.utils.debug._
 import xs.utils.queue.FastQueue
 import chisel3.experimental.BundleLiterals._
-import dongjiang.backend.ReplHnTxnID
+import dongjiang.backend.CutHnTxnID
 
 // ----------------------------------------------------------------------------------------------------- //
 // -------------------------------------------- DBID Pool ---------------------------------------------- //
@@ -101,7 +101,7 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
     val req         = Flipped(Decoupled(new HnTxnID with HasDataVec))
     val release     = Flipped(Valid(new HnTxnID with HasDataVec))
     val getDBIDVec  = Vec(5, Flipped(new GetDBID))
-    val replHnTxnID = Flipped(Valid(new ReplHnTxnID))
+    val cutHnTxnID  = Flipped(Valid(new CutHnTxnID))
   })
 
   /*
@@ -112,8 +112,8 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
   val validRegVec2  = RegInit(VecInit(Seq.fill(djparam.nrPoS) { VecInit(false.B, false.B) })) // valid is use for assert
   val reqId         = io.req.bits.hnTxnID
   val relId         = io.release.bits.hnTxnID
-  val newReplId     = io.replHnTxnID.bits.next
-  val oldReplId     = io.replHnTxnID.bits.before
+  val newReplId     = io.cutHnTxnID.bits.next
+  val oldReplId     = io.cutHnTxnID.bits.before
 
   /*
    * Receive req
@@ -127,7 +127,7 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
   // Get dbid next
   val dbidNextVec2    = WireInit(dbidRegVec2)
   dbidNextVec2.zipWithIndex.foreach { case(vec2, i) =>
-    val replHit = io.replHnTxnID.fire & newReplId === i.U
+    val replHit = io.cutHnTxnID.fire & newReplId === i.U
     val reqHit  = io.req.fire         & reqId === i.U
     // Replace dbid in reg
     when(replHit) {
@@ -141,7 +141,7 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
     HAssert(!(replHit & reqHit))
   }
   // Modify dbid
-  when(io.req.valid | io.replHnTxnID.valid) {
+  when(io.req.valid | io.cutHnTxnID.valid) {
     dbidRegVec2 := dbidNextVec2
   }
   // HAssert
@@ -164,8 +164,8 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
   validRegVec2.zipWithIndex.foreach { case(v, i) =>
     val reqHit  = io.req.fire         & reqId === i.U
     val relHit  = io.release.fire     & relId === i.U
-    val newHit  = io.replHnTxnID.fire & newReplId === i.U
-    val oldHit  = io.replHnTxnID.fire & oldReplId === i.U
+    val newHit  = io.cutHnTxnID.fire & newReplId === i.U
+    val oldHit  = io.cutHnTxnID.fire & oldReplId === i.U
     // set valid
     when(reqHit | newHit) {
       v(0) := Mux(reqHit, io.req.bits.dataVec(0), validRegVec2(oldReplId)(0))
@@ -184,7 +184,7 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
     HAssert(PopCount(Seq(reqHit, relHit, newHit, oldHit)) <= 1.U)
 
   }
-  HAssert.withEn(validRegVec2(oldReplId).asUInt.orR, io.replHnTxnID.fire)
+  HAssert.withEn(validRegVec2(oldReplId).asUInt.orR, io.cutHnTxnID.fire)
 
   /*
    * Get dbid from reg

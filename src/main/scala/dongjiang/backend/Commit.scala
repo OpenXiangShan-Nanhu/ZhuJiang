@@ -332,11 +332,11 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   flagDec.chi.w_ack       := flagReg.chi.w_ack & !compAckHit
   // HAssert
   HAssert.withEn(flagReg.intl.w.receive, recHit)
-  HAssert.withEn(taskReg.chi.isWrite, taskCodeDec.waitRecDone)
-  HAssert.withEn(!(io.alloc.bits.alr.cleanDB &  io.alloc.bits.alr.sData), io.alloc.valid)
+  HAssert.withEn(taskReg.chi.isWrite, valid & taskCodeDec.waitRecDone)
+  HAssert.withEn(!(io.alloc.bits.alr.cleanDB & io.alloc.bits.alr.sData), io.alloc.valid)
   HAssert.withEn(io.alloc.bits.alr.reqs, io.alloc.valid & (io.alloc.bits.alr.cleanDB | io.alloc.bits.alr.sData))
-  HAssert.withEn(fstCode.waitRecDone, flagReg.state === SETFLAG0 & taskReg.alr.cleanDB)
-  HAssert.withEn(cmtCodeDec.dataOp.send, cmtCodeDec.sendResp & cmtCodeDec.channel =/= ChiChannel.RSP)
+  HAssert.withEn(fstCode.waitRecDone, valid & flagReg.state === SETFLAG0 & taskReg.alr.cleanDB)
+  HAssert.withEn(cmtCodeDec.dataOp.send, valid & cmtCodeDec.sendResp & cmtCodeDec.channel =/= ChiChannel.RSP)
 
   /*
    * Get next flag
@@ -419,7 +419,6 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    */
   when(allocHit) {
     taskNext          := io.alloc.bits
-    HAssert(flagReg.state === FREE)
   }.otherwise {
     taskNext          := taskReg
     taskNext.decList  := decListNext

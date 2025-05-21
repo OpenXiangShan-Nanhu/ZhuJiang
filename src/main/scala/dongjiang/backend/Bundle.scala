@@ -52,8 +52,8 @@ class ReqPoS(implicit p: Parameters) extends DJBundle {
   val resp  = Input(new HnTxnID)
 }
 
-// ReplaceCM replace HnTxnID
-class ReplHnTxnID(implicit p: Parameters) extends DJBundle {
+// Cut before to next in DataBlock
+class CutHnTxnID(implicit p: Parameters) extends DJBundle {
   val before  = UInt(hnTxnIDBits.W)
   val next    = UInt(hnTxnIDBits.W)
 }

@@ -54,7 +54,7 @@ class Backend(implicit p: Parameters) extends DJModule {
     val fastResp        = Flipped(Decoupled(new FastResp))
     val respCompVec     = Vec(djparam.nrDirBank, Flipped(Valid(new RespComp)))
     // Send Task To DB
-    val replHnTxnID     = Valid(new ReplHnTxnID)
+    val cutHnTxnID      = Valid(new CutHnTxnID)
     val reqDB           = Decoupled(new HnTxnID with HasDataVec)
     val dataTask        = Decoupled(new DataTask)
     val dataResp        = Flipped(Valid(new HnTxnID))
@@ -111,7 +111,7 @@ class Backend(implicit p: Parameters) extends DJModule {
   /*
    * Connect To DataBlock IO
    */
-  io.replHnTxnID            := replCM.io.replHnTxnID
+  io.cutHnTxnID             := replCM.io.cutHnTxnID
   io.reqDB                  <> fastRRArb(Seq(snoopCM.io.reqDB, readCM.io.reqDB, receiveCM.io.reqDB))
   io.dataTask               <> fastRRArb(Seq(commit.io.dataTask, replCM.io.dataTask, writeCM.io.dataTask))
 

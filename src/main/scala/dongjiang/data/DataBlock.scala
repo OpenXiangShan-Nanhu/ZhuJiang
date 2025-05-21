@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.ReplHnTxnID
+import dongjiang.backend.CutHnTxnID
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
@@ -19,7 +19,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
     val txDat       = Decoupled(new DataFlit)
     val rxDat       = Flipped(Decoupled(new DataFlit)) // Only use rxDat.Data/DataID/BE/TxnID in DataBlock
     // Task From Frontend or Backend
-    val replHnTxnID = Flipped(Valid(new ReplHnTxnID)) // broadcast signal
+    val cutHnTxnID  = Flipped(Valid(new CutHnTxnID)) // broadcast signal
     val reqDB       = Flipped(Decoupled(new HnTxnID with HasDataVec))
     val task        = Flipped(Decoupled(new DataTask))
     val resp        = Valid(new HnTxnID)
@@ -71,7 +71,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
   /*
    * Connect dataCM
    */
-  dataCM.io.replHnTxnID         := io.replHnTxnID
+  dataCM.io.cutHnTxnID          := io.cutHnTxnID
   dataCM.io.reqDBIn             <> io.reqDB
   dataCM.io.task                <> io.task
   dataCM.io.txDataDCID          := datBuf.io.toCHI.bits.dcid
@@ -85,7 +85,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
    */
   dbidCtrl.io.req               <> dataCM.io.reqDBOut
   dbidCtrl.io.release           := dataCM.io.releaseDB
-  dbidCtrl.io.replHnTxnID       := io.replHnTxnID
+  dbidCtrl.io.cutHnTxnID        := io.cutHnTxnID
 
   /*
    * Connect datBuf

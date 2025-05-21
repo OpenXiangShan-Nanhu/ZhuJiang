@@ -238,7 +238,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   /*
    * Connect dataBlock
    */
-  dataBlock.io.replHnTxnID  := backend.io.replHnTxnID
+  dataBlock.io.cutHnTxnID   := backend.io.cutHnTxnID
   dataBlock.io.reqDB        <> fastRRArb(Seq(backend.io.reqDB) ++ frontends.map(_.io.reqDB_s1))
   val onlyCleanVec          = VecInit(frontends.map(_.io.fastData_s3).map(task => task.valid & task.bits.dataOp.onlyClean))
   val onlyCleanId           = PriorityEncoder(onlyCleanVec)
