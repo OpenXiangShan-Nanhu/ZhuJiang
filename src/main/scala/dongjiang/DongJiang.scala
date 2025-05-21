@@ -69,17 +69,17 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   val icnVec = Wire(MixedVec(hnNodeSeq.map(n => new DeviceIcnBundle(n))))
   icnVec.head <> io.lan
   icnVec.foreach(_.tx.debug.foreach(_ := DontCare))
-  icnVec.head.rx.req.get.bits  := setRx(io.lan.rx.req.get.bits.asTypeOf(new ReqFlit(false)), LAN)
-  icnVec.head.rx.resp.get.bits := setRx(io.lan.rx.resp.get.bits.asTypeOf(new RespFlit()), LAN)
-  icnVec.head.rx.data.get.bits := setRx(io.lan.rx.data.get.bits.asTypeOf(new DataFlit()), LAN)
-  icnVec.head.rx.hpr.get := DontCare
+  icnVec.head.rx.req.get.bits   := setRx(io.lan.rx.req.get.bits.asTypeOf(new ReqFlit(false)), LAN)
+  icnVec.head.rx.hpr.get.bits   := setRx(io.lan.rx.hpr.get.bits.asTypeOf(new ReqFlit(false)), LAN)
+  icnVec.head.rx.resp.get.bits  := setRx(io.lan.rx.resp.get.bits.asTypeOf(new RespFlit()), LAN)
+  icnVec.head.rx.data.get.bits  := setRx(io.lan.rx.data.get.bits.asTypeOf(new DataFlit()), LAN)
   if(hasBBN) {
     icnVec.last <> io.bbnOpt.get
     icnVec.last.rx.req.get.bits   := setRx(io.bbnOpt.get.rx.req.get.bits.asTypeOf(new ReqFlit(false)), BBN)
+    icnVec.last.rx.hpr.get.bits   := setRx(io.bbnOpt.get.rx.hpr.get.bits.asTypeOf(new ReqFlit(false)), BBN)
     icnVec.last.rx.snoop.get.bits := setRx(io.bbnOpt.get.rx.snoop.get.bits.asTypeOf(new SnoopFlit()), BBN)
     icnVec.last.rx.resp.get.bits  := setRx(io.bbnOpt.get.rx.resp.get.bits.asTypeOf(new RespFlit()), BBN)
     icnVec.last.rx.data.get.bits  := setRx(io.bbnOpt.get.rx.data.get.bits.asTypeOf(new DataFlit()), BBN)
-    icnVec.head.rx.hpr.get := DontCare
   }
 
   /*
@@ -154,6 +154,10 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   // [frontends].rxReq <-> [ChiXbar] <-> io.chi.rxReq
   chiXbar.io.rxReq.inVec.zip(icnVec.map(_.rx.req.get)).foreach { case(a, b) => connIcn(a, b) }
   chiXbar.io.rxReq.outVec.zip(frontends.map(_.io.rxReq)).foreach { case(a, b) => a <> b }
+
+  // [frontends].rxHpr <-> [ChiXbar] <-> io.chi.rxHpr
+  chiXbar.io.rxHpr.inVec.zip(icnVec.map(_.rx.hpr.get)).foreach { case(a, b) => connIcn(a, b) }
+  chiXbar.io.rxHpr.outVec.zip(frontends.map(_.io.rxHpr)).foreach { case(a, b) => a <> b }
 
   // [frontends].rxSnp <-> [ChiXbar] <-> io.chi.rxSnp
   if(hasBBN) {

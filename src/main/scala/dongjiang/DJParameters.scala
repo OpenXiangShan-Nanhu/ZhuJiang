@@ -19,6 +19,7 @@ case class DJParam(
                   openDCT:            Boolean = true,
                   // ------------------------ Frontend -------------------------- //
                   nrReqTaskBuf:       Int = 16,
+                  nrHprTaskBuf:       Int = 16,
                   nrSnpTaskBuf:       Int = 8,
                   nrPoS:              Int = 64, // The number of outstanding
                   // ------------------------ Memblock ----------------------- //
@@ -246,6 +247,7 @@ trait HasDJParam extends HasParseZJParam {
   require(MaskBits == zjParams.beBits)
 
   // Frontend(Per dirBank) and Directory Parameters
+  lazy val nrHprTaskBuf     = djparam.nrHprTaskBuf / djparam.nrDirBank
   lazy val nrReqTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
   lazy val nrSnpTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
   lazy val nrPoS            = djparam.nrPoS / djparam.nrDirBank

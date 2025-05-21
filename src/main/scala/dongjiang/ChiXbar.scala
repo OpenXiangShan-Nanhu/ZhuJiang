@@ -18,6 +18,11 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
       val inVec   = Vec(nrIcn, Flipped(Decoupled(new ReqFlit(false))))
       val outVec  = Vec(djparam.nrDirBank, Decoupled(new ReqFlit(false)))
     }
+    // rxReq
+    val rxHpr = new Bundle {
+      val inVec   = Vec(nrIcn, Flipped(Decoupled(new ReqFlit(false))))
+      val outVec  = Vec(djparam.nrDirBank, Decoupled(new ReqFlit(false)))
+    }
     // rxSnp
     val rxSnp = new Bundle {
       val in      = Flipped(Decoupled(new SnoopFlit()))
@@ -88,6 +93,9 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
 
   // rxReq
   rxRedir(io.rxReq.inVec, io.rxReq.outVec, io.rxReq.inVec.map(in => getDirBank(in.bits.Addr)))
+
+  // rxHpr
+  rxRedir(io.rxHpr.inVec, io.rxHpr.outVec, io.rxHpr.inVec.map(in => getDirBank(in.bits.Addr)))
 
   // rxSnp
   rxRedir(Seq(io.rxSnp.in), io.rxSnp.outVec, Seq(getDirBank(Cat(io.rxSnp.in.bits.Addr, 0.U(3.W)))))
