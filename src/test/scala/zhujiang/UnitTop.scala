@@ -151,7 +151,7 @@ object DongJiangTop extends App {
           sfSizeInB = 8 * 2 * 1024 / 4,
           nrReqTaskBuf = 4,
           nrSnpTaskBuf = 2,
-          nrPoS = 64,
+          nrPoS = 16,
           dataBufSizeInByte = 8 * 32,
           nrDSBank = 2,
           nrDirBank = 2,
