@@ -285,7 +285,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
       s := PriorityMux(Seq(
         (srcVec(i) & taskReg.commit.wriSRC) -> taskReg.commit.srcValid, // modify source state
         (snpVec(i) & taskReg.commit.wriSNP) -> taskReg.commit.snpValid, // modify snoopee state
-        true.B                              -> taskReg.dir.sf.metaVec(i).state
+        true.B                              -> (taskReg.dir.sf.metaVec(i).state & taskReg.dir.sf.hit)
       ))
   }
   // write llc bits
