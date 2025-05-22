@@ -59,7 +59,7 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
    * Receive read req
    */
   // Set ready ready
-  val hasFreetoCHI      = toDSQ.io.freeNum > rToCHIReg.asUInt
+  val hasFreetoCHI      = toCHIQ.io.freeNum > rToCHIReg.asUInt
   val hasFreetoDS       = toDSQ.io.freeNum > rToDSReg.asUInt
   io.readToCHI.ready    := hasFreetoCHI & !io.readToDS.valid // TODO: has risk here
   io.readToDS.ready     := hasFreetoDS
