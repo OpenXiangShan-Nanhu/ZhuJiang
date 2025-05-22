@@ -41,7 +41,7 @@ class Decode(implicit p: Parameters) extends DJModule {
    * Module Reg and Wire declaration
    */
   val decInit             = WireInit(0.U.asTypeOf(new PackDecList()))
-  val getDecRes           = Module(new GetDecRes())
+  val getDecRes           = GetDecRes()
   val validReg_s3         = RegNext(io.task_s2.valid)
   val taskReg_s3          = RegEnable(io.task_s2.bits, io.task_s2.valid)
   val stateInst_s3        = Wire(new StateInst())

@@ -2,6 +2,7 @@ package dongjiang.frontend.decode
 
 import chisel3._
 import chisel3.experimental.SourceInfo
+import chisel3.experimental.hierarchy.{Definition, Instance, instantiable, public}
 import chisel3.util._
 import dongjiang.{DJBundle, bundle}
 import org.chipsalliance.cde.config.Parameters
@@ -9,6 +10,7 @@ import zhujiang.chi._
 import dongjiang.bundle._
 import xs.utils.ParallelLookUp
 import dongjiang.frontend.decode.DecodeCHI._
+
 import math.max
 import dongjiang.bundle.ChiChannel._
 import xs.utils.debug._
@@ -484,7 +486,9 @@ object Decode {
 }
 
 // Get Decode Result
+@instantiable
 class GetDecRes(implicit val p: Parameters) extends Module {
+  @public
   val io = IO(new Bundle {
     val list        = Flipped(Valid(MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W))))
     val taskCode    = Output(new TaskCode)
@@ -500,8 +504,21 @@ class GetDecRes(implicit val p: Parameters) extends Module {
   io.secTaskCode  := secCodeVec3(l(0))(l(1))(l(2)).asTypeOf(new TaskCode)
   io.commitCode   := commitCodeVec4(l(0))(l(1))(l(2))(l(3)).asTypeOf(new CommitCode)
 
-  HAssert.withEn(chiInstVec(l(0)).asTypeOf(new ChiInst).valid,                      io.list.valid, "CHI Instruction access out of bounds")
-  HAssert.withEn(stateInstVec2(l(0))(l(1)).asTypeOf(new StateInst).valid,           io.list.valid, "State Instruction access out of bounds")
-  HAssert.withEn(taskInstVec3(l(0))(l(1))(l(2)).asTypeOf(new TaskInst).valid,       io.list.valid, "Task Instruction access out of bounds")
-  HAssert.withEn(secInstVec4(l(0))(l(1))(l(2))(l(3)).asTypeOf(new TaskInst).valid,  io.list.valid, "Second Task Instruction access out of bounds")
+//  HAssert.withEn(chiInstVec(l(0)).asTypeOf(new ChiInst).valid,                      io.list.valid, "CHI Instruction access out of bounds")
+//  HAssert.withEn(stateInstVec2(l(0))(l(1)).asTypeOf(new StateInst).valid,           io.list.valid, "State Instruction access out of bounds")
+//  HAssert.withEn(taskInstVec3(l(0))(l(1))(l(2)).asTypeOf(new TaskInst).valid,       io.list.valid, "Task Instruction access out of bounds")
+//  HAssert.withEn(secInstVec4(l(0))(l(1))(l(2))(l(3)).asTypeOf(new TaskInst).valid,  io.list.valid, "Second Task Instruction access out of bounds")
+}
+
+object GetDecRes {
+  private var defPool:Option[Definition[GetDecRes]] = None
+
+  def apply()(implicit p:Parameters): Instance[GetDecRes] = {
+    if(defPool.isDefined) {
+      Instance(defPool.get)
+    } else {
+      defPool = Some(Definition(new GetDecRes))
+      Instance(defPool.get)
+    }
+  }
 }

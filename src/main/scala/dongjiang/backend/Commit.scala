@@ -130,7 +130,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   /*
    * Get Decode Result
    */
-  val getDecRes           = Module(new GetDecRes())
+  val getDecRes           = GetDecRes()
   val fstCode             = getDecRes.io.taskCode
   val secCode             = getDecRes.io.secTaskCode
   val cmtCode             = getDecRes.io.commitCode
