@@ -45,7 +45,7 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
   ))
   SramPwrCtlBoring.addSink(datBuf.io.pwctl)
   // Mask and replace flag
-  val maskRegVec  = Reg(Vec(djparam.nrDataBuf, UInt(djparam.BeatByte.W)))
+  val maskRegVec  = RegInit(VecInit(Seq.fill(djparam.nrDataBuf) { 0.U(djparam.BeatByte.W) }))
   val replRegVec  = RegInit(VecInit(Seq.fill(djparam.nrDataBuf) { false.B }))
   // Reading Reg
   val rToCHIReg   = RegNext(io.readToCHI.fire, false.B) // Reading datBuf to CHI
