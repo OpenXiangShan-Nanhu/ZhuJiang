@@ -66,7 +66,7 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
 
   // Set datBuf read io
   datBuf.io.rreq.valid  := io.readToCHI.fire | io.readToDS.fire
-  datBuf.io.rreq.bits   := Mux(io.readToCHI.valid, io.readToCHI.bits.dbid, io.readToDS.bits.dbid)
+  datBuf.io.rreq.bits   := Mux(io.readToDS.valid, io.readToDS.bits.dbid, io.readToCHI.bits.dbid)
 
   // Set replace flag
   replRegVec.zipWithIndex.foreach { case(r, i) =>
