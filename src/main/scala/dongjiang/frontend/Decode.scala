@@ -97,7 +97,7 @@ class Decode(implicit p: Parameters) extends DJModule {
   val needCompDBIDResp                 = stateInst_s3.srcHit & !stateInst_s3.othHit & stateInst_s3.llcState === ChiState.I
   io.respComp_s3.valid                := validReg_s3 & taskReg_s3.chi.reqIs(WriteEvictOrEvict)
   io.respComp_s3.bits.hnTxnID         := taskReg_s3.hnIdx.getTxnID
-  io.respComp_s3.bits.comp            := needCompDBIDResp
+  io.respComp_s3.bits.comp            := !needCompDBIDResp
 
   // fastData
   respCompData_s3                     := cmtCode_s3.sendResp & cmtCode_s3.channel === ChiChannel.DAT & cmtCode_s3.commitOp === CompData // TODO: SnpRespData
