@@ -133,7 +133,7 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   /*
    * Modify Ctrl Machine Table
    */
-  val dirResVec = VecInit(io.respCompVec.map(r => r.fire & r.bits.hnTxnID === reg.rsp.DBID))
+  val dirResVec = VecInit(io.respCompVec.map(r => reg.isValid & r.fire & r.bits.hnTxnID === reg.rsp.DBID))
   val dirResId  = PriorityEncoder(dirResVec)
   val dirResHit = dirResVec.asUInt.orR
   HAssert(PopCount(dirResVec) <= 1.U)
