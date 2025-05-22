@@ -385,7 +385,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
       when(getAllDataResp)    { flagNext.state := SETFLAG0 }
     }
     is(SETFLAG0) {
-      when(true.B)            { flagNext.state := Mux(cmtCodeDec.valid , COMMIT, WAIT0) }
+      when(true.B)            { flagNext.state := Mux(fstCode.valid, WAIT0, COMMIT) }
     }
     is(WAIT0) {
       when(getAllCMResp)      { flagNext.state := TRDDEC }
@@ -394,7 +394,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
       when(io.decMes.fire)    { flagNext.state := SETFLAG1 }
     }
     is(SETFLAG1) {
-      when(true.B)            { flagNext.state := Mux(cmtCodeDec.valid , COMMIT, WAIT1) }
+      when(true.B)            { flagNext.state := Mux(secCode.valid & cmtCode.waitSecDone, WAIT1, COMMIT) }
     }
     is(WAIT1) {
       when(getAllCMResp)      { flagNext.state := FTHDEC }
