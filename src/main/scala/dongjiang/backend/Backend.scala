@@ -52,7 +52,7 @@ class Backend(implicit p: Parameters) extends DJModule {
     val unlock          = Valid(new PackHnIdx)
     // Frontend <> ReceiveCM
     val fastResp        = Flipped(Decoupled(new FastResp))
-    val respCompVec     = Vec(djparam.nrDirBank, Flipped(Valid(new RespComp)))
+    val recRespType     = Flipped(Decoupled(new RecRespType))
     // Send Task To DB
     val cutHnTxnID      = Valid(new CutHnTxnID)
     val reqDB           = Decoupled(new HnTxnID with HasDataVec)
@@ -173,11 +173,11 @@ class Backend(implicit p: Parameters) extends DJModule {
    */
   receiveCM.io.rxRsp        := io.rxRsp
   receiveCM.io.rxDat        := io.rxDat
-  receiveCM.io.respCompVec  := io.respCompVec
+  receiveCM.io.respType     <> io.recRespType
 
-  /**
-    * Connect fastResp
-    */
+  /*
+   * Connect fastResp
+   */
   receiveCM.io.alloc.valid  := io.fastResp.valid & io.fastResp.bits.rsp.Opcode =/= ReadReceipt
   respQueue.io.enq.valid    := io.fastResp.valid & io.fastResp.bits.rsp.Opcode === ReadReceipt
   receiveCM.io.alloc.bits   := io.fastResp.bits

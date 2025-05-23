@@ -227,10 +227,10 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    * Connect backend
    */
   backend.io.respDir        := directory.io.wResp
-  backend.io.fastResp       <> fastRRArb(frontends.map(_.io.fastResp_s1))
+  backend.io.fastResp       <> fastRRArb(frontends.map(_.io.fastResp))
+  backend.io.recRespType    <> fastRRArb(frontends.map(_.io.recRespType))
   backend.io.dataResp       := dataBlock.io.resp
   backend.io.cmtTaskVec.zip(frontends.map(_.io.cmtTask_s3)).foreach           { case(a, b) => a <> b }
-  backend.io.respCompVec.zip(frontends.map(_.io.respComp_s3)).foreach         { case(a, b) => a := b }
   backend.io.getAddrVec.zip(frontends.map(_.io.getAddrVec).transpose).foreach { case(a, b) =>
     a.result := VecInit(b.map(_.result))(a.hnIdx.dirBank)
   }

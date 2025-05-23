@@ -25,7 +25,7 @@ import chisel3.experimental.BundleLiterals._
 object RECSTATE {
   val width     = 3
   val FREE      = 0x0.U
-  val WAITRES   = 0x1.U // Wait Directory result
+  val WAITDIR   = 0x1.U // Wait Directory result
   val REQDB     = 0x2.U
   val SENDRSP   = 0x3.U
   val WAITDATA0 = 0x4.U
@@ -44,7 +44,7 @@ trait HasRecState { this: Bundle =>
 
   def isFree      = state === FREE
   def isValid     = !isFree
-  def isWaitRes   = state === WAITRES
+  def isWaitDir   = state === WAITDIR // Wait directory result to judge need send Comp or CompDBIDResp of WriteEvictOrEvict
   def isReqDB     = state === REQDB
   def isSendRsp   = state === SENDRSP
   def isWaitData0 = state === WAITDATA0
@@ -56,7 +56,8 @@ trait HasRecState { this: Bundle =>
 
 class FastResp(implicit p: Parameters) extends DJBundle with HasDataVec { val rsp = new RespFlit() }
 
-class RespComp(implicit p: Parameters) extends DJBundle with HasHnTxnID { val comp = Bool() }
+// ReceiveCM resp to CHI type(Comp/CompDBIDResp). Only use in WriteEvictOrEvict
+class RecRespType(implicit p: Parameters) extends DJBundle with HasHnTxnID { val dbid = Bool() }
 
 // ----------------------------------------------------------------------------------------------------- //
 // ----------------------------------------- Ctrl Machine Entry ---------------------------------------- //
@@ -69,7 +70,7 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
     val config      = new DJConfigIO()
     // Task
     val alloc       = Flipped(Decoupled(new FastResp))
-    val respCompVec = Vec(djparam.nrDirBank, Flipped(Valid(new RespComp))) // broadcast signal
+    val respType    = Flipped(Valid(new RecRespType)) // broadcast signal
     val resp        = Decoupled(new CMResp)
     // ReqDB
     val reqDB       = Decoupled(new HnTxnID with HasDataVec)
@@ -78,8 +79,9 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
     val rxRsp       = Flipped(Valid(new RespFlit()))
     val rxDat       = Flipped(Valid(new DataFlit()))
     // For Debug
-    val dbg         = Valid(new HnTxnID with HasRecState)
+    val state       = Valid(new HnTxnID with HasRecState)
   })
+  dontTouch(io.state)
 
   /*
    * Reg and Wire declaration
@@ -90,11 +92,11 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   val next  = WireInit(reg)
 
   /*
-   * Output for debug
+   * Output entry state
    */
-  io.dbg.valid        := reg.isValid
-  io.dbg.bits.state   := reg.state
-  io.dbg.bits.hnTxnID := reg.rsp.DBID
+  io.state.valid        := reg.isValid
+  io.state.bits.state   := reg.state
+  io.state.bits.hnTxnID := reg.rsp.DBID
 
   /*
    * Receive Task
@@ -133,18 +135,15 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   /*
    * Modify Ctrl Machine Table
    */
-  val dirResVec = VecInit(io.respCompVec.map(r => reg.isValid & r.fire & r.bits.hnTxnID === reg.rsp.DBID))
-  val dirResId  = PriorityEncoder(dirResVec)
-  val dirResHit = dirResVec.asUInt.orR
-  HAssert(PopCount(dirResVec) <= 1.U)
-  val rspHit    = reg.isValid & io.rxRsp.fire & io.rxRsp.bits.TxnID === reg.rsp.DBID & io.rxRsp.bits.Opcode === CompAck & reg.rsp.Opcode === Comp
-  val datHit    = reg.isValid & io.rxDat.fire & io.rxDat.bits.TxnID === reg.rsp.DBID & (io.rxDat.bits.Opcode === CopyBackWriteData | io.rxDat.bits.Opcode === NonCopyBackWriteData | io.rxDat.bits.Opcode === NCBWrDataCompAck)
+  val respTypeHit = reg.isValid & io.respType.fire & io.respType.bits.hnTxnID === reg.rsp.DBID
+  val rspHit      = reg.isValid & io.rxRsp.fire & io.rxRsp.bits.TxnID === reg.rsp.DBID & io.rxRsp.bits.Opcode === CompAck & reg.rsp.Opcode === Comp
+  val datHit      = reg.isValid & io.rxDat.fire & io.rxDat.bits.TxnID === reg.rsp.DBID & (io.rxDat.bits.Opcode === CopyBackWriteData | io.rxDat.bits.Opcode === NonCopyBackWriteData | io.rxDat.bits.Opcode === NCBWrDataCompAck)
   // Store Msg From Frontend
   when(io.alloc.fire) {
     next.rsp              := io.alloc.bits.rsp
     next.dataVec          := io.alloc.bits.dataVec
   // Modify to send CompDBIDResp
-  }.elsewhen(dirResHit & !io.respCompVec(dirResId).bits.comp) {
+  }.elsewhen(respTypeHit & io.respType.bits.dbid) {
     next.rsp.Opcode       := CompDBIDResp
   // Store Inst
   }.elsewhen(rspHit | datHit) {
@@ -157,10 +156,10 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   // Get Next State
   switch(reg.state) {
     is(FREE) {
-      when(io.alloc.fire) { next.state := Mux(io.alloc.bits.rsp.Opcode === Comp, WAITRES, SENDRSP) }
+      when(io.alloc.fire) { next.state := Mux(io.alloc.bits.rsp.Opcode === Comp, WAITDIR, SENDRSP) }
     }
-    is(WAITRES) {
-      when(dirResHit)     { next.state := Mux(io.respCompVec(dirResId).bits.comp, SENDRSP, REQDB) }
+    is(WAITDIR) {
+      when(respTypeHit)   { next.state := Mux(io.respType.bits.dbid, REQDB, SENDRSP) }
     }
     is(REQDB) {
       when(io.reqDB.fire) { next.state := SENDRSP }
@@ -186,7 +185,7 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
    * HAssert
    */
   HAssert.withEn(reg.isFree,      io.alloc.fire)
-  HAssert.withEn(reg.isWaitRes,   reg.isValid & dirResHit)
+  HAssert.withEn(reg.isWaitDir,   reg.isValid & respTypeHit)
   HAssert.withEn(reg.isReqDB,     reg.isValid & io.reqDB.fire)
   HAssert.withEn(reg.isSendRsp,   reg.isValid & io.txRsp.fire)
   HAssert.withEn(reg.isWaitData,  reg.isValid & datHit)
@@ -216,7 +215,7 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
     val config      = new DJConfigIO()
     // Task
     val alloc       = Flipped(Decoupled(new FastResp))
-    val respCompVec = Vec(djparam.nrDirBank, Flipped(Valid(new RespComp))) // broadcast signal
+    val respType    = Flipped(Decoupled(new RecRespType))
     val resp        = Decoupled(new CMResp)
     // ReqDB
     val reqDB       = Decoupled(new HnTxnID with HasDataVec)
@@ -227,18 +226,29 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
   })
 
   /*
-   * Module and Reg declaration
+   * Module declaration
    */
-  val entries = Seq.fill(nrReceiveCM) { Module(new ReceiveEntry()) }
-  val dbgVec  = VecInit(entries.map(_.io.dbg))
-  dontTouch(dbgVec)
+  val entries   = Seq.fill(nrReceiveCM) { Module(new ReceiveEntry()) }
+  val respTypeQ = Module(new FastQueue(new RecRespType, 2, false))
+
+  /*
+   * respTypeQ
+   */
+  val rtHitVec = VecInit(entries.map(_.io.state).map(s => s.valid & respTypeQ.io.deq.valid & s.bits.hnTxnID === respTypeQ.io.deq.bits.hnTxnID))
+  respTypeQ.io.enq <> io.respType
+  respTypeQ.io.deq.ready := rtHitVec.asUInt.orR
+  // HAssert
+  val waitDirVec = VecInit(entries.map(_.io.state.bits.state === WAITDIR))
+  val rtHitId    = PriorityEncoder(rtHitVec)
+  HAssert.withEn(waitDirVec(rtHitId), rtHitVec.asUInt.orR)
+  HAssert.withEn(PopCount(rtHitVec) <= 1.U, respTypeQ.io.deq.valid)
   
   /*
    * Connect CM <- IO
    */
   entries.foreach(_.io.config := io.config)
   Alloc(entries.map(_.io.alloc), io.alloc)
-  entries.foreach(_.io.respCompVec := io.respCompVec)
+  entries.foreach(_.io.respType := respTypeQ.io.deq)
   entries.foreach(_.io.rxRsp := io.rxRsp)
   entries.foreach(_.io.rxDat := io.rxDat)
 

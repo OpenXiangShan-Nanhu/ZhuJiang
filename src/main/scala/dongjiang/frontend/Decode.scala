@@ -8,8 +8,7 @@ import zhujiang.chi._
 import zhujiang.chi.ReqOpcode._
 import zhujiang.chi.DatOpcode._
 import dongjiang._
-import dongjiang.backend.{CMTask, CommitTask}
-import dongjiang.backend.RespComp
+import dongjiang.backend.{CMTask, CommitTask, RecRespType}
 import dongjiang.utils._
 import dongjiang.bundle._
 import dongjiang.directory._
@@ -24,16 +23,16 @@ class Decode(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // Configuration
-    val config      = new DJConfigIO()
+    val config          = new DJConfigIO()
     // From Block
-    val task_s2     = Flipped(Valid(new PackChi with HasAddr with HasPackHnIdx with HasAlready)) // TODO: no need addr
+    val task_s2         = Flipped(Valid(new PackChi with HasAddr with HasPackHnIdx with HasAlready)) // TODO: no need addr
     // From Directory
-    val respDir_s3  = Flipped(Valid(new DirMsg))
+    val respDir_s3      = Flipped(Valid(new DirMsg))
     // To Backend
-    val cmtTask_s3  = Valid(new CommitTask with HasHnTxnID)
-    val respComp_s3 = Valid(new RespComp)
+    val cmtTask_s3      = Valid(new CommitTask with HasHnTxnID)
+    val recRespType_s3  = Valid(new RecRespType)
     // To DataBlock
-    val fastData_s3 = Decoupled(new DataTask)
+    val fastData_s3     = Decoupled(new DataTask)
   })
   dontTouch(io)
 
@@ -92,12 +91,11 @@ class Decode(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(taskCode_s3.valid | cmtCode_s3.valid, validReg_s3)
 
   /*
-   * Send RespComp to ReceiveCM for WriteEvictOrEvict
+   * Send RespType to ReceiveCM for WriteEvictOrEvict
    */
-  val needCompDBIDResp                 = stateInst_s3.srcHit & !stateInst_s3.othHit & stateInst_s3.llcState === ChiState.I
-  io.respComp_s3.valid                := validReg_s3 & taskReg_s3.chi.reqIs(WriteEvictOrEvict)
-  io.respComp_s3.bits.hnTxnID         := taskReg_s3.hnIdx.getTxnID
-  io.respComp_s3.bits.comp            := !needCompDBIDResp
+  io.recRespType_s3.valid              := validReg_s3 & taskReg_s3.chi.reqIs(WriteEvictOrEvict)
+  io.recRespType_s3.bits.hnTxnID       := taskReg_s3.hnIdx.getTxnID
+  io.recRespType_s3.bits.dbid          := stateInst_s3.srcHit & !stateInst_s3.othHit & stateInst_s3.llcState === ChiState.I
 
   // fastData
   respCompData_s3                     := cmtCode_s3.sendResp & cmtCode_s3.channel === ChiChannel.DAT & cmtCode_s3.commitOp === CompData // TODO: SnpRespData

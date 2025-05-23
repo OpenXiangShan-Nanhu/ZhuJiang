@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.{CMTask, CommitTask, FastResp, ReqPoS, RespComp}
+import dongjiang.backend.{CMTask, CommitTask, FastResp, RecRespType, ReqPoS}
 import dongjiang.utils._
 import dongjiang.bundle._
 import dongjiang.data.DataTask
@@ -20,34 +20,34 @@ class Frontend(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // Configuration
-    val config        = new DJConfigIO()
-    val dirBank       = Input(UInt(dirBankBits.W))
+    val config          = new DJConfigIO()
+    val dirBank         = Input(UInt(dirBankBits.W))
     // CHI REQ/SNP
-    val rxReq         = Flipped(Decoupled(new ReqFlit(false)))
-    val rxHpr         = Flipped(Decoupled(new ReqFlit(false)))
-    val rxSnp         = Flipped(Decoupled(new SnoopFlit()))
+    val rxReq           = Flipped(Decoupled(new ReqFlit(false)))
+    val rxHpr           = Flipped(Decoupled(new ReqFlit(false)))
+    val rxSnp           = Flipped(Decoupled(new SnoopFlit))
     // To Data
-    val reqDB_s1      = Decoupled(new HnTxnID with HasDataVec)
-    val fastData_s3   = Decoupled(new DataTask)
+    val reqDB_s1        = Decoupled(new HnTxnID with HasDataVec)
+    val fastData_s3     = Decoupled(new DataTask)
     // DIR Read/Resp
-    val readDir_s1    = Decoupled(new Addr with HasPackHnIdx)
-    val respDir_s3    = Flipped(Valid(new DirMsg))
+    val readDir_s1      = Decoupled(new Addr with HasPackHnIdx)
+    val respDir_s3      = Flipped(Valid(new DirMsg))
     // To Backend
-    val cmtTask_s3    = Valid(new CommitTask with HasHnTxnID)
+    val cmtTask_s3      = Valid(new CommitTask with HasHnTxnID)
     // Get addr from PoS
-    val getAddrVec    = Vec(3, Flipped(new GetAddr())) // txReq + txSnp + writeDir
+    val getAddrVec      = Vec(3, Flipped(new GetAddr)) // txReq + txSnp + writeDir
     // Update PoS Message
-    val reqPoS        = Flipped(new ReqPoS())
-    val updPosTag     = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
-    val updPosNest    = Flipped(Valid(new PosCanNest))
-    val cleanPos      = Flipped(Valid(new PosClean))
+    val reqPoS          = Flipped(new ReqPoS)
+    val updPosTag       = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
+    val updPosNest      = Flipped(Valid(new PosCanNest))
+    val cleanPos        = Flipped(Valid(new PosClean))
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
-    val fastResp_s1   = Decoupled(new FastResp())
-    val respComp_s3   = Valid(new RespComp)
+    val fastResp        = Decoupled(new FastResp)
+    val recRespType     = Decoupled(new RecRespType)
     // PoS Busy Signal
-    val alrUsePoS     = Output(UInt(log2Ceil(nrPoS + 1).W))
+    val alrUsePoS       = Output(UInt(log2Ceil(nrPoS + 1).W))
     //  system is working
-    val working       = Output(Bool())
+    val working         = Output(Bool())
   })
 
 
@@ -68,6 +68,9 @@ class Frontend(implicit p: Parameters) extends DJModule {
   val pipe_s2     = Module(new Pipe(chiselTypeOf(block.io.task_s1.bits), readDirLatency-1))
   // S3: Receive DirResp and Decode
   val decode      = Module(new Decode())
+  // resp
+  val fastRespQ   = Module(new FastQueue(new FastResp, size = djparam.nrDirBank.max(2), deqDataNoX = false))
+  val respTypeQ   = Module(new Queue(new RecRespType, entries = readDirLatency, flow = true, pipe = true))
 
   /*
    * Connect
@@ -86,12 +89,28 @@ class Frontend(implicit p: Parameters) extends DJModule {
   io.getAddrVec.zip(posTable.io.getAddrVec).foreach { case(a, b) => a <> b }
   io.reqDB_s1               <> block.io.reqDB_s1
   io.readDir_s1             <> block.io.readDir_s1
-  io.fastResp_s1            <> FastQueue(block.io.fastResp_s1, djparam.nrDirBank.max(2))
+  io.fastResp               <> fastRespQ.io.deq
   io.alrUsePoS              := posTable.io.alrUsePoS
-  io.respComp_s3            := decode.io.respComp_s3
+  io.recRespType            <> respTypeQ.io.deq
   io.fastData_s3            <> decode.io.fastData_s3
   io.cmtTask_s3             := decode.io.cmtTask_s3
   io.working                := hprTaskBuf.io.working | reqTaskBuf.io.working | snpTaskBuf.io.working | posTable.io.working
+
+  // io.fastResp <--- [Queue] --- block.io.fastResp_s1
+  //                        ^
+  //                        |
+  // block fastResp enq when it cant deq (deq.valid & !deq.ready)
+  //                        |
+  // io.recRespType <------ [Queue] -------- block.io.fastResp_s1
+  // fastRespQ
+  val blockFastResp         = respTypeQ.io.deq.valid & !respTypeQ.io.deq.ready
+  fastRespQ.io.enq.valid    := block.io.fastResp_s1.valid & !blockFastResp
+  fastRespQ.io.enq.bits     := block.io.fastResp_s1.bits
+  block.io.fastResp_s1.ready:= fastRespQ.io.enq.ready & !blockFastResp
+  // respTypeQ
+  respTypeQ.io.enq.valid    := decode.io.recRespType_s3.valid
+  respTypeQ.io.enq.bits     := decode.io.recRespType_s3.bits
+  HAssert.withEn(respTypeQ.io.enq.ready, respTypeQ.io.enq.valid)
 
   // hpr2Task
   hpr2Task.io.rxReq         <> io.rxHpr
