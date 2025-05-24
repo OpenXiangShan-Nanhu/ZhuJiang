@@ -161,7 +161,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   /*
    * Send response to Bankend
    */
-  io.resp.valid               := reg.isResp
+  io.resp.valid               := reg.isResp & reg.sendall
   io.resp.bits.hnTxnID        := reg.task.hnTxnID
 
   /*
