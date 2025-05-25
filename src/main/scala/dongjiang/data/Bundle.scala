@@ -34,7 +34,7 @@ trait HasDataOp { this: Bundle =>
 
   // Use in DataCM
   def getNextState(state: UInt)(implicit p: Parameters, s: SourceInfo) = {
-    HAssert(state === ALLOC | state === REPL | state === READ | state === WAIT | state === SEND | state === SAVE | state === CLEAN | state === RESP)
+    HAssert(state === ALLOC | state === REPL | state === READ | state === SEND | state === SAVE | state === CLEAN)
     // Without replace
     val next0 = WireInit(0.U(CTRLSTATE.width.W))
     switch(state) {
@@ -47,8 +47,7 @@ trait HasDataOp { this: Bundle =>
           reqs    -> RESP
         ))
       }
-      is(READ)  { next0 := WAIT }
-      is(WAIT)  {
+      is(READ)  {
         next0 := PriorityMux(Seq(
           send    -> SEND,
           save    -> SAVE,
@@ -65,17 +64,14 @@ trait HasDataOp { this: Bundle =>
       }
       is(SAVE)  { next0 := Mux(clean, CLEAN, RESP) }
       is(CLEAN) { next0 := RESP }
-      is(RESP)  { next0 := Mux(clean, TOFREE, ALLOC) }
     }
     // With replace
     val next1 = WireInit(0.U(CTRLSTATE.width.W))
     switch(state) {
       is(ALLOC) { next1 := REPL   }
-      is(REPL)  { next1 := WAIT   }
-      is(WAIT)  { next1 := SEND   }
+      is(REPL)  { next1 := SEND   }
       is(SEND)  { next1 := CLEAN  }
       is(CLEAN) { next1 := RESP   }
-      is(RESP)  { next1 := TOFREE }
     }
     Mux(repl, next1, next0)
   }

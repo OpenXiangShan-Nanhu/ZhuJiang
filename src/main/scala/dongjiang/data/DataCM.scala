@@ -17,28 +17,26 @@ import chisel3.experimental.BundleLiterals._
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
 object CTRLSTATE {
-  val width   = 4
+  val width   = 3
   val FREE    = 0x0.U // -> ALLOC
   val ALLOC   = 0x1.U // *
   val REPL    = 0x2.U // * // Read DS and DB at the same time to replace
   val READ    = 0x3.U // * // Read DS and save in DB
-  val WAIT    = 0x4.U // * // Wait data from DS to DB
-  val SEND    = 0x5.U // * // Read DB and send to CHI
-  val SAVE    = 0x6.U // * // Read DB adn send to DS
-  val CLEAN   = 0x7.U // * // Clean DB mask and DBIDPool
-  val RESP    = 0x8.U // -> ALLOC/FREE // Send resp to Backend
-  val TOFREE  = 0x9.U // -> FREE       // Can be free when sending is all false
+  val SEND    = 0x4.U // * // Read DB and send to CHI
+  val SAVE    = 0x5.U // * // Read DB adn send to DS
+  val CLEAN   = 0x6.U // * // Clean DB mask and DBIDPool
+  val RESP    = 0x7.U // -> ALLOC/FREE // Send resp to Backend
 
   // Note: with * must use dataOp.getNextStateS
 }
 
 trait HasCtrlMes { this: DJBundle =>
   // Without repl flag:
-  //    Free -> Alloc -> Read -> Wait -> Send -> Save -> Clean -> Resp --> ToFree -> Free
+  //    Free -> Alloc -> Read -> Send -> Save -> Clean -> Resp --> ToFree -> Free
   // With repl flag:
-  //    Free -> Alloc -> Replace -> Wait -> Send -> Clean -> Resp -> ToFree -> Free
+  //    Free -> Alloc -> Replace -> Send -> Clean -> Resp -> ToFree -> Free
   // Without clean:
-  //    Free -> Alloc -> Read -> Wait -> Send -> Save -> Resp -> Alloc
+  //    Free -> Alloc -> Read -> Send -> Save -> Resp -> Alloc
 
   val state     = UInt(CTRLSTATE.width.W)
   val opBeat    = UInt(log2Ceil(djparam.nrBeat).W)    // The beat block being operate (read/send/save/send)
@@ -56,12 +54,10 @@ trait HasCtrlMes { this: DJBundle =>
   def isAlloc   = state === ALLOC
   def isRepl    = state === REPL
   def isRead    = state === READ
-  def isWait    = state === WAIT
   def isSend    = state === SEND
   def isSave    = state === SAVE
   def isClean   = state === CLEAN
   def isResp    = state === RESP
-  def isToFree  = state === TOFREE
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -134,7 +130,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   io.readToDB.bits.beatNum    := reg.getBeatNum
   io.readToDB.bits.critical   := reg.isCritical
   // to DB to DS
-  io.readToDS.valid           := reg.isRepl | reg.isSave
+  io.readToDS.valid           := reg.isRepl | (reg.isSave & reg.waitall)
   io.readToDS.bits.ds         := reg.task.ds
   io.readToDS.bits.dcid       := io.dcid
   io.readToDS.bits.dbid       := DontCare // remap in DataCM
@@ -142,7 +138,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   io.readToDS.bits.critical   := reg.isCritical
   io.readToDS.bits.repl       := reg.isRepl
   // to DB to CHI
-  io.readToCHI.valid          := reg.isSend
+  io.readToCHI.valid          := reg.isSend & reg.waitall
   io.readToCHI.bits.ds        := DontCare
   io.readToCHI.bits.dcid      := io.dcid
   io.readToCHI.bits.dbid      := DontCare // remap in DataCM
@@ -161,7 +157,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   /*
    * Send response to Bankend
    */
-  io.resp.valid               := reg.isResp & reg.sendall
+  io.resp.valid               := reg.isResp & reg.waitall & reg.sendall
   io.resp.bits.hnTxnID        := reg.task.hnTxnID
 
   /*
@@ -181,9 +177,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   // Get next dataVec
   when(io.alloc.fire) {
     next.dataVec  := io.alloc.bits.dataVec
-  }.elsewhen(taskHit & io.task.bits.dataOp.onlyClean){
-    next.dataVec  := VecInit((reg.dataVec.asUInt & ~io.task.bits.dataVec.asUInt).asBools)
-  }.elsewhen(next.isClean) {
+  }.elsewhen(reg.isClean) {
     next.dataVec  := VecInit((reg.dataVec.asUInt & ~reg.task.dataVec.asUInt).asBools)
   }
 
@@ -197,7 +191,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   }.elsewhen(dsWriDBHit) {
     next.wRBeat   := reg.wRBeat - 1.U
     HAssert(reg.wRBeat > 0.U)
-    HAssert(reg.isWait | ((reg.isRepl |reg.isRead) & reg.opBeat =/= 0.U))
+    HAssert.withEn(reg.opBeat === 0.U, !(reg.isRead | reg.isRepl))
   }
 
   // Get next wait send beat
@@ -210,7 +204,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   }.elsewhen(txDatHit) {
     next.wSBeat   := reg.wSBeat - 1.U
     HAssert(reg.wSBeat > 0.U)
-    HAssert(reg.isSend | reg.isSave | reg.isClean | reg.isResp | reg.isToFree | reg.isAlloc) // TODO: has risk when state is alloc
+    HAssert(reg.isSend | reg.isSave | reg.isClean | reg.isResp)
   }
 
   // Get next opBeat
@@ -250,9 +244,6 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     is(READ) {
       when(io.readToDB.fire & reg.opAll)  { next.state := reg.task.dataOp.getNextState(READ) }
     }
-    is(WAIT) {
-      when(reg.waitall)                   { next.state := reg.task.dataOp.getNextState(WAIT) }
-    }
     is(SEND) {
       when(io.readToCHI.fire & reg.opAll) { next.state := reg.task.dataOp.getNextState(SEND) }
     }
@@ -263,15 +254,12 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
       when(io.releaseDB.fire)             { next.state := reg.task.dataOp.getNextState(CLEAN) }
     }
     is(RESP) {
-      when(io.resp.fire)                  { next.state := Mux(reg.isZero, TOFREE, ALLOC) }
-    }
-    is(TOFREE) {
-      when(reg.sendall)                   { next.state := FREE }
+      when(io.resp.fire)                  { next.state := Mux(reg.isZero, FREE, ALLOC) }
     }
   }
-  HAssert.withEn(reg.isFree  | reg.isToFree,              next.isFree)
+  HAssert.withEn(reg.isFree  | reg.isResp,                next.isFree)
   HAssert.withEn(reg.isFree  | reg.isResp | reg.isAlloc,  next.isAlloc)
-  HAssert.withEn(reg.isResp  | reg.isToFree,              next.state < reg.state)
+  HAssert.withEn(reg.isResp,                              next.state < reg.state)
   HAssert.withEn(next.isFree | next.isAlloc,              next.state < reg.state)
 
 
