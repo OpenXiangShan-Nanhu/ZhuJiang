@@ -22,7 +22,7 @@ class CMTask(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPa
   with HasAlready with HasPackDataOp with HasDsIdx {
   val snpVec    = Vec(nrSfMetas, Bool())  // Only use in SnoopCM
   val fromRepl  = Bool()                  // from ReplaceCM
-  val cbResp    = UInt(ChiResp.width.W)   // CopyBack Resp //  Only use in WriOrAtmCm
+  val cbResp    = UInt(ChiResp.width.W)   // CopyBack Resp //  Only use in WriteCM
   val doDMT     = Bool()                  // Only use in ReadCM
   // def
   def needReqDB = dataOp.reqs & !alr.reqs

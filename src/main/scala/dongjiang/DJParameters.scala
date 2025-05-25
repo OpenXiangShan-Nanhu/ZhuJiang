@@ -279,11 +279,11 @@ trait HasDJParam extends HasParseZJParam {
 
   // Backend Parameters
   lazy val nrReplaceCM      = (djparam.nrPoS / 2).max(2)
-  lazy val nrTaskCM         = 4 // SnoopCM + ReadCM + DatalessCM + WriOrAtmCM
+  lazy val nrTaskCM         = 4 // SnoopCM + ReadCM + DatalessCM + WriteCM
   lazy val nrSnoopCM        = (djparam.nrPoS / 4).max(2)
   lazy val nrReadCM         = (djparam.nrPoS / 2).max(2)
   lazy val nrDatalessCM     = (djparam.nrPoS / 4).max(2)
-  lazy val nrWriOrAtmCM     = (djparam.nrPoS / 4).max(2)
+  lazy val nrWriteCM        = (djparam.nrPoS / 4).max(2)
   lazy val nrReceiveCM      = (djparam.nrPoS / 4).max(2)
   lazy val fastRespQSzie    = (djparam.nrPoS / 8).max(2)
 
@@ -297,7 +297,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val TIMEOUT_ISSUE    = 10000 * 2
   lazy val TIMEOUT_SNP      = 10000 * 2
   lazy val TIMEOUT_READ     = 10000 * 2
-  lazy val TIMEOUT_WOA      = 10000 * 2
+  lazy val TIMEOUT_WRITE    = 10000 * 2
   lazy val TIMEOUT_REC      = 10000 * 2
 }
 

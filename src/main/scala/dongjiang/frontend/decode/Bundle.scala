@@ -115,18 +115,18 @@ object CMID {
 }
 
 trait HasOperations { this: Bundle =>
-  val snoop       = Bool() // -> Return Valid   TaskInst
-  val read        = Bool() // -> Return Valid   TaskInst
-  val dataless    = Bool() // -> Return Valid   TaskInst
-  val wriOrAtm    = Bool() // -> Return Invalid TaskInst // Write or Atomic // TODO: del Atomic
-  def opsValid    = snoop | read | dataless | wriOrAtm
+  val snoop       = Bool()
+  val read        = Bool()
+  val dataless    = Bool()
+  val write       = Bool()
+  def opsValid    = snoop | read | dataless | write
   def opsInvalid  = !opsValid
   def cmid: UInt  = {
     PriorityMux(Seq(
-      snoop    -> CMID.SNP.U,
-      read     -> CMID.READ.U,
-      dataless -> CMID.DL.U,
-      wriOrAtm -> CMID.WRI.U,
+      snoop       -> CMID.SNP.U,
+      read        -> CMID.READ.U,
+      dataless    -> CMID.DL.U,
+      write       -> CMID.WRI.U,
     ))
   }
 }
@@ -292,10 +292,10 @@ object Code {
   def snpOth  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.snoop    := true.B; temp.snpTgt := SnpTgt.OTH; require(x.getWidth == SnpOpcode.width); temp.asUInt }
   def read    (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.read     := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
   def dataless(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.dataless := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
-  def wriOrAtm(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.wriOrAtm := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
+  def write   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.write := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
 
   // Task Code DataOp
-  // note0: cant set reqs expect of WriOrAtm
+  // note0: cant set reqs expect of write
   // note1: cant set clean when commit will use DataBuffer
   def tdop(x: String*): UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 

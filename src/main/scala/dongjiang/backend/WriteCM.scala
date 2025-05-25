@@ -218,7 +218,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   when(set) { reg := next }
 
   // HardwareAssertion
-  HardwareAssertion.checkTimeout(reg.isFree, TIMEOUT_WOA, cf"TIMEOUT: Write State[${reg.state}]")
+  HardwareAssertion.checkTimeout(reg.isFree, TIMEOUT_WRITE, cf"TIMEOUT: Write State[${reg.state}]")
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -246,7 +246,7 @@ class WriteCM(implicit p: Parameters) extends DJModule {
   /*
    * Module declaration
    */
-  val entries = Seq.fill(nrWriOrAtmCM) { Module(new WriteEntry()) } // TODO: reserve for toLAN
+  val entries = Seq.fill(nrWriteCM) { Module(new WriteEntry()) } // TODO: reserve for toLAN
   val dbgVec  = VecInit(entries.map(_.io.dbg))
   dontTouch(dbgVec)
 

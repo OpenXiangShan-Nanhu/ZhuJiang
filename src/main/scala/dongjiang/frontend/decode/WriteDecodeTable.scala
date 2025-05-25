@@ -20,36 +20,36 @@ object Write_LAN {
   // WriteNoSnpPtl Without EWA
   def writeNoSnpPtl_noEWA: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | isOWO, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)))),
+    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)))),
     // I I SC -> I I UD
-    (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I I UC -> I I UD
-    (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I I UD -> I I UD
-    (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send", "clean") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (waitRecDone | tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
-      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)), // I I I
-      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)), // I I I
-      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false))  // I I I
+      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send", "clean") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)), // I I I
+      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I))    -> second(tdop("send", "clean") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)), // I I I
+      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false))  // I I I
     ))
   ))
 
   // WriteNoSnpPtl With EWA
   def writeNoSnpPtl_EWA: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | isOWO, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp)))),
+    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | write(WriteNoSnpPtl), cmtRsp(Comp)))),
     // I I SC -> I I UD
-    (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I I UC -> I I UD
-    (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I I UD -> I I UD
-    (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send", "clean") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (waitRecDone | tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
-      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
-      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
-      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false))  // I I I
+      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send", "clean") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
+      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I))    -> second(tdop("send", "clean") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
+      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false))  // I I I
     ))
   ))
 
@@ -59,7 +59,7 @@ object Write_LAN {
   // WriteUniquePtl With Allocate
   def writeUniquePtl_alloc: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | allocate | ewa | isOWO, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl), cmtRsp(Comp)))),
+    (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send", "clean") | write(WriteNoSnpPtl), cmtRsp(Comp)))),
     // I I SC -> I I UD
     (sfMiss | llcIs(SC))  -> first(waitRecDone, hasGotNCBWrData, cdop("read", "save", "clean") | cmtRsp(Comp) | wriLLC(UD)),
     // I I UC -> I I UD
@@ -70,7 +70,7 @@ object Write_LAN {
     (srcMiss | othHit | llcIs(I)) -> (waitRecDone | tdop("reqs") | snpOth(SnpUnique) | retToSrc, Seq(
       (hasGotNCBWrData | datIs(SnpRespData) | respIs(I_PD)) -> second(cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)),             // I I UD
       (hasGotNCBWrData | datIs(SnpRespData) | respIs(I))    -> second(cdop("save", "clean") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)),             // I I UD
-      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | wriOrAtm(WriteNoSnpPtl),  cmtRsp(Comp) | wriSNP(false)) // I I I
+      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send", "clean") | write(WriteNoSnpPtl),  cmtRsp(Comp) | wriSNP(false)) // I I I
     ))
   ))
 
