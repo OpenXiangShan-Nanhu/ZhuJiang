@@ -60,8 +60,7 @@ class Decode(implicit p: Parameters) extends DJModule {
   dontTouch(chiInst_s2)
   dontTouch(stateInst_s3)
   // HAssert
-  HAssert.withEn( io.respDir_s3.valid, validReg_s3 &  taskReg_s3.chi.memAttr.cacheable)
-  HAssert.withEn(!io.respDir_s3.valid, validReg_s3 & !taskReg_s3.chi.memAttr.cacheable)
+  HAssert.withEn( io.respDir_s3.valid, validReg_s3)
 
   /*
    * Get Decode Result
@@ -89,6 +88,7 @@ class Decode(implicit p: Parameters) extends DJModule {
   io.cmtTask_s3.bits.decList          := decList_s3
   io.cmtTask_s3.bits.ds.set(taskReg_s3.addr, respDir_s3.llc.way)
   HardwareAssertion.withEn(taskCode_s3.valid | cmtCode_s3.valid, validReg_s3)
+  HardwareAssertion.withEn(respDir_s3.sf.metaIsVal, validReg_s3 & taskCode_s3.snoop)
 
   /*
    * Send RespType to ReceiveCM for WriteEvictOrEvict

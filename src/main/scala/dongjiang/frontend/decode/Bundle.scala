@@ -17,7 +17,6 @@ import xs.utils.debug._
 import dongjiang.data._
 
 /*
- * (UInt, Seq[(UInt, )])
  *   ChiInst -> [StateInst -> (TaskCode, [TaskInst -> SecTaskCode, [SecTaskInst -> CommitCode]])]
  *      ^            ^                       ^                           ^
  * RxReq/RxSnp    DirResp             ReqResp/SnpResp              ReqResp/SnpResp
