@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 
 class DoubleCounterClockGate(ckenWindow:Int = 7, idleWindow:Int = 7) extends Module {
+  override val desiredName = "DoubleCounterICG"
   val io = IO(new Bundle {
     val te = Input(Bool())
     val inbound = Input(Bool())
