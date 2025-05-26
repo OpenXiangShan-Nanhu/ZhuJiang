@@ -52,6 +52,7 @@ class AxiLiteBridgeCtrlMachine(
   axi.aw.bits.len := 0.U
   axi.aw.bits.size := payload.info.size
   axi.aw.bits.cache := "b0000".U
+  axi.aw.bits.qos := payload.info.qos
 
   axi.ar.valid := valid && payload.state.axiRaddr && !waiting.orR
   axi.ar.bits := DontCare
@@ -61,6 +62,7 @@ class AxiLiteBridgeCtrlMachine(
   axi.ar.bits.len := 0.U
   axi.ar.bits.size := payload.info.size
   axi.ar.bits.cache := "b0000".U
+  axi.ar.bits.qos := payload.info.qos
 
   axi.w.valid := valid && payload.state.axiWdata && !waiting.orR
   axi.w.bits := DontCare

@@ -104,7 +104,7 @@ package object bridge {
       info.device := req.MemAttr(1)
       info.readCnt := 0.U
       info.isSnooped := true.B
-      info.qos := 0.U
+      info.qos := req.QoS
       state.u.decode(req, valid)
       state.d.decode(req, valid)
     }

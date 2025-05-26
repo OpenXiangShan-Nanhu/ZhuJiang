@@ -20,6 +20,7 @@ class Flit(implicit p: Parameters) extends Bundle {
   lazy val bew = zjParams.beBits
   def src:UInt = elements("SrcID").asUInt
   def tgt:UInt = elements("TgtID").asUInt
+  def qos:UInt = elements("QoS").asUInt
 }
 
 class ReqFlit(dmt:Boolean = false)(implicit p: Parameters) extends Flit {
@@ -50,7 +51,7 @@ class ReqFlit(dmt:Boolean = false)(implicit p: Parameters) extends Flit {
   val TxnID = UInt(12.W)
   val SrcID = UInt(niw.W)
   val TgtID = UInt(niw.W)
-  //  val QoS = UInt(4.W)
+  val QoS = UInt(4.W)
 
   def StreamID = MECID
   def SnoopMe = Excl
@@ -82,7 +83,7 @@ class RespFlit(implicit p: Parameters) extends Flit {
   val TxnID = UInt(12.W)
   val SrcID = UInt(niw.W)
   val TgtID = UInt(niw.W)
-//  val QoS = UInt(4.W)
+  val QoS = UInt(4.W)
 
   def PGroupID = DBID
   def StashGroupID = DBID
@@ -105,7 +106,7 @@ class SnoopFlit(implicit p: Parameters) extends Flit {
   val TxnID = UInt(12.W)
   val SrcID = UInt(niw.W)
   val TgtID = UInt(niw.W)
-//  val QoS = UInt(4.W)
+  val QoS = UInt(4.W)
 
   def VMIDExt = FwdTxnID
   def PBHA = FwdNID
@@ -137,7 +138,7 @@ class DataFlit(implicit p: Parameters) extends Flit {
   val TxnID = UInt(12.W)
   val SrcID = UInt(niw.W)
   val TgtID = UInt(niw.W)
-//  val QoS = UInt(4.W)
+  val QoS = UInt(4.W)
 
   def MECID = DBID
   def FwdState = DataSource
@@ -164,12 +165,13 @@ object FlitType {
 }
 
 class RingFlit(width:Int)(implicit p: Parameters) extends ZJBundle {
-  val Payload = UInt((width - niw - niw - 12).W)
+  val Payload = UInt((width - niw - niw - 16).W)
   val TxnID = UInt(12.W)
   val SrcID = UInt(niw.W)
   val TgtID = UInt(niw.W)
-  //  val QoS = UInt(4.W)
+  val QoS = UInt(4.W)
 
+  def qos:UInt = QoS
   def tgt:UInt = TgtID
   def src:UInt = SrcID
   def txn:UInt = TxnID
@@ -216,7 +218,7 @@ class NodeIdBundle(implicit p: Parameters) extends ZJBundle {
 
 object FlitHelper {
   def connIcn(sink:DecoupledIO[Data], src:DecoupledIO[Data], checkWidth:Boolean = true):Unit = {
-    if(checkWidth) require(sink.getWidth == src.getWidth)
+    if(checkWidth) require(sink.getWidth == src.getWidth, s"left flit width: ${sink.getWidth}, right flit width: ${src.getWidth}")
     sink.valid := src.valid
     src.ready := sink.ready
     sink.bits := src.bits.asTypeOf(sink.bits)

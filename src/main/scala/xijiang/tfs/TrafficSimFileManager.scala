@@ -84,7 +84,7 @@ object TrafficSimFileManager {
        |${NodeType.cppDefines}
        |${FlitType.cppDefines}
        |#define NODE_ID_BITS ${params.nodeIdBits}
-       |#define TGT_ID_OFF 0
+       |#define TGT_ID_OFF 4
        |#define SRC_ID_OFF (TGT_ID_OFF + NODE_ID_BITS)
        |
        |#define TX_VALID_MAX_DELAY ${params.tfsParams.get.txValidMaxDelay}

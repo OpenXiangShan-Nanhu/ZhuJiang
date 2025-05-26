@@ -83,6 +83,7 @@ class AxiBridgeCtrlMachine(
   axi.aw.bits.burst := 1.U
   axi.aw.bits.size := size
   axi.aw.bits.cache := cache
+  axi.aw.bits.qos := payload.info.qos
 
   axi.ar.valid := valid && payload.state.axiRaddr && !waiting.orR
   axi.ar.bits := DontCare
@@ -92,6 +93,7 @@ class AxiBridgeCtrlMachine(
   axi.ar.bits.burst := 1.U
   axi.ar.bits.size := size
   axi.ar.bits.cache := cache
+  axi.ar.bits.qos := payload.info.qos
 
   axi.w.valid := valid && payload.state.axiWdata && !waiting.orR
   axi.w.bits := DontCare
