@@ -157,7 +157,7 @@ object ZhujiangGlobal {
     }
 
     // Select cc/rni to hnf friends
-    val rnNodes = nodes.filter(n => n.nodeType == NodeType.CC || n.nodeType == NodeType.RI)
+    val rnNodes = nodes.filter(n => n.nodeType == NodeType.CC || n.nodeType == NodeType.RI || n.nodeType == NodeType.RH)
     require(hnfs.nonEmpty)
     val hfOnePort = hnfs.map(_.hfpId).distinct.length == 1
     for(rn <- rnNodes){
