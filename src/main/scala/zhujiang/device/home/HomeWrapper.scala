@@ -78,7 +78,8 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
       hnx.io.lan.rx.bundleMap(chn) <> arb.io.out
     }
   }
-
+  private val erqTgt = Wire(UInt(niw.W))
+  dontTouch(erqTgt)
   private val mems = zjParams.island.filter(n => n.nodeType == NodeType.S)
   for(chn <- nodes.head.injects.filterNot(_ == "DBG")) {
     val txBdSeq = hnxLans.map(_.rx.bundleMap(chn))
@@ -107,6 +108,7 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
       val noDmt = ori.ReturnNID.get.andR
       res.ReturnNID.get := Mux(noDmt, srcId, ori.ReturnNID.get)
       res.TgtID := tgt
+      erqTgt := tgt
       res.asTypeOf(txBd.bits)
     } else if(chn == "DAT") {
       val ori = txBd.bits.asTypeOf(new DataFlit)
