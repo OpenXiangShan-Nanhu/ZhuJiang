@@ -96,7 +96,9 @@ class HardwareAssertionDevice(implicit p:Parameters) extends ZJModule {
   when(wp.fire && wcnt =/= hwaP.hwaDevDepth.U) {
     wcnt := wcnt + 1.U
   }
-  assert(!wq.fire, cf"Hardware assertion is collected! SrcID: 0x${wq.bits.src}%x AsrtID: ${wq.bits.id}")
+  when(wq.fire) {
+    printf(cf"[Error]: Hardware assertion is collected! SrcID: 0x${wq.bits.src}%x AsrtID: ${wq.bits.id}")
+  }
   io.intr := RegNext(wcnt.orR)
 }
 
