@@ -62,7 +62,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val rxAwPipe       = Module(new Queue(gen = new AxiWrEntry(isPipe = true, node = node), entries = 2, pipe = false, flow = false))
   private val bIdQueue       = Module(new Queue(gen = UInt(axiParams.idBits.W), entries = 2, pipe = false, flow = false))
   private val mergeReg       = Module(new MergeReg)
-  private val merComReg      = RegInit(false.B)
+  private val merComReg      = RegInit(0.U(2.W)) //this value can not be 3
   private val mergeLastReg   = RegInit(false.B)
 
   private val rxAwBdl        = WireInit(0.U.asTypeOf(new AxiWrEntry(isPipe = true, node = node)))
@@ -73,9 +73,13 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 /* 
  * Pointer Logic
  */
-  private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
+  private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) //& !dAwEntrys(wDataPtr.value).specWrap
   private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
-  private val wDataPtrAdd            = (nextShiftHintLastValid || !dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits.last & Burst.isFix(dAwEntrys(wDataPtr.value).burst) || dAwEntrys(wDataPtr.value).dontMerge || io.uAxiW.bits.last) & io.uAxiW.fire & !dAwEntrys(wDataPtr.value).fullWrap
+  private val noFullWrapWDPtrAdd     = dAwEntrys(wDataPtr.value).dontMerge || io.uAxiW.bits.last
+  private val fullWrapWDPtrAdd       = nextShiftHintLastValid & !dAwEntrys(wDataPtr.value).fullWrap
+  private val fixWDataPtrAdd         = !dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits.last & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
+
+  private val wDataPtrAdd            = (fullWrapWDPtrAdd || fixWDataPtrAdd || noFullWrapWDPtrAdd) & io.uAxiW.fire
   private val tailPtrAdd             = io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get)
   private val sDataPtrAdd            = io.dAxiW.fire & io.dAxiW.bits.last
 
@@ -87,8 +91,20 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   sDataPtr   := Mux(sDataPtrAdd         , sDataPtr + 1.U, sDataPtr)
 
   //Merge Data Reg Logic
-  merComReg    := Mux(io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire, false.B, merComReg))
-  mergeLastReg := Mux(io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last), true.B, Mux(io.dAxiW.fire & io.dAxiW.bits.last, false.B, mergeLastReg))
+  private val dSendLast     = io.dAxiW.bits.last & io.dAxiW.fire
+  private val dShodLast     = io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last)
+  mergeLastReg             := PriorityMux(Seq(
+    (dShodLast & !dSendLast) -> (!mergeLastReg),
+    (!dShodLast & dSendLast) -> (!mergeLastReg),
+    true.B                   -> mergeLastReg
+  ))
+  private val dSendComp     = io.dAxiW.fire
+  private val dShodComp     = io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last)
+  merComReg                := PriorityMux(Seq(
+    (dSendComp & !dShodComp) -> (merComReg - 1.U),
+    (!dSendComp & dShodComp) -> (merComReg + 1.U),
+    true.B                   -> merComReg
+  ))
 
   uAwEntrys.zipWithIndex.foreach {
     case(e, i) =>
@@ -121,10 +137,14 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
         e.shift     := e.nextShift
         e.nextShift := (e.nextShift + e.size) & e.mask | e.nextShift & ~e.mask
       }
-      when(io.dAxiW.fire & e.specWrap & (wDataPtr.value === i.U)){
+      when(e.specWrap & (sDataPtr.value === i.U) & !e.fullWrap & io.uAxiW.fire & io.uAxiW.bits.last){
         e.specWrap  := false.B
-        e.fullWrap  := false.B
       }
+      when(e.fullWrap & (sDataPtr.value === i.U) & (merComReg === 2.U)){
+        e.specWrap := false.B
+        e.fullWrap := false.B
+      }
+
   }
   txAwBdl                       := 0.U.asTypeOf(txAwBdl)
   private val specWrapModify     = uTailE.cache(1) & Burst.isWrap(uTailE.burst) & (uTailE.byteMask(rni.offset) ^  uTailE.byteMask(rni.offset - 1))
@@ -161,8 +181,8 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   io.dAxiW.bits      := 0.U.asTypeOf(io.dAxiW.bits)
   io.dAxiW.bits.data := mergeReg.io.dataOut.bits.data
   io.dAxiW.bits.strb := mergeReg.io.dataOut.bits.strb
-  io.dAxiW.bits.last := mergeLastReg & !dAwEntrys(sDataPtr.value).fullWrap
-  io.dAxiW.valid     := merComReg || mergeLastReg
+  io.dAxiW.bits.last := mergeLastReg & !dAwEntrys(sDataPtr.value).fullWrap & (merComReg === 1.U)
+  io.dAxiW.valid     := merComReg =/= 0.U & !dAwEntrys(sDataPtr.value).fullWrap
   io.dAxiB.ready     := bIdQueue.io.enq.ready
 
   io.working         := uHeadPtr =/= uTailPtr || dHeadPtr =/= dTailPtr || rxAwPipe.io.count =/= 0.U
@@ -172,7 +192,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   mergeReg.io.dataIn.bits.strb     := io.uAxiW.bits.strb
   mergeReg.io.dataIn.bits.beat     := dAwEntrys(wDataPtr.value).shift(rni.offset - 1)
   mergeReg.io.dataIn.bits.data     := io.uAxiW.bits.data
-  mergeReg.io.dataOut.ready        := mergeLastReg || merComReg
+  mergeReg.io.dataOut.ready        := (merComReg =/= 0.U) & !dAwEntrys(sDataPtr.value).fullWrap
 
   bIdQueue.io.deq.ready   := io.uAxiB.ready
   bIdQueue.io.enq.valid   := dAwEntrys(dTailPtr.value).last & io.dAxiB.fire
@@ -181,4 +201,16 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   rxAwPipe.io.enq.bits    := rxAwBdl.pipeInit(io.uAxiAw.bits)
   rxAwPipe.io.enq.valid   := io.uAxiAw.valid
   rxAwPipe.io.deq.ready   := !isFull(uHeadPtr, uTailPtr)
+
+  when(dShodLast & !dSendLast){
+    assert(!mergeLastReg)
+  }
+  when(!dShodLast & dSendLast){
+    assert(mergeLastReg)
+  }
+  assert(merComReg =/= 3.U)
+
+  when(dSendComp & !dShodComp){
+    assert(merComReg =/= 0.U)
+  }
 }
