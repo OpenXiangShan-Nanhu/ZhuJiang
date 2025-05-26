@@ -10,6 +10,7 @@ import xs.utils.mbist.MbistPipeline
 import xs.utils.queue.FastQueue
 import xs.utils.sram.{SinglePortSramTemplate, SpSramReq}
 import zhujiang.axi.{AxiBundle, AxiLiteParams, RFlit}
+import zhujiang.chi.FlitHelper.extractHwaId
 import zhujiang.{ZJBundle, ZJModule}
 import zhujiang.chi.{NodeIdBundle, RingFlit}
 
@@ -137,7 +138,7 @@ class MiscDevice(node: Node)(implicit p:Parameters) extends ZJModule {
     val dbgFlit = io.icn.rx.debug.get.bits.asTypeOf(new RingFlit(debugFlitBits))
     hwaDev.get.io.hwa.valid := io.icn.rx.debug.get.valid
     hwaDev.get.io.hwa.bits.src := dbgFlit.SrcID.asTypeOf(new NodeIdBundle).nid
-    hwaDev.get.io.hwa.bits.id := dbgFlit.Payload
+    hwaDev.get.io.hwa.bits.id := extractHwaId(dbgFlit)
     io.icn.rx.debug.get.ready := hwaDev.get.io.hwa.ready
     io.axi.get <> hwaDev.get.io.axi
     io.intr.get := hwaDev.get.io.intr

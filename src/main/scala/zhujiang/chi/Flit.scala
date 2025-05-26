@@ -3,6 +3,7 @@ package zhujiang.chi
 import chisel3._
 import chisel3.util.{Cat, DecoupledIO}
 import org.chipsalliance.cde.config.Parameters
+import xs.utils.debug.HAssertBundle
 import zhujiang.{ZJBundle, ZJParametersKey}
 
 class Flit(implicit p: Parameters) extends Bundle {
@@ -222,5 +223,19 @@ object FlitHelper {
     sink.valid := src.valid
     src.ready := sink.ready
     sink.bits := src.bits.asTypeOf(sink.bits)
+  }
+  def hwaConn(sink: DecoupledIO[RingFlit], dbg:HAssertBundle):Unit = {
+    val bus = dbg.bus.get
+    sink.valid := bus.valid
+    bus.ready := sink.ready
+    sink.bits := Cat(
+      bus.bits,
+      0.U(sink.bits.SrcID.getWidth.W),
+      0.U(sink.bits.TgtID.getWidth.W),
+      0.U(sink.bits.QoS.getWidth.W)
+    ).asTypeOf(sink.bits)
+  }
+  def extractHwaId(in: RingFlit):UInt = {
+    Cat(in.Payload, in.TxnID)
   }
 }

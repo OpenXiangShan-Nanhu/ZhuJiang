@@ -11,7 +11,7 @@ import xs.utils.ResetRRArbiter
 import xs.utils.debug.{HAssert, HardwareAssertion, HardwareAssertionKey}
 import xs.utils.mbist.MbistInterface
 import xs.utils.sram.{SramCtrlBundle, SramHelper}
-import zhujiang.chi.FlitHelper.connIcn
+import zhujiang.chi.FlitHelper.{connIcn, hwaConn}
 import zhujiang.chi._
 import zhujiang.utils.DoubleCounterClockGate
 import zhujiang.{DftWires, ZJRawModule}
@@ -146,9 +146,7 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
     val dbgBd = WireInit(0.U.asTypeOf(Decoupled(new RingFlit(debugFlitBits))))
     if(assertionNode.isDefined) {
       dontTouch(assertionNode.get.hassert)
-      dbgBd.bits.Payload := assertionNode.get.hassert.bus.get.bits
-      dbgBd.valid := assertionNode.get.hassert.bus.get.valid
-      assertionNode.get.hassert.bus.get.ready := dbgBd.ready
+      hwaConn(dbgBd, assertionNode.get.hassert)
     }
     connIcn(dbgTx, dbgBd)
   }

@@ -233,6 +233,7 @@ case class ZJParameters(
   lazy val ringName: String = s"ZRING${nrX}X${nrC}C${nrP}P${nrD}D${nrM}M${nrG}G$cacheSizeInMiB$ciSuffix"
 
   lazy val island: Seq[Node] = ZhujiangGlobal.getIsland(nodeNidBits, nodeAidBits, nodeParams, cpuSpaceBits, requestAddrBits - ciIdBits, ciName)
+  lazy val mnid = island.filter(_.nodeType == NodeType.M).head.nodeId
 
   private lazy val bank = nodeParams.filter(_.hfpId == 0).count(_.nodeType == NodeType.HF)
   private lazy val cores = nodeParams.count(_.nodeType == NodeType.CC)
@@ -280,7 +281,11 @@ trait HasZJParams {
   lazy val ringHrqFlitBits = hreqFlitBits.max(snoopFlitBits)
   lazy val maxFlitBits = Seq(rreqFlitBits, respFlitBits, snoopFlitBits, dataFlitBits, hreqFlitBits).max
 
-  lazy val debugFlitBits = niw + niw + p(HardwareAssertionKey).maxInfoBits
+  lazy val debugFlitBits = if(p(HardwareAssertionKey).maxInfoBits > 12) {
+    4 + niw + niw + p(HardwareAssertionKey).maxInfoBits
+  } else {
+    4 + niw + niw + 12
+  }
 }
 
 class ZJBundle(implicit val p: Parameters) extends Bundle with HasZJParams

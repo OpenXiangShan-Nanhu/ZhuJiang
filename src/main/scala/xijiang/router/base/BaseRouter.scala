@@ -154,6 +154,9 @@ trait BaseRouterUtils {
       } else if(!node.injects.contains("ERQ") && node.injects.contains("SNP")) {
         connIcn(rx, icn.rx.snp.get, checkWidth = false)
       }
+    } else if (r == "DBG") {
+      connIcn(rx, icn.rx.getRingBundle(r).get)
+      rx.bits.TgtID := p(ZJParametersKey).mnid.U
     } else {
       connIcn(rx, icn.rx.getRingBundle(r).get)
     }
