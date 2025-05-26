@@ -77,7 +77,7 @@ case class DJParam(
 trait HasParseZJParam extends HasZJParams {
   // Get LAN Nodes
   lazy val lanCcNodes       = zjParams.island.filter(_.nodeType == NodeType.CC)
-  lazy val lanRniNodes      = zjParams.island.filter(_.nodeType == NodeType.RI)
+  lazy val lanRniNodes      = zjParams.island.filter(n => n.nodeType == NodeType.RI || n.nodeType == NodeType.RH)
   lazy val lanHnfNodes      = zjParams.island.filter(_.nodeType == NodeType.HF)
   lazy val lanSnNodes       = zjParams.island.filter(_.nodeType == NodeType.S)
   lazy val ccNodeIdSeq      = lanCcNodes.map(_.nodeId)
