@@ -219,7 +219,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   /*
    * Send second CMTask to TaskCM
    */
-  val taskCode = Mux(secCode.valid, secCode, fstCode)
+  val taskCode = Mux(flagReg.intl.s.secTask, secCode, fstCode)
   // chi
   cmTask.chi                      := taskReg.chi
   cmTask.chi.channel              := Mux(taskCode.snoop, ChiChannel.SNP, ChiChannel.REQ)
