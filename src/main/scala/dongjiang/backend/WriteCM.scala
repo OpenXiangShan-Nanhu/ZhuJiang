@@ -166,9 +166,11 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   }.elsewhen(dbidHit) {
     next.task.chi.txnID   := io.rxRsp.bits.DBID
     next.task.chi.nodeId  := io.rxRsp.bits.SrcID
-    next.alrGetComp       := compHit
+    next.alrGetComp       := compHit | reg.alrGetComp
+    HAssert.withEn(!reg.alrGetComp, compHit)
   }.elsewhen(compHit) {
     next.alrGetComp       := compHit
+    HAssert(!reg.alrGetComp)
   }
   HAssert.withEn(!reg.alrGetComp, compHit)
 
