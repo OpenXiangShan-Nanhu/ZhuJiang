@@ -9,6 +9,7 @@ import xs.utils.FastArbiter
 import zhujiang.axi._
 import zhujiang.chi._
 import xijiang.Node
+import zhujiang.chi.ReqOpcode.AtomicLoadUMIN
 
 
 object Burst {
@@ -45,11 +46,10 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
   val preAddr  = UInt((raw - rni.pageBits).W)
   val exAddr   = UInt(rni.pageBits.W)
   val endAddr  = UInt(rni.pageBits.W)
+  val qos      = UInt(4.W)
   val id       = UInt(rni.idBits.W)
   val byteMask = UInt(rni.pageBits.W)
   val len      = UInt(8.W)
-//  val firstTxn = if(!isPipe) Some(UInt(log2Ceil(dw/8).W)) else None
-//  val lastTxn  = if(!isPipe) Some(UInt(log2Ceil(dw/8).W)) else None
   val cnt      = if(!isPipe) Some(UInt(8.W))              else None
   val range    = if(isPipe)  Some(UInt(rni.pageBits.W))   else None
   val num      = if(!isPipe) Some(UInt(8.W))              else None
@@ -66,6 +66,7 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
     this.preAddr    := ar.addr(raw - 1, rni.pageBits)
     this.exAddr     := ar.addr(rni.pageBits - 1, 0) >> ar.size << ar.size
     this.endAddr    := ((ar.addr(rni.pageBits - 1, 0) >> ar.size) + (ar.len + 1.U)) << ar.size
+    this.qos        := ar.qos
     this.id         := ar.id
     this.byteMask   := wrapMask(ar.len, ar.size)
     this.len        := ar.len + 1.U
@@ -95,6 +96,7 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
     this.preAddr      := info.preAddr
     this.exAddr       := Mux(info.cache(1) & (info.range.get(rni.pageBits - 1, rni.offset) === 0.U), Cat(info.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U(5.W)), info.exAddr)
     this.endAddr      := Mux(Burst.isWrap(info.burst), info.exAddr, Mux(Burst.isFix(info.burst), info.exAddr + (1.U << info.size), info.endAddr))
+    this.qos          := info.qos
     this.id           := info.id
     this.byteMask     := Mux(Burst.isWrap(info.burst), info.byteMask, Mux(Burst.isIncr(info.burst) || Burst.isFix(info.burst) && info.cache(1), 0xFFF.U, 0.U))
     this.cnt.get      := 0.U
@@ -113,6 +115,7 @@ class AxiWrEntry(isPipe : Boolean, node: Node)(implicit p: Parameters) extends Z
   val exAddr      = UInt(rni.pageBits.W)
   val endAddr     = UInt(rni.pageBits.W)
   val byteMask    = UInt(rni.pageBits.W)
+  val qos         = UInt(4.W)
   val burst       = UInt(2.W)
   val cnt         = if(!isPipe) Some(UInt(8.W))             else None
   val num         = if(!isPipe) Some(UInt(8.W))             else None
@@ -134,6 +137,7 @@ class AxiWrEntry(isPipe : Boolean, node: Node)(implicit p: Parameters) extends Z
     this.endAddr        := ((aw.addr(rni.pageBits - 1, 0) >> aw.size) + (aw.len + 1.U)) << aw.size
     this.range.get      := (aw.len + 1.U) << aw.size
     this.burst          := aw.burst
+    this.qos            := aw.qos
     this.byteMask       := byteComp(aw.len, aw.size)
     this.id             := aw.id
     this.size           := aw.size
@@ -161,6 +165,7 @@ class AxiWrEntry(isPipe : Boolean, node: Node)(implicit p: Parameters) extends Z
     this.preAddr        := info.preAddr
     this.exAddr         := info.exAddr
     this.endAddr        := Mux(Burst.isWrap(info.burst), info.exAddr, info.endAddr)
+    this.qos            := info.qos
     this.num.get        := getNum(info.cache(1), info.exAddr, info.len.get, info.burst, info.range.get, info.endAddr)
     this.burst          := info.burst
     this.cnt.get        := 0.U
@@ -210,6 +215,7 @@ class CHIREntry(node: Node)(implicit p : Parameters) extends ZJBundle {
   val sendComp       = Bool()
   val fromDCT        = Bool()
   val rcvDatComp     = Bool()
+  val qos            = UInt(4.W)
   val haveSendAck    = if(rni.readDMT) Some(Bool())      else None
   val homeNid        = if(rni.readDMT) Some(UInt(niw.W)) else None
   val dbid           = if(rni.readDMT) Some(UInt(12.W))  else None
@@ -217,6 +223,7 @@ class CHIREntry(node: Node)(implicit p : Parameters) extends ZJBundle {
   def ARMesInit[T <: ARFlit](b: T): CHIREntry = {
     this                   := 0.U.asTypeOf(this)
     this.double            := b.len(0).asBool
+    this.qos               := b.qos
     this.arId              := b.user
     this.idx               := b.id
     this.addr              := b.addr
@@ -285,6 +292,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
   def RReqInit[T <: CHIREntry](c : T, i : UInt, node: Node): ReqFlit = {
     val rni        = DmaParams(node = node)
     this          := 0.U.asTypeOf(this)
+    this.QoS      := c.qos
     this.Addr     := c.addr
     this.Opcode   := Mux(!c.memAttr.allocate & !c.memAttr.cacheable, ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
     this.SrcID    := rni.rniID.U
@@ -300,6 +308,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
     val rni          = DmaParams(node = node)
     this            := 0.U.asTypeOf(this)
     this.Addr       := c.addr
+    this.QoS        := c.qos
     this.Opcode     := Mux(!c.memAttr.allocate & !c.memAttr.cacheable, ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteUniquePtl)
     this.Size       := Mux(c.double, 6.U, c.size)
     this.TxnID      := (1.U << (this.TxnID.getWidth - 1)) | i
@@ -339,6 +348,7 @@ class AxiWMstEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
 class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   private val rni    = DmaParams(node = node)
   val awId           = UInt(log2Ceil(node.outstanding).W)
+  val qos            = UInt(4.W)
   val double         = Bool()
   val size           = UInt(3.W)
   val memAttr        = new MemAttr
@@ -352,6 +362,7 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   def awMesInit[T <: AWFlit](aw : T): CHIWEntry = {
     this           := 0.U.asTypeOf(this)
     this.double    := aw.len(0).asBool
+    this.qos       := aw.qos
     this.awId      := aw.id
     this.size      := aw.size
     this.addr      := aw.addr

@@ -139,6 +139,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
     lessWrapModify  -> lessWrapModifyAddr,
     true.B          -> defaultAddr
   ))
+  txArBdl.qos       := uTailE.qos
   txArBdl.cache     := uTailE.cache
   txArBdl.burst     := Burst.INCR
   txArBdl.user      := uTailE.id

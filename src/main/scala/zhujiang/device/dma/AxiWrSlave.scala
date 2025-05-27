@@ -158,6 +158,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
     lessWrapModify   -> lessWrapModifyAddr,
     true.B           -> defaultAddr
   ))
+  txAwBdl.qos        := uTailE.qos
   txAwBdl.size       := Mux(!uTailE.cache(1) || Burst.isFix(uTailE.burst), uTailE.size, log2Ceil(dw/8).U)
   txAwBdl.cache      := uTailE.cache
   txAwBdl.burst      := Burst.INCR
