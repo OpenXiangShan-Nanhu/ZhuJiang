@@ -101,7 +101,7 @@ class Decode(implicit p: Parameters) extends DJModule {
   respCompData_s3                     := cmtCode_s3.sendResp & cmtCode_s3.channel === ChiChannel.DAT & cmtCode_s3.commitOp === CompData // TODO: SnpRespData
   cleanUnuseDB_s3                     := taskReg_s3.alr.reqs & taskReg_s3.chi.isHalfSize & !taskCode_s3.snoop
   HAssert.withEn(!(respCompData_s3 & cleanUnuseDB_s3), validReg_s3)
-  HAssert.withEn(respDir_s3.llc.hit, validReg_s3 & respCompData_s3)
+  HAssert.withEn(respDir_s3.llc.hit, validReg_s3 & !taskCode_s3.valid & respCompData_s3)
   // valid and base bits
   io.fastData_s3.valid                := validReg_s3 & ((!taskCode_s3.valid & respCompData_s3) | cleanUnuseDB_s3)
   io.fastData_s3.bits                 := DontCare
