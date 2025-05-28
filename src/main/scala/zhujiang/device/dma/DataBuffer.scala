@@ -77,8 +77,8 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   ))
 
   private val wrRamQ = Module(new Queue(new writeRdDataBuffer(bufferSize), entries = 2, flow = false, pipe = false))
-  private val readRamStage1Pipe = Module(new Queue(new readRdDataBuffer(bufferSize, axiParams), entries = 1, pipe = true))
-  private val readRamStage2Pipe = Module(new Queue(new respDataBuffer(bufferSize), entries = 1, pipe = true))
+  private val readRamStage1Pipe = Module(new Queue(new readRdDataBuffer(bufferSize, axiParams), entries = 2, pipe = false))
+  private val readRamStage2Pipe = Module(new Queue(new respDataBuffer(bufferSize), entries = 2, pipe = false))
   private val rFlitBdl = WireInit(0.U.asTypeOf(new RFlit(axiParams)))
 
   wrRamQ.io.deq.ready := dataRam.io.wreq.ready

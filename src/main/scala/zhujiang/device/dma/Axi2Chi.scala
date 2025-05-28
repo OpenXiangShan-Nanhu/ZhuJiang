@@ -42,14 +42,18 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
   private val arbReqOut   = Wire(chiWrMaster.io.chiReq.cloneType)
   private val arbRspOut   = Wire(chiWrMaster.io.chiTxRsp.cloneType)
+  private val rxArQueue   = Module(new Queue(gen = new AxiBundle(axiParams).ar.bits, entries = 2, pipe = false, flow = false))
+  private val rxAwQueue   = Module(new Queue(gen = new AxiBundle(axiParams).aw.bits, entries = 2, pipe = false, flow = false))
 
+  axi.ar               <> rxArQueue.io.enq
+  axi.aw               <> rxAwQueue.io.enq
 
   axiRdSlave.io.dAxiAr <> chiRdMaster.io.axiAr
   axiRdSlave.io.dAxiR  <> rdDB.io.axiR
-  axiRdSlave.io.uAxiAr <> axi.ar
+  axiRdSlave.io.uAxiAr <> rxArQueue.io.deq
   axiRdSlave.io.uAxiR  <> axi.r
 
-  axiWrSlave.io.uAxiAw <> axi.aw
+  axiWrSlave.io.uAxiAw <> rxAwQueue.io.deq
   axiWrSlave.io.uAxiW  <> axi.w
   axiWrSlave.io.uAxiB  <> axi.b
   axiWrSlave.io.dAxiAw <> chiWrMaster.io.axiAw
