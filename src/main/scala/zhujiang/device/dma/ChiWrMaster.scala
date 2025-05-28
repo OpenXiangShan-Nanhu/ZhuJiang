@@ -153,7 +153,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   io.chiReq.valid   := (txReqPtr =/= headPtr) & ((rxDBIDPtr === txReqPtr) | (rxDBIDPtr =/= txReqPtr) & rcvIsDBID)
   io.chiReq.bits    := txReqBdl
   io.chiRxRsp.ready := true.B
-  io.axiB.valid     := chiEntries(txBPtr.value).haveRcvComp & txBPtr =/= txReqPtr
+  io.axiB.valid     := chiEntries(txBPtr.value).haveRcvComp & txBPtr < rxDatPtr
   io.axiB.bits      := axiBBdl
   io.rdDB.bits      := rdDBBdl
   io.rdDB.valid     := (txDatPtr =/= rxDatPtr) & (txDatPtr =/= rxDBIDPtr)
