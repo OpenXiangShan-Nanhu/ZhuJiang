@@ -94,7 +94,8 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
   }  
   def entryInit[T <: AxiRdEntry](info: T): AxiRdEntry = {
     this.preAddr      := info.preAddr
-    this.exAddr       := Mux(info.cache(1) & (info.range.get(rni.pageBits - 1, rni.offset) === 0.U), Cat(info.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U(5.W)), info.exAddr)
+    // this.exAddr       := Mux(info.cache(1) & (info.range.get(rni.pageBits - 1, rni.offset) === 0.U), Cat(info.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U(5.W)), info.exAddr)
+    this.exAddr       := info.exAddr
     this.endAddr      := Mux(Burst.isWrap(info.burst), info.exAddr, Mux(Burst.isFix(info.burst), info.exAddr + (1.U << info.size), info.endAddr))
     this.qos          := info.qos
     this.id           := info.id
