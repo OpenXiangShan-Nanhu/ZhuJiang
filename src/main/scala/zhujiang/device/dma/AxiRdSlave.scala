@@ -124,7 +124,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
         e.finish    := Mux((e.nextShift === e.endShift), true.B, e.finish)
       }
       when(io.dAxiR.fire & io.dAxiR.bits.id === i.U){
-        e.beat  := Mux(e.beat === 0.U, 1.U, e.beat)
+        e.beat  := !e.beat
       }
   }
 
