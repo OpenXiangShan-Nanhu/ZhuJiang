@@ -215,7 +215,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    */
   frontends.zipWithIndex.foreach {
     case(f, i) =>
-      f.io.respDir_s3       := directory.io.rRespVec(i)
+      f.io.respDir          := directory.io.rRespVec(i)
       f.io.reqPoS           <> backend.io.reqPosVec(i)
       f.io.updPosTag        := backend.io.updPosTag
       f.io.updPosNest       := backend.io.updPosNest
@@ -226,7 +226,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   /*
    * Connect Directory
    */
-  directory.io.readVec.zip(frontends.map(_.io.readDir_s1)).foreach { case(a, b) => a <> b }
+  directory.io.readVec.zip(frontends.map(_.io.readDir)).foreach { case(a, b) => a <> b }
   directory.io.write        <> backend.io.writeDir
   directory.io.unlock       := backend.io.unlock
 
@@ -237,7 +237,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   backend.io.fastResp       <> fastRRArb(frontends.map(_.io.fastResp))
   backend.io.recRespType    <> fastRRArb(frontends.map(_.io.recRespType))
   backend.io.dataResp       := dataBlock.io.resp
-  backend.io.cmtTaskVec.zip(frontends.map(_.io.cmtTask_s3)).foreach           { case(a, b) => a <> b }
+  backend.io.cmtTaskVec.zip(frontends.map(_.io.cmtTask)).foreach { case(a, b) => a <> b }
   backend.io.getAddrVec.zip(frontends.map(_.io.getAddrVec).transpose).foreach { case(a, b) =>
     a.result := VecInit(b.map(_.result))(a.hnIdx.dirBank)
   }
@@ -246,18 +246,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    * Connect dataBlock
    */
   dataBlock.io.cutHnTxnID   := backend.io.cutHnTxnID
-  dataBlock.io.reqDB        <> fastRRArb(Seq(backend.io.reqDB) ++ frontends.map(_.io.reqDB_s1))
-  val onlyCleanVec          = VecInit(frontends.map(_.io.fastData_s3).map(task => task.valid & task.bits.dataOp.onlyClean))
-  val onlyCleanId           = PriorityEncoder(onlyCleanVec)
-  val frontendDataVec       = VecInit(frontends.map(_.io.fastData_s3))
-  when(onlyCleanVec.asUInt.orR) {
-    frontendDataVec.foreach(_.ready := false.B) // init
-    backend.io.dataTask.ready       := false.B  // init
-    dataBlock.io.task       <> frontendDataVec(onlyCleanId)
-  }.otherwise {
-    dataBlock.io.task       <> fastRRArb(Seq(backend.io.dataTask) ++ frontendDataVec)
-  }
-  HardwareAssertion(PopCount(onlyCleanVec) <= 1.U)
+  dataBlock.io.cleanDB      <> fastArb.validOut(Seq(backend.io.cleanDB, fastRRArb(frontends.map(_.io.cleanDB))))
+  dataBlock.io.reqDB        <> fastArb(Seq(backend.io.reqDB, fastRRArb(frontends.map(_.io.reqDB_s3)), fastRRArb(frontends.map(_.io.reqDB_s1))))
+  dataBlock.io.task         := fastArb.validOut(Seq(backend.io.dataTask, fastRRArb(frontends.map(_.io.fastData))))
 
   /*
    * HardwareAssertion placePipe

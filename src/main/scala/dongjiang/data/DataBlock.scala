@@ -21,8 +21,9 @@ class DataBlock(implicit p: Parameters) extends DJModule {
     // Task From Frontend or Backend
     val cutHnTxnID  = Flipped(Valid(new CutHnTxnID)) // broadcast signal
     val reqDB       = Flipped(Decoupled(new HnTxnID with HasDataVec))
-    val task        = Flipped(Decoupled(new DataTask))
+    val task        = Flipped(Valid(new DataTask)) // broadcast signal
     val resp        = Valid(new HnTxnID)
+    val cleanDB     = Flipped(Valid(new HnTxnID with HasDataVec)) // broadcast signal
   })
 
   /*
@@ -41,7 +42,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
   io.txDat.bits         := dataCM.io.txDatBits
   io.txDat.bits.Data    := datBuf.io.toCHI.bits.dat.Data
   io.txDat.bits.BE      := datBuf.io.toCHI.bits.dat.BE
-  datBuf.io.toCHI.ready := io.txDat.ready
+  io.rxDat.ready        := datBuf.io.fromCHI.ready
   // resp
   io.resp               := dataCM.io.resp
 
@@ -64,6 +65,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
       wReadyVec2(i)(j)      := bs.io.write.ready
     }
   }
+  HAssert(PopCount(dataStorage.flatMap(_.map(_.io.resp.valid))) <= 1.U)
   // ready
   dataCM.io.readToDB.ready  := rReadyVec2(readDs.ds.bank)(readDs.beatNum)
   datBuf.io.writeDS.ready   := wReadyVec2(writeDs.ds.bank)(writeDs.beatNum)
@@ -73,7 +75,8 @@ class DataBlock(implicit p: Parameters) extends DJModule {
    */
   dataCM.io.cutHnTxnID          := io.cutHnTxnID
   dataCM.io.reqDBIn             <> io.reqDB
-  dataCM.io.task                <> io.task
+  dataCM.io.task                := io.task
+  dataCM.io.clean               := io.cleanDB
   dataCM.io.txDataDCID          := datBuf.io.toCHI.bits.dcid
   dataCM.io.dsWriDB.valid       := datBuf.io.respDS.valid
   dataCM.io.dsWriDB.bits.dcid   := datBuf.io.respDS.bits.dcid
@@ -84,7 +87,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
    * Connect dbidCtrl
    */
   dbidCtrl.io.req               <> dataCM.io.reqDBOut
-  dbidCtrl.io.release           := dataCM.io.releaseDB
+  dbidCtrl.io.release           := io.cleanDB
   dbidCtrl.io.cutHnTxnID        := io.cutHnTxnID
 
   /*
@@ -92,26 +95,28 @@ class DataBlock(implicit p: Parameters) extends DJModule {
    */
   datBuf.io.readToCHI           <> dataCM.io.readToCHI
   datBuf.io.readToDS            <> dataCM.io.readToDS
-  datBuf.io.cleanMaskVec        <> dataCM.io.cleanMaskVec
   datBuf.io.respDS              := fastArb(dataStorage.flatMap(_.map(_.io.resp)))
   datBuf.io.fromCHI.valid       := io.rxDat.valid
   datBuf.io.fromCHI.bits.dat    := io.rxDat.bits
-  io.rxDat.ready                := datBuf.io.fromCHI.ready
-  HAssert(PopCount(dataStorage.flatMap(_.map(_.io.resp.valid))) <= 1.U)
+  datBuf.io.toCHI.ready         := io.txDat.ready
+  datBuf.io.cleanMaskVec.zipWithIndex.foreach { case (c, i) =>
+    c.valid := io.cleanDB.valid & io.cleanDB.bits.dataVec(i) & dbidCtrl.io.getDBIDVec.last.dbidVec(i).valid
+    c.bits.dbid := dbidCtrl.io.getDBIDVec.last.dbidVec(i).bits // Set dbid
+  }
 
   /*
    * Connect getDBIDVec
    */
   // connect dataCM <> dbidCtrl
-  dataCM.io.getDBIDVec.zipWithIndex.foreach { case(get, i) =>
-    dbidCtrl.io.getDBIDVec(i).hnTxnID := get.hnTxnID
-    get.dbidVec := dbidCtrl.io.getDBIDVec(i).dbidVec
-  }
+  dbidCtrl.io.getDBIDVec.slice(0, dbidCtrl.io.getDBIDVec.size).zip(dataCM.io.getDBIDVec).foreach { case(a, b) => a <> b }
   // remap data from CHI TxnID and DataID to DBID
-  dbidCtrl.io.getDBIDVec(4).hnTxnID := io.rxDat.bits.TxnID
-  datBuf.io.fromCHI.bits.dbid       := dbidCtrl.io.getDBIDVec(4).dbidVec(Mux(io.rxDat.bits.DataID === "b00".U, 0.U, 1.U)); require(djparam.nrBeat == 2)
+  dbidCtrl.io.getDBIDVec(3).hnTxnID := io.rxDat.bits.TxnID
+  datBuf.io.fromCHI.bits.dbid       := dbidCtrl.io.getDBIDVec(3).dbidVec(Mux(io.rxDat.bits.DataID === "b00".U, 0.U, 1.U)).bits; require(djparam.nrBeat == 2)
+  HAssert.withEn(dbidCtrl.io.getDBIDVec(3).dbidVec(Mux(io.rxDat.bits.DataID === "b00".U, 0.U, 1.U)).valid, io.rxDat.valid)
+  // remap cleanMaskVec dbid
+  dbidCtrl.io.getDBIDVec(4).hnTxnID := io.cleanDB.bits.hnTxnID
   // require
-  require(dataCM.io.getDBIDVec.size + 1 == dbidCtrl.io.getDBIDVec.size)
+  require(dataCM.io.getDBIDVec.size + 2 == dbidCtrl.io.getDBIDVec.size)
 
   /*
    * HardwareAssertion placePipe

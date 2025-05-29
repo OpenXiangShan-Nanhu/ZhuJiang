@@ -26,7 +26,6 @@ object RECSTATE {
   val width     = 3
   val FREE      = 0x0.U
   val WAITDIR   = 0x1.U // Wait Directory result
-  val REQDB     = 0x2.U
   val SENDRSP   = 0x3.U
   val WAITDATA0 = 0x4.U
   val WAITDATA1 = 0x5.U
@@ -38,14 +37,13 @@ trait HasRecState { this: Bundle =>
   // No WriteEvictOrEvict:
   // CHI:         Free --> SendRsp --> WaitData0 --> WaitData1 --> RespCmt --> Free
   // WriteEvictOrEvict:
-  // GetData:     Free --> WaitRes --> ReqDB --> SendRsp --> WaitData0 --> WaitData1 --> RespCmt --> Free
+  // GetData:     Free --> WaitRes --> SendRsp --> WaitData0 --> WaitData1 --> RespCmt --> Free
   // NotGetData:  Free --> WaitRes --> SendRsp --> WaitAck--> RespCmt --> Free
   val state       = UInt(RECSTATE.width.W)
 
   def isFree      = state === FREE
   def isValid     = !isFree
   def isWaitDir   = state === WAITDIR // Wait directory result to judge need send Comp or CompDBIDResp of WriteEvictOrEvict
-  def isReqDB     = state === REQDB
   def isSendRsp   = state === SENDRSP
   def isWaitData0 = state === WAITDATA0
   def isWaitData1 = state === WAITDATA1
@@ -72,8 +70,6 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
     val alloc       = Flipped(Decoupled(new FastResp))
     val respType    = Flipped(Valid(new RecRespType)) // broadcast signal
     val resp        = Decoupled(new CMResp)
-    // ReqDB
-    val reqDB       = Decoupled(new HnTxnID with HasDataVec)
     // CHI
     val txRsp       = Decoupled(new RespFlit())
     val rxRsp       = Flipped(Valid(new RespFlit()))
@@ -104,14 +100,6 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   io.alloc.ready  := reg.isFree
 
   /*
-   * ReqDB
-   */
-  io.reqDB.valid        := reg.isReqDB
-  io.reqDB.bits.hnTxnID := reg.rsp.DBID
-  io.reqDB.bits.dataVec := DataVec.Full
-  HAssert.withEn(reg.isFullSize, io.reqDB.valid)
-
-  /*
    * Send Rsp to CHI
    */
   io.txRsp.valid  := reg.isSendRsp
@@ -124,8 +112,6 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   io.resp.valid           := reg.isRespCmt
   // bits
   io.resp.bits.hnTxnID    := reg.rsp.DBID
-  io.resp.bits.alr        := DontCare
-  io.resp.bits.alr.reqs   := reg.rsp.Opcode =/= Comp
   io.resp.bits.fromRec    := true.B
   io.resp.bits.toRepl     := false.B
   io.resp.bits.taskInst   := reg.taskInst
@@ -140,11 +126,11 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   val datHit      = reg.isValid & io.rxDat.fire & io.rxDat.bits.TxnID === reg.rsp.DBID & (io.rxDat.bits.Opcode === CopyBackWriteData | io.rxDat.bits.Opcode === NonCopyBackWriteData | io.rxDat.bits.Opcode === NCBWrDataCompAck)
   // Store Msg From Frontend
   when(io.alloc.fire) {
-    next.rsp              := io.alloc.bits.rsp
-    next.dataVec          := io.alloc.bits.dataVec
-  // Modify to send CompDBIDResp
+    next.rsp                  := io.alloc.bits.rsp
+    next.dataVec              := io.alloc.bits.dataVec
+  // Modify to send Comp
   }.elsewhen(respTypeHit & io.respType.bits.dbid) {
-    next.rsp.Opcode       := CompDBIDResp
+    next.rsp.Opcode           := CompDBIDResp
   // Store Inst
   }.elsewhen(rspHit | datHit) {
     next.taskInst.valid       := true.B
@@ -159,10 +145,7 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
       when(io.alloc.fire) { next.state := Mux(io.alloc.bits.rsp.Opcode === Comp, WAITDIR, SENDRSP) }
     }
     is(WAITDIR) {
-      when(respTypeHit)   { next.state := Mux(io.respType.bits.dbid, REQDB, SENDRSP) }
-    }
-    is(REQDB) {
-      when(io.reqDB.fire) { next.state := SENDRSP }
+      when(respTypeHit)   { next.state := SENDRSP }
     }
     is(SENDRSP) {
       when(io.txRsp.fire) { next.state := Mux(reg.rsp.Opcode === Comp, WAITACK, WAITDATA0) }
@@ -186,7 +169,6 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
    */
   HAssert.withEn(reg.isFree,      io.alloc.fire)
   HAssert.withEn(reg.isWaitDir,   reg.isValid & respTypeHit)
-  HAssert.withEn(reg.isReqDB,     reg.isValid & io.reqDB.fire)
   HAssert.withEn(reg.isSendRsp,   reg.isValid & io.txRsp.fire)
   HAssert.withEn(reg.isWaitData,  reg.isValid & datHit)
   HAssert.withEn(reg.isWaitAck,   reg.isValid & rspHit)
@@ -217,8 +199,6 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
     val alloc       = Flipped(Decoupled(new FastResp))
     val respType    = Flipped(Decoupled(new RecRespType))
     val resp        = Decoupled(new CMResp)
-    // ReqDB
-    val reqDB       = Decoupled(new HnTxnID with HasDataVec)
     // CHI
     val txRsp       = Decoupled(new RespFlit())
     val rxRsp       = Flipped(Valid(new RespFlit()))
@@ -247,7 +227,7 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
    * Connect CM <- IO
    */
   entries.foreach(_.io.config := io.config)
-  Alloc(entries.map(_.io.alloc), io.alloc)
+  Alloc(entries.map(_.io.alloc), FastQueue(io.alloc))
   entries.foreach(_.io.respType := respTypeQ.io.deq)
   entries.foreach(_.io.rxRsp := io.rxRsp)
   entries.foreach(_.io.rxDat := io.rxDat)
@@ -257,7 +237,6 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
    */
   io.txRsp  <> fastRRArb(entries.map(_.io.txRsp))
   io.resp   <> fastRRArb(entries.map(_.io.resp))
-  io.reqDB  <> fastRRArb(entries.map(_.io.reqDB))
 
   /*
    * HardwareAssertion placePipe

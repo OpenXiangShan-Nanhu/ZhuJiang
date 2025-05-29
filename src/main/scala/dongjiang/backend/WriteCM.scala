@@ -18,6 +18,7 @@ import dongjiang.backend._
 import dongjiang.backend.WRISTATE._
 import dongjiang.data._
 import chisel3.experimental.BundleLiterals._
+import xs.utils.queue.FastQueue
 
 // ----------------------------------------------------------------------------------------------------- //
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
@@ -97,7 +98,6 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
    * Receive Task
    */
   io.alloc.ready  := reg.isFree
-  HardwareAssertion.withEn(!io.alloc.bits.dataOp.reqs, io.alloc.valid & io.alloc.bits.alr.reqs)
 
   /*
    * SendReq
@@ -130,7 +130,6 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   // bits
   io.dataTask.bits                := DontCare
   io.dataTask.bits.dataOp         := reg.task.dataOp
-  io.dataTask.bits.dataOp.reqs    := reg.task.needReqDB
   io.dataTask.bits.hnTxnID        := reg.task.hnTxnID
   io.dataTask.bits.ds             := reg.task.ds
   io.dataTask.bits.dataVec        := reg.task.chi.dataVec
@@ -140,7 +139,6 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.txDat.SrcID    := reg.task.chi.getNoC
   io.dataTask.bits.txDat.TgtID    := reg.task.chi.nodeId
 
-
   /*
    * Send Resp To Commit
    */
@@ -149,7 +147,6 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   // bits respCmt
   io.resp.bits                := DontCare
   io.resp.bits.hnTxnID        := reg.task.hnTxnID
-  io.resp.bits.alr            := reg.task.alr
   io.resp.bits.fromRec        := false.B
   io.resp.bits.toRepl         := reg.task.fromRepl
   io.resp.bits.taskInst.valid := true.B
@@ -255,7 +252,7 @@ class WriteCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect CM <- IO
    */
-  Alloc(entries.map(_.io.alloc), io.alloc)
+  Alloc(entries.map(_.io.alloc), FastQueue(io.alloc))
   entries.foreach(_.io.config   := io.config)
   entries.foreach(_.io.rxRsp    := io.rxRsp)
   entries.foreach(_.io.dataResp := io.dataResp)

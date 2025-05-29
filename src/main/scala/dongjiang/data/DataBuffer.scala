@@ -79,7 +79,6 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
       r := false.B
     }
     HAssert(!(replHit & cleanHit))
-    HAssert(PopCount(io.cleanMaskVec.map(c => c.valid & c.bits.dbid === i.U)) <= 1.U)
   }
 
   /*

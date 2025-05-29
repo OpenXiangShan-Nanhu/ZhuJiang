@@ -6,6 +6,7 @@ import org.chipsalliance.cde.config._
 import dongjiang._
 import zhujiang.chi._
 import dongjiang.frontend.decode._
+import dongjiang.frontend.decode.Decode._
 import zhujiang.chi.ReqOpcode.WriteEvictOrEvict
 
 /*
@@ -157,9 +158,6 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
   // Flag
   val toLAN         = Bool() // TODO: It should be in CommitTask?
   def toBBN         = !toLAN
-
-  def needSendDBID  = isAtomic | (isWrite & !reqIs(WriteEvictOrEvict))
-
   def getNoC        = Mux(toLAN, LAN.U, BBN.U)
 
   def getChiInst: ChiInst = {
@@ -196,23 +194,16 @@ class GetAddr(frontend: Boolean = false)(implicit p: Parameters) extends DJBundl
  * HasAlready
  */
 trait HasAlready { this: DJBundle =>
-  val alr       = new DJBundle {
-    val reqs    = Bool() // Already request DataCM and DataBuf. If set it, commit will clean when done all
-    val sData   = Bool() // Already send DataTask to read DS to CHI in S3(Decode) and Commit need wait DataResp
-    val cleanDB = Bool() // Already clean DataBuffer in S3(Decode) and Commit need wait DataResp
+  val alr           = new DJBundle {
+    val reqDB       = Bool() // Already request DataCM and DataBuf. If set it, commit will clean when done all
+    val sData       = Bool() // Already send DataTask to read DS to CHI in S3(Decode) and Commit need wait DataResp
+    val getSnpData  = Bool() // Already get data from SnpRespDataX
   }
 }
 
 /*
  * HasDecList
  */
-trait HasDecList { this: DJBundle =>
-  val decList = MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W))
-
-  def firstDec  (inst: ChiInst)             : MixedVec[UInt] = { val list = WireInit(decList); list(0) := Decode.decode("chi",     decList, inst.asUInt); list }
-  def secondDec (inst: StateInst)           : MixedVec[UInt] = { val list = WireInit(decList); list(1) := Decode.decode("state",   decList, inst.asUInt); list }
-  def thirdDec  (inst: TaskInst, idx: UInt) : MixedVec[UInt] = { val list = WireInit(decList); list(2) := Decode.decode("task",    decList, inst.asUInt, idx); list }
-  def fourthDec (inst: TaskInst, idx: UInt) : MixedVec[UInt] = { val list = WireInit(decList); list(3) := Decode.decode("secTask", decList, inst.asUInt, idx); list }
-}
+trait HasDecList { this: DJBundle => val decList = MixedVec(UInt(w_ci.W), UInt(w_si.W), UInt(w_ti.W), UInt(w_sti.W)) }
 
 class PackDecList(implicit p: Parameters) extends DJBundle with HasDecList

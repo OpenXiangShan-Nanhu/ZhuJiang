@@ -10,7 +10,6 @@ import zhujiang.chi._
 import dongjiang.bundle._
 import xs.utils.ParallelLookUp
 import dongjiang.frontend.decode.DecodeCHI._
-
 import math.max
 import dongjiang.bundle.ChiChannel._
 import xs.utils.debug._
@@ -105,13 +104,11 @@ class TaskInst extends Bundle {
 
 trait HasPackTaskInst { this: Bundle => val taskInst = new TaskInst() }
 
-class PackTaskInst extends Bundle with HasPackTaskInst
-
 object CMID {
-  lazy val SNP  = 0
-  lazy val WRI  = 1
-  lazy val READ = 2
-  lazy val DL   = 3
+  lazy val SNP  = 0 // Snoop
+  lazy val WRI  = 1 // Write
+  lazy val READ = 2 // Read
+  lazy val DL   = 3 // Dataless
 }
 
 trait HasOperations { this: Bundle =>
@@ -119,35 +116,22 @@ trait HasOperations { this: Bundle =>
   val read        = Bool()
   val dataless    = Bool()
   val write       = Bool()
-  def opsValid    = snoop | read | dataless | write
-  def opsInvalid  = !opsValid
-  def cmid: UInt  = {
-    PriorityMux(Seq(
-      snoop       -> CMID.SNP.U,
-      read        -> CMID.READ.U,
-      dataless    -> CMID.DL.U,
-      write       -> CMID.WRI.U,
-    ))
-  }
+  def opsIsValid  = snoop | read | dataless | write
 }
 
 class Operations extends Bundle with HasOperations
 
-trait HasPackOperations { this: Bundle => val ops = new Operations() }
-
 object SnpTgt {
   val width       = 2
-  val NONE        = "b00".U
   val ALL         = "b01".U
   val ONE         = "b10".U // Select first other
   val OTH         = "b11".U
 }
 
-trait HasSnpTgt { this: Bundle => val snpTgt = UInt(SnpTgt.width.W) }
-
 trait HasTaskCode { this: Bundle with HasOperations with HasPackDataOp =>
   // Common
   val opcode      = UInt(ReqOpcode.width.max(SnpOpcode.width).W)
+  val needDB      = Bool()
 
   // Wait ReceiveCM Done
   val waitRecDone = Bool() // -> Return Valid   TaskInst
@@ -159,16 +143,16 @@ trait HasTaskCode { this: Bundle with HasOperations with HasPackDataOp =>
   // Snoop
   val retToSrc    = Bool()
   val snpTgt      = UInt(SnpTgt.width.W)
-  def snpAll      = snpTgt === SnpTgt.ALL
-  def snpOne      = snpTgt === SnpTgt.ONE
-  def snpOth      = snpTgt === SnpTgt.OTH
+  def snpIsAll    = snpTgt === SnpTgt.ALL
+  def snpIsOne    = snpTgt === SnpTgt.ONE
+  def snpIsOth    = snpTgt === SnpTgt.OTH
 
-  def valid: Bool = opsValid | waitRecDone
+  def isValid: Bool = opsIsValid | waitRecDone
 }
 
 class TaskCode extends Bundle with HasOperations with HasPackDataOp with HasTaskCode
 
-trait HasPackTaskCode { this: Bundle => val taskCode = new TaskCode() }
+trait HasPackTaskCode { this: Bundle => val task = new TaskCode() }
 
 trait HasWriDirCode { this: Bundle =>
   // Write Directory
@@ -179,8 +163,8 @@ trait HasWriDirCode { this: Bundle =>
   val snpValid    = Bool()
   val llcState    = UInt(ChiState.width.W)
 
-  def wriSF       = wriSRC | wriSNP
-  def wriDir      = wriSF  | wriLLC
+  def isWriSF     = wriSRC  | wriSNP
+  def isWriDir    = isWriSF | wriLLC
 }
 
 trait HasCommitCode { this: Bundle with HasWriDirCode with HasPackDataOp =>
@@ -189,18 +173,16 @@ trait HasCommitCode { this: Bundle with HasWriDirCode with HasPackDataOp =>
   val sendResp    = Bool()
   val sendfwdResp = Bool() // CompData to RN in DCT
   val channel     = UInt(ChiChannel.width.W)
-  val commitOp    = UInt(RspOpcode.width.max(DatOpcode.width).W)
+  val opcode      = UInt(RspOpcode.width.max(DatOpcode.width).W)
   val resp        = UInt(ChiResp.width.W)
   val fwdResp     = UInt(ChiResp.width.W)
 
-  // def
-  def valid       = sendResp | wriDir | dataOp.valid
-  def invalid     = !valid
+  def isValid     = sendResp | isWriDir | dataOp.isValid
 }
 
 class CommitCode extends Bundle with HasWriDirCode with HasPackDataOp with HasCommitCode
 
-trait HasPackCmtCode { this: Bundle => val commit = new CommitCode() }
+trait HasPackCmtCode { this: Bundle => val cmt = new CommitCode() }
 
 object DecodeCHI {
   val width = ChiResp.width
@@ -292,15 +274,16 @@ object Code {
   def snpOth  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.snoop    := true.B; temp.snpTgt := SnpTgt.OTH; require(x.getWidth == SnpOpcode.width); temp.asUInt }
   def read    (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.read     := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
   def dataless(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.dataless := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
-  def write   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.write := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
+  def write   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.write    := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
+
+  // Task Code Need DataBuffer
+  def needDB            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.needDB := true.B; temp.asUInt }
 
   // Task Code DataOp
-  // note0: cant set reqs expect of write
-  // note1: cant set clean when commit will use DataBuffer
-  def tdop(x: String*): UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
+  def tdop(x: String*)  : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // Task Code Other
-  def waitRecDone       : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.waitRecDone  := true.B; temp.asUInt }
+  def waitRecDone       : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.waitRecDone  := true.B; temp.asUInt | needDB }
   def taskECA           : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.expCompAck   := true.B; temp.asUInt }
   def doDMT             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.doDMT        := true.B; temp.asUInt }
   def retToSrc          : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.retToSrc     := true.B; temp.asUInt }
@@ -312,8 +295,8 @@ object Code {
   // Commit Code
   def sendResp          : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.sendResp     := true.B;    temp.asUInt }
   def sendFwdResp       : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.sendfwdResp  := true.B;    temp.asUInt }
-  def cmtRsp  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel      := RSP;       temp.commitOp := x; require(x.getWidth == RspOpcode.width); temp.asUInt | sendResp }
-  def cmtDat  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel      := DAT;       temp.commitOp := x; require(x.getWidth == DatOpcode.width); temp.asUInt | sendResp }
+  def cmtRsp  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel      := RSP;       temp.opcode := x; require(x.getWidth == RspOpcode.width); temp.asUInt | sendResp }
+  def cmtDat  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.channel      := DAT;       temp.opcode := x; require(x.getWidth == DatOpcode.width); temp.asUInt | sendResp }
   def resp    (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.resp         := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt }
   def fwdResp (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.fwdResp      := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | sendFwdResp }
 
@@ -323,7 +306,7 @@ object Code {
   def wriLLC  (x: UInt)    : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.llcState  := toState(x);  temp.wriLLC := true.B;  require(x.getWidth == DecodeCHI.width); temp.asUInt }
 
   // Commit Code DataOp
-  // If need write llc(valid) and not hit in llc, the save and clean operation will be handed over to ReplaceCM for execution.
+  // If need write llc, the save operation will be handed over to ReplaceCM for execution.
   def cdop(x: String*): UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // CommitCode NoCMT or ERROR
@@ -350,13 +333,17 @@ object Decode {
   private val table = Read_LAN_DCT_DMT.table ++ Dataless_LAN.table ++ Write_LAN.table
 
   // ChiInst length
-  val l_ci = table.length
+  val l_ci  = table.length
+  val w_ci  = log2Ceil(l_ci)
   // StateInst length
-  val l_si = table.map(_._2.length).max
+  val l_si  = table.map(_._2.length).max
+  val w_si  = log2Ceil(l_si)
   // TaskInst length
-  val l_ti = table.map(_._2.map(_._2._2.length).max).max
+  val l_ti  = table.map(_._2.map(_._2._2.length).max).max
+  val w_ti  = log2Ceil(l_ti)
   // SecTaskInst length
   val l_sti = table.map(_._2.map(_._2._2.map(_._2._2.length).max).max).max
+  val w_sti = log2Ceil(l_sti)
 
   private val chiInst    = new ChiInst().getWidth
   private val stateInst  = new StateInst().getWidth
@@ -408,10 +395,13 @@ object Decode {
     ((chiInstVec, stateInstVec2, taskInstVec3, secInstVec4), (taskCodeVec2, secCodeVec3, commitCodeVec4))
   }
 
-  def decode(instType: String, decList:MixedVec[UInt], inst: UInt, idx: UInt = 0.U)(implicit p: Parameters, s: SourceInfo): UInt = {
+  def decode(instType: String, decList: MixedVec[UInt], inst: UInt, idx: UInt = 0.U)(implicit p: Parameters, s: SourceInfo): UInt = {
 
     require(decList.length == 4)
-
+    require(decList(0).getWidth == w_ci)
+    require(decList(1).getWidth == w_si)
+    require(decList(2).getWidth == w_ti)
+    require(decList(3).getWidth == w_sti)
     require(instType == "chi" | instType == "state" | instType == "task" | instType == "secTask")
 
     val (chiInstVec, stateInstVec2, taskInstVec3, secInstVec4) = parse._1
@@ -482,42 +472,10 @@ object Decode {
       PriorityEncoder(secTaskInstVec.map(_ === inst))
     }
   }
-}
 
-// Get Decode Result
-@instantiable
-class GetDecRes(implicit val p: Parameters) extends Module {
-  @public
-  val io = IO(new Bundle {
-    val list        = Flipped(Valid(MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W))))
-    val taskCode    = Output(new TaskCode)
-    val secTaskCode = Output(new TaskCode)
-    val commitCode  = Output(new CommitCode)
-  })
-  dontTouch(io)
-
-  val l = io.list.bits
-  val ((chiInstVec, stateInstVec2, taskInstVec3, secInstVec4), (taskCodeVec2, secCodeVec3, commitCodeVec4)) = Decode.parse
-
-  io.taskCode     := taskCodeVec2(l(0))(l(1)).asTypeOf(new TaskCode)
-  io.secTaskCode  := secCodeVec3(l(0))(l(1))(l(2)).asTypeOf(new TaskCode)
-  io.commitCode   := commitCodeVec4(l(0))(l(1))(l(2))(l(3)).asTypeOf(new CommitCode)
-
-//  HAssert.withEn(chiInstVec(l(0)).asTypeOf(new ChiInst).valid,                      io.list.valid, "CHI Instruction access out of bounds")
-//  HAssert.withEn(stateInstVec2(l(0))(l(1)).asTypeOf(new StateInst).valid,           io.list.valid, "State Instruction access out of bounds")
-//  HAssert.withEn(taskInstVec3(l(0))(l(1))(l(2)).asTypeOf(new TaskInst).valid,       io.list.valid, "Task Instruction access out of bounds")
-//  HAssert.withEn(secInstVec4(l(0))(l(1))(l(2))(l(3)).asTypeOf(new TaskInst).valid,  io.list.valid, "Second Task Instruction access out of bounds")
-}
-
-object GetDecRes {
-  private var defPool:Option[Definition[GetDecRes]] = None
-
-  def apply()(implicit p:Parameters): Instance[GetDecRes] = {
-    if(defPool.isDefined) {
-      Instance(defPool.get)
-    } else {
-      defPool = Some(Definition(new GetDecRes))
-      Instance(defPool.get)
-    }
-  }
+  def listInit = MixedVecInit(0.U(w_ci.W), 0.U(w_si.W), 0.U(w_ti.W), 0.U(w_sti.W))
+  def firstDec  (inst: ChiInst)                                     (implicit p: Parameters, s: SourceInfo) : MixedVec[UInt] = { val list = WireInit(listInit); list(0) := decode("chi",     listInit,  inst.asUInt);       list }
+  def secondDec (decList: MixedVec[UInt], inst: StateInst)          (implicit p: Parameters, s: SourceInfo) : MixedVec[UInt] = { val list = WireInit(decList);  list(1) := decode("state",   decList,   inst.asUInt);       list }
+  def thirdDec  (decList: MixedVec[UInt], inst: TaskInst, idx: UInt)(implicit p: Parameters, s: SourceInfo) : MixedVec[UInt] = { val list = WireInit(decList);  list(2) := decode("task",    decList,   inst.asUInt, idx);  list }
+  def fourthDec (decList: MixedVec[UInt], inst: TaskInst, idx: UInt)(implicit p: Parameters, s: SourceInfo) : MixedVec[UInt] = { val list = WireInit(decList);  list(3) := decode("secTask", decList,   inst.asUInt, idx);  list }
 }

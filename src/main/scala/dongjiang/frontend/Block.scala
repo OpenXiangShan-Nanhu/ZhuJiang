@@ -44,7 +44,6 @@ class Block(implicit p: Parameters) extends DJModule {
   val taskReg_s1          = Reg(new PackChi with HasAddr)
   val sReceiptReg_s1      = RegInit(false.B)  // need send ReadReceipt in s1
   val sDBIDReg_s1         = RegInit(false.B)  // need send XDBIDResp in s1
-  val reqIsWEOEReg_s1     = RegInit(false.B)  // Req is WriteEvictOrEvict
   val shouldResp_s1       = Wire(Bool())      // shouled send fast resp to Backend
   val blockByDB_s1        = Wire(Bool())      // block by no DataBuffer
   val block_s1            = Wire(new Bundle {
@@ -74,13 +73,13 @@ class Block(implicit p: Parameters) extends DJModule {
   /*
    * Task Out
    */
-  io.task_s1.valid            := validReg_s1 & !block_s1.all
-  io.task_s1.bits.chi         := taskReg_s1.chi
-  io.task_s1.bits.addr        := taskReg_s1.addr
-  io.task_s1.bits.hnIdx       := io.hnIdx_s1
-  io.task_s1.bits.alr.reqs    := io.reqDB_s1.fire
-  io.task_s1.bits.alr.sData   := false.B
-  io.task_s1.bits.alr.cleanDB := false.B
+  io.task_s1.valid                := validReg_s1 & !block_s1.all
+  io.task_s1.bits.chi             := taskReg_s1.chi
+  io.task_s1.bits.addr            := taskReg_s1.addr
+  io.task_s1.bits.hnIdx           := io.hnIdx_s1
+  io.task_s1.bits.alr.reqDB       := io.reqDB_s1.fire
+  io.task_s1.bits.alr.sData       := false.B
+  io.task_s1.bits.alr.getSnpData  := false.B
 
   /*
    * Read Directory
@@ -94,9 +93,8 @@ class Block(implicit p: Parameters) extends DJModule {
    */
   // needRespReg_s1 is associated with dbid2Rn of Commit.
   sReceiptReg_s1                    := io.chiTask_s0.bits.chi.isRead  & io.chiTask_s0.bits.chi.isEO
-  sDBIDReg_s1                       := io.chiTask_s0.bits.chi.needSendDBID
-  reqIsWEOEReg_s1                   := io.chiTask_s0.bits.chi.reqIs(WriteEvictOrEvict)
-  shouldResp_s1                     := sReceiptReg_s1 | reqIsWEOEReg_s1 | (sDBIDReg_s1 & io.reqDB_s1.ready)
+  sDBIDReg_s1                       := io.chiTask_s0.bits.chi.isWrite | io.chiTask_s0.bits.chi.isAtomic
+  shouldResp_s1                     := sReceiptReg_s1 | (sDBIDReg_s1 & io.reqDB_s1.ready)
   blockByDB_s1                      := sDBIDReg_s1 & !io.reqDB_s1.ready
   // Send Req To Data
   io.reqDB_s1.valid                 := validReg_s1 & sDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.pos | block_s1.dir)
@@ -113,7 +111,7 @@ class Block(implicit p: Parameters) extends DJModule {
   io.fastResp_s1.bits.rsp.RespErr   := RespErr.NormalOkay
   io.fastResp_s1.bits.rsp.Opcode    := PriorityMux(Seq(
     sReceiptReg_s1                              -> ReadReceipt,
-    reqIsWEOEReg_s1                             -> Comp,
+    taskReg_s1.chi.reqIs(WriteEvictOrEvict)     -> Comp,
     (sDBIDReg_s1 & taskReg_s1.chi.isOWO)        -> DBIDResp,
     (sDBIDReg_s1 & taskReg_s1.chi.memAttr.ewa)  -> CompDBIDResp
   ))

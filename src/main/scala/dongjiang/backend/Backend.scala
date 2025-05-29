@@ -58,6 +58,7 @@ class Backend(implicit p: Parameters) extends DJModule {
     val reqDB           = Decoupled(new HnTxnID with HasDataVec)
     val dataTask        = Decoupled(new DataTask)
     val dataResp        = Flipped(Valid(new HnTxnID))
+    val cleanDB         = Decoupled(new HnTxnID with HasDataVec)
     // Get addr from PoS
     val getAddrVec      = Vec(3, new GetAddr) // txReq + txSnp + writeDir
   })
@@ -99,26 +100,34 @@ class Backend(implicit p: Parameters) extends DJModule {
   io.reqPosVec.zip(replCM.io.reqPosVec).foreach { case(a, b) => a <> b }
   io.updPosTag              := replCM.io.updPosTag
   io.updPosNest             := fastRRArb.validOut(Seq(readCM.io.updPosNest, datalessCM.io.updPosNest, writeCM.io.updPosNest))
-  io.cleanPos               := fastRRArb.validOut(Seq(commit.io.cleanPoS, replCM.io.cleanPoS))
+
+  /*
+   * Release PoS / LockTable / DataBuffer
+   */
+  io.cleanPos               := Pipe(fastRRArb.validOut(Seq(commit.io.cleanPoS, replCM.io.cleanPoS)))
+  io.unlock.valid           := io.cleanPos.valid
+  io.unlock.bits.hnIdx      := io.cleanPos.bits.hnIdx
+  io.cleanDB.valid          := io.cleanPos.valid
+  io.cleanDB.bits.hnTxnID   := io.cleanPos.bits.hnIdx.getTxnID
+  io.cleanDB.bits.dataVec   := DataVec.Full
+  HAssert.withEn(io.cleanDB.ready, io.cleanDB.valid)
 
   /*
    * Connect To Directory IO
    */
   io.writeDir               <> replCM.io.writeDir
-  io.unlock.valid           := io.cleanPos.valid
-  io.unlock.bits.hnIdx      := io.cleanPos.bits.hnIdx
 
   /*
    * Connect To DataBlock IO
    */
   io.cutHnTxnID             := replCM.io.cutHnTxnID
-  io.reqDB                  <> fastRRArb(Seq(snoopCM.io.reqDB, readCM.io.reqDB, receiveCM.io.reqDB))
+  io.reqDB                  <> fastArb(Seq(replCM.io.reqDB, commit.io.reqDB))
   io.dataTask               <> fastRRArb(Seq(commit.io.dataTask, replCM.io.dataTask, writeCM.io.dataTask))
 
   /*
    * Connect Commit
    */
-  commit.io.cmtTaskVec      <> io.cmtTaskVec
+  commit.io.cmtTaskVec      <> io.cmtTaskVec.map(t => Pipe(t))
   commit.io.rxRsp           := io.rxRsp
   commit.io.rxDat           := io.rxDat
   commit.io.replResp        := replCM.io.resp
@@ -128,14 +137,14 @@ class Backend(implicit p: Parameters) extends DJModule {
   /*
    * Connect replCM
    */
-  replCM.io.task            <> commit.io.replTask
+  replCM.io.task            <> FastQueue(commit.io.replTask)
   replCM.io.respDir         := io.respDir
   replCM.io.dataResp        := io.dataResp
 
   /*
    * Connect CMResp
    */
-  val cmResp = fastRRArb.validOut(Seq(snoopCM.io.resp, readCM.io.resp, datalessCM.io.resp, writeCM.io.resp, receiveCM.io.resp))
+  val cmResp = Pipe(fastRRArb.validOut(Seq(snoopCM.io.resp, readCM.io.resp, datalessCM.io.resp, writeCM.io.resp, receiveCM.io.resp)))
   commit.io.cmResp.valid    := cmResp.valid & !cmResp.bits.toRepl
   replCM.io.cmResp.valid    := cmResp.valid &  cmResp.bits.toRepl
   commit.io.cmResp.bits     := cmResp.bits
@@ -145,27 +154,27 @@ class Backend(implicit p: Parameters) extends DJModule {
   /*
    * Connect replCM
    */
-  snoopCM.io.alloc          <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.SNP), replCM.io.cmTaskVec(CMID.SNP)))
+  snoopCM.io.alloc          <> FastQueue(fastRRArb(Seq(commit.io.cmTaskVec(CMID.SNP), replCM.io.cmTaskVec(CMID.SNP))))
   snoopCM.io.rxRsp          := io.rxRsp
   snoopCM.io.rxDat          := io.rxDat
 
   /*
    * Connect writeCM
    */
-  writeCM.io.alloc          <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.WRI), replCM.io.cmTaskVec(CMID.WRI)))
+  writeCM.io.alloc          <> FastQueue(fastRRArb(Seq(commit.io.cmTaskVec(CMID.WRI), replCM.io.cmTaskVec(CMID.WRI))))
   writeCM.io.rxRsp          := io.rxRsp
   writeCM.io.dataResp       := io.dataResp
 
   /*
    * Connect readCM
    */
-  readCM.io.alloc           <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.READ)))
+  readCM.io.alloc           <> FastQueue(fastRRArb(Seq(commit.io.cmTaskVec(CMID.READ))))
   readCM.io.rxDat           := io.rxDat
 
   /*
    * Connect datalessCM
    */
-  datalessCM.io.alloc       <> fastRRArb(Seq(commit.io.cmTaskVec(CMID.DL)))
+  datalessCM.io.alloc       <> FastQueue(fastRRArb(Seq(commit.io.cmTaskVec(CMID.DL))))
   datalessCM.io.rxRsp       := io.rxRsp
 
   /*

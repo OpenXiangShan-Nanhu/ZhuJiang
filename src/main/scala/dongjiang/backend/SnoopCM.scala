@@ -18,17 +18,17 @@ import dongjiang.backend._
 import dongjiang.backend.SNPSTARE._
 import dongjiang.data.DataTask
 import chisel3.experimental.BundleLiterals._
+import xs.utils.queue.FastQueue
 
 // ----------------------------------------------------------------------------------------------------- //
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
 object SNPSTARE {
-  val width       = 5
-  val FREE        = "b00001".U // 0x1
-  val REQDB       = "b00010".U // 0x2
-  val SENDSNP     = "b00100".U // 0x4
-  val WAITRESP    = "b01000".U // 0x8
-  val RESPCMT     = "b10000".U // 0x10
+  val width       = 4
+  val FREE        = "b0001".U // 0x1
+  val SENDSNP     = "b0010".U // 0x2
+  val WAITRESP    = "b0100".U // 0x4
+  val RESPCMT     = "b1000".U // 0x8
 }
 
 class SnpMes(implicit p: Parameters) extends DJBundle {
@@ -42,10 +42,9 @@ class SnpMes(implicit p: Parameters) extends DJBundle {
 
   def isFree      = state(0)
   def isValid     = !isFree
-  def isReqDB     = state(1)
-  def isSendSnp   = state(2)
-  def isWaitResp  = state(3)
-  def isResp      = state(4)
+  def isSendSnp   = state(1)
+  def isWaitResp  = state(2)
+  def isResp      = state(3)
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -64,8 +63,6 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
     val txSnp       = Decoupled(new SnoopFlit())
     val rxRsp       = Flipped(Valid(new RespFlit()))
     val rxDat       = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
-    // Req To Data
-    val reqDB       = Decoupled(new HnTxnID with HasDataVec)
     // For Debug
     val dbg         = Valid(new ReadState with HasHnTxnID) // TODO: dont use ReadState
   })
@@ -108,14 +105,6 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(io.alloc.bits.snpVec.asUInt.orR, io.alloc.valid)
 
   /*
-   * ReqDB
-   */
-  io.reqDB.valid        := reg.isReqDB
-  io.reqDB.bits.hnTxnID := reg.task.hnTxnID
-  io.reqDB.bits.dataVec := reg.task.chi.dataVec
-  HAssert.withEn(io.reqDB.bits.dataVec === DataVec.Full, io.reqDB.valid )
-
-  /*
    * Send Snoop
    */
   val snpMetaId   = PriorityEncoder(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt)
@@ -144,7 +133,6 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   // bits
   io.resp.bits.hnTxnID  := reg.task.hnTxnID
   io.resp.bits.taskInst := reg.taskInst
-  io.resp.bits.alr      := reg.task.alr
   io.resp.bits.fromRec  := false.B
   io.resp.bits.toRepl   := reg.task.fromRepl
 
@@ -157,10 +145,6 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   when(io.alloc.fire) {
     next.task               := io.alloc.bits
     next.taskInst           := 0.U.asTypeOf(new TaskInst)
-  // Store already ReqDB
-  }.elsewhen(io.reqDB.fire) {
-    next.task.alr.reqs      := true.B
-    HAssert(!reg.task.alr.reqs)
   // Store message from CHI
   }.elsewhen(rspHit | datHit) {
     // inst
@@ -222,10 +206,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   // Get Next State
   switch(reg.state) {
     is(FREE) {
-      when(io.alloc.fire) { next.state := Mux(io.alloc.bits.needReqDB, REQDB, SENDSNP) }
-    }
-    is(REQDB) {
-      when(io.reqDB.fire) { next.state := SENDSNP }
+      when(io.alloc.fire) { next.state := SENDSNP }
     }
     is(SENDSNP) {
       when(alrSnpAll)     { next.state := WAITRESP }
@@ -242,7 +223,6 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
    * HAssert
    */
   HAssert.withEn(reg.isFree,    io.alloc.fire)
-  HAssert.withEn(reg.isReqDB,   reg.isValid & io.reqDB.fire)
   HAssert.withEn(reg.isSendSnp, reg.isValid & io.txSnp.fire)
   HAssert.withEn(reg.isResp,    reg.isValid & io.resp.fire)
   HAssert.withEn(reg.isSendSnp | reg.isWaitResp, rspHit | datHit)
@@ -273,8 +253,6 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
     val txSnp       = Decoupled(new SnoopFlit())
     val rxRsp       = Flipped(Valid(new RespFlit()))
     val rxDat       = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
-    // Req To Data
-    val reqDB       = Decoupled(new HnTxnID with HasDataVec)
   })
 
   /*
@@ -288,7 +266,7 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
    * Connect CM <- IO
    */
   entries.foreach(_.io.config := io.config)
-  Alloc(entries.map(_.io.alloc), io.alloc)
+  Alloc(entries.map(_.io.alloc), FastQueue(io.alloc))
   entries.foreach(_.io.rxRsp := io.rxRsp)
   entries.foreach(_.io.rxDat := io.rxDat)
 
@@ -297,7 +275,6 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
    */
   io.txSnp    <> fastRRArb(entries.map(_.io.txSnp)) // TODO: split to LAN and BBN
   io.resp     <> fastRRArb(entries.map(_.io.resp))
-  io.reqDB    <> fastRRArb(entries.map(_.io.reqDB))
 
   /*
    * HardwareAssertion placePipe

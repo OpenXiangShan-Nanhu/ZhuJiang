@@ -16,80 +16,79 @@ import dongjiang.frontend._
 import dongjiang.backend._
 import dongjiang.backend.REPLSTATE._
 import chisel3.experimental.BundleLiterals._
+import xs.utils.queue.FastQueue
 
 // ----------------------------------------------------------------------------------------------------- //
 // ------------------------------------------ Replace State -------------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
 object REPLSTATE {
-  val width     = 5
+  val width     = 4
   val FREE      = 0x0.U
   val REQPOS    = 0x1.U
   val WRIDIR    = 0x2.U
   val WAITDIR   = 0x3.U
-  val CUTID     = 0x4.U   // Cut HnTxnID in DataBlock
-  val REPLLLC   = 0x5.U   // Send CM Task to SnoopCM
-  val REPLSF    = 0x6.U   // Send CM Task to WriteCM
-  val WAITRWRI  = 0x7.U   // Wait replace LLC done
-  val WAITRSNP  = 0x8.U   // Wait replace SF done
-  val COPYID    = 0x9.U   // Copy repl.hnTxnID to task.hnTxnID in ReplaceCM
-  val SAVEDATA  = 0xA.U   // Send save and clean to DataBlock
-  val CLEANDATA = 0xB.U   // Send clean to DataBlock
-  val WAITRESP0 = 0xC.U   // Wait DataBlock Resp
-  val WAITRESP1 = 0xD.U   // Wait DataBlock Resp
-  val CLEANPOS0 = 0xE.U   // Clean PoS(task.hnTxnID)
-  val CLEANPOS1 = 0xF.U   // Clean PoS(repl.hnTxnID)
-  val CLEANPOS2 = 0x10.U  // Clean PoS(repl.hnTxnID)
+  val CUTID     = 0x4.U // Cut HnTxnID in DataBlock
+  val RESPCMT   = 0x5.U // Send Resp to Commit
+  val REQDB     = 0x6.U // Request DataBuffer
+  val WRITE     = 0x7.U // Send CM Task to WriteCM
+  val SNOOP     = 0x8.U // Send CM Task to SnoopCM
+  val WAITRWRI  = 0x9.U // Wait replace LLC done
+  val WAITRSNP  = 0xA.U // Wait replace SF done
+  val COPYID    = 0xB.U // Copy repl.hnTxnID to task.hnTxnID in ReplaceCM
+  val SAVEDATA  = 0xC.U // Send save and clean to DataBlock
+  val WAITRESP  = 0xD.U // Wait DataBlock Resp
+  val CLEANPOST = 0xE.U // Clean PoS(task.hnTxnID)
+  val CLEANPOSR = 0xF.U // Clean PoS(repl.hnTxnID)
 }
 
 trait HasReplMes { this: DJBundle =>
   // 0. Replace LLC Directory:
-  // State: Free -> ReqPoS -> WriDir -> WaitDir ---> CutHnTxnID -> ReplLLC -> WaitWri -> (CleanPoS0) -> CleanPoS1 -> Free
-  //                   ^                         |                                             ^
-  //                   |                         |-(replWayIsInvalid)-> SaveData -> WaitResp0 -|
-  //                   |
-  //                   ------- CopyHnTxnID <-------(SnpRespWithData)-----
-  //                                                                    |
-  // 1. Replace SnoopFilter:                                            |
-  // State: Free -> ReqPoS -> WriDir -> WaitDir ---> ReplSF -> WaitSnp ---> CleanData -> WaitResp1 -> CleanPoS2 -> Free
-  //                                             |                                                        ^
-  //                                             |--------------------(replWayIsInvalid)------------------|
+  //  State: Free -> ReqPoS -> WriDir -> WaitDir ---> CutHnTxnID -> ReplLLC -> WaitWri -> (RespCmt/CleanPosT) -> CleanPosR -> Free
+  //                    ^                         |                                               ^
+  //                    |                         |--(replWayIsInvalid)--> SaveData --> WaitResp -|
+  //                    |
+  //                    ---------- CopyHnTxnID <-----(SnpRespWithData)-------------------------
+  //                                                                                          |
+  // 1. Replace SnoopFilter:                                                                  |
+  //  State: Free -> ReqPoS -> WriDir -> WaitDir -> RespCmt ---> ReqDB --> ReplSF -> WaitSnp ---> CleanPosR -> Free
+  //                                                         |                                        ^
+  //                                                         |------------(replWayIsInvalid)----------|
   // 2. No need replace:
-  // State: Free -> WriDir -> Free
+  //  2.1 Write LLC valid & hit:
+  //    State: Free -> WriDir -> SaveData -> WaitResp -> RespCmt -> Free
+  //  2.2 Write SF valid & hit:
+  //    State: Free -> WriDir -> RespCmt -> Free
   //
-  // Node: only do CleanPoS0 when alrReplSF
+  // Node: only do CleanPosT when alrReplSF in replace LLC directory
+  // Node: dont do RespCmt when alrReplSF in replace LLC directory
 
   val state         = UInt(REPLSTATE.width.W)
+  val ds            = new DsIdx()
   // Replace task message
-  val repl          = new DJBundle with HasHnTxnID with HasDsIdx {
-    val toLan       = Bool()
-  }
+  val repl          = new DJBundle with HasHnTxnID { val toLan = Bool() }
   // Flag
-  val sResp         = Bool() // Should  send response to Commit
-  val alrSResp      = Bool() // Already send response to Commit
-  val alrReplSF     = Bool() // Already send task to SnoopCM to replace sf
+  val needSnp       = Bool() // Need send task to SnoopCM to replace sf
+  val alrReplSF     = Bool() // Already replace SF
 
-  def isFree        = state === FREE & !sResp
+  def isFree        = state === FREE
   def isValid       = !isFree
   def isReqPoS      = state === REQPOS
   def isWriDir      = state === WRIDIR
   def isWaitDir     = state === WAITDIR
   def isCutHnTxnID  = state === CUTID
-  def isReplLLC     = state === REPLLLC
-  def isReplSF      = state === REPLSF
+  def isRespCmt     = state === RESPCMT
+  def isReqDB       = state === REQDB
+  def isWrite       = state === WRITE
+  def isSnoop       = state === SNOOP
   def isWaitWrite   = state === WAITRWRI
   def isWaitSnp     = state === WAITRSNP
   def isWaitRepl    = isWaitWrite | isWaitSnp
   def isCopyID      = state === COPYID
   def isSaveData    = state === SAVEDATA
-  def isCleanData   = state === CLEANDATA
-  def isDataTask    = isSaveData | isCleanData
-  def isWaitResp0   = state === WAITRESP0
-  def isWaitResp1   = state === WAITRESP1
-  def isWaitResp    = isWaitResp0 | isWaitResp1
-  def isCleanPoS0   = state === CLEANPOS0
-  def isCleanPoS1   = state === CLEANPOS1
-  def isCleanPoS2   = state === CLEANPOS2
-  def isCleanPoS    = isCleanPoS0 | isCleanPoS1 | isCleanPoS2
+  def isWaitResp    = state === WAITRESP
+  def isCleanPosT   = state === CLEANPOST
+  def isCleanPosR   = state === CLEANPOSR
+  def isCleanPoS    = isCleanPosT | isCleanPosR
 }
 
 
@@ -123,6 +122,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
       val sf            = Flipped(Valid(new DirEntry("sf")  with HasHnTxnID))
     }
     // Send Task To Data
+    val reqDB           = Decoupled(new HnTxnID with HasDataVec)
     val cutHnTxnID      = Decoupled(new CutHnTxnID)
     val dataTask        = Decoupled(new DataTask)
     val dataResp        = Flipped(Valid(new HnTxnID)) // broadcast signal
@@ -137,43 +137,43 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val taskReg   = RegInit((new ReplTask with HasReplMes).Lit(_.state -> FREE, _.sResp -> false.B, _.alrReplSF -> false.B))
-  val taskAlloc = WireInit(0.U.asTypeOf(taskReg))
-  val taskNext  = WireInit(taskReg)
+  val reg   = RegInit((new ReplTask with HasReplMes).Lit(_.state -> FREE, _.alrReplSF -> false.B))
+  val alloc = WireInit(0.U.asTypeOf(reg))
+  val next  = WireInit(reg)
 
   /*
    * Ouput debug message
    */
-  io.dbg.valid              := taskReg.isValid
+  io.dbg.valid              := reg.isValid
   // task HnTxnID
-  io.dbg.bits.task.hnTxnID  := taskReg.hnTxnID
-  io.dbg.bits.task.hnIdx    := taskReg.getHnIdx
+  io.dbg.bits.task.hnTxnID  := reg.hnTxnID
+  io.dbg.bits.task.hnIdx    := reg.getHnIdx
   // repl HnTxnID
-  io.dbg.bits.repl.hnTxnID  := taskReg.repl.hnTxnID
-  io.dbg.bits.repl.hnIdx    := taskReg.repl.getHnIdx
+  io.dbg.bits.repl.hnTxnID  := reg.repl.hnTxnID
+  io.dbg.bits.repl.hnIdx    := reg.repl.getHnIdx
 
   /*
    * Receive Replace Task
    */
-  io.alloc.ready            := taskReg.isFree
+  io.alloc.ready            := reg.isFree
   when(io.alloc.fire) {
-    taskAlloc.dir           := io.alloc.bits.dir
-    taskAlloc.wriSF         := io.alloc.bits.wriSF
-    taskAlloc.wriLLC        := io.alloc.bits.wriLLC
-    taskAlloc.hnTxnID       := io.alloc.bits.hnTxnID
-    taskAlloc.repl.hnTxnID  := io.alloc.bits.hnTxnID // reset repl.hnTxnID = alloc.hnTxnID
+    alloc.dir           := io.alloc.bits.dir
+    alloc.wriSF         := io.alloc.bits.wriSF
+    alloc.wriLLC        := io.alloc.bits.wriLLC
+    alloc.hnTxnID       := io.alloc.bits.hnTxnID
+    alloc.repl.hnTxnID  := io.alloc.bits.hnTxnID // reset repl.hnTxnID = alloc.hnTxnID
   }
 
   /*
    * Request PoS
    */
-  io.reqPoS.req.valid         := taskReg.isReqPoS
-  io.reqPoS.req.bits.dirBank  := taskReg.dirBank
-  io.reqPoS.req.bits.pos.set  := taskReg.posSet
+  io.reqPoS.req.valid         := reg.isReqPoS
+  io.reqPoS.req.bits.dirBank  := reg.dirBank
+  io.reqPoS.req.bits.pos.set  := reg.posSet
   io.reqPoS.req.bits.pos.way  := DontCare
-  io.reqPoS.req.bits.channel  := Mux(taskReg.replSF, ChiChannel.SNP, ChiChannel.REQ)
+  io.reqPoS.req.bits.channel  := Mux(reg.isReplSF, ChiChannel.SNP, ChiChannel.REQ)
 
-  HAssert.withEn(taskReg.replDIR, io.reqPoS.req.valid)
+  HAssert.withEn(reg.isReplDIR, io.reqPoS.req.valid)
 
   /*
    * Set HnTxnID:
@@ -195,31 +195,31 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
    *
    */
   // CopyID
-  when(taskReg.isCopyID & taskReg.alrSResp) {
-    taskNext.hnTxnID      := taskReg.repl.hnTxnID
+  when(reg.isCopyID) {
+    next.hnTxnID      := reg.repl.hnTxnID
   // ReqPoS
   }.elsewhen(io.reqPoS.req.fire) {
-    taskNext.repl.hnTxnID := io.reqPoS.resp.hnTxnID
+    next.repl.hnTxnID := io.reqPoS.resp.hnTxnID
   }
 
   /*
    * Write Directory
    */
-  io.writeDir.valid                 := taskReg.isWriDir
+  io.writeDir.valid                 := reg.isWriDir
   // llc
-  io.writeDir.bits.llc.valid        := taskReg.wriLLC
-  io.writeDir.bits.llc.bits.addr    := taskReg.hnTxnID // remap in DongJiang
-  io.writeDir.bits.llc.bits.wayOH   := taskReg.dir.llc.wayOH
-  io.writeDir.bits.llc.bits.hit     := taskReg.dir.llc.hit
-  io.writeDir.bits.llc.bits.metaVec := taskReg.dir.llc.metaVec
-  io.writeDir.bits.llc.bits.hnIdx   := taskReg.repl.getHnIdx
+  io.writeDir.bits.llc.valid        := reg.wriLLC
+  io.writeDir.bits.llc.bits.addr    := reg.hnTxnID // remap in DongJiang
+  io.writeDir.bits.llc.bits.wayOH   := reg.dir.llc.wayOH
+  io.writeDir.bits.llc.bits.hit     := reg.dir.llc.hit
+  io.writeDir.bits.llc.bits.metaVec := reg.dir.llc.metaVec
+  io.writeDir.bits.llc.bits.hnIdx   := reg.repl.getHnIdx
   // sf
-  io.writeDir.bits.sf.valid         := taskReg.wriSF
-  io.writeDir.bits.sf.bits.addr     := taskReg.hnTxnID  // remap in DongJiang
-  io.writeDir.bits.sf.bits.wayOH    := taskReg.dir.sf.wayOH
-  io.writeDir.bits.sf.bits.hit      := taskReg.dir.sf.hit
-  io.writeDir.bits.sf.bits.metaVec  := taskReg.dir.sf.metaVec
-  io.writeDir.bits.sf.bits.hnIdx    := taskReg.repl.getHnIdx
+  io.writeDir.bits.sf.valid         := reg.wriSF
+  io.writeDir.bits.sf.bits.addr     := reg.hnTxnID  // remap in DongJiang
+  io.writeDir.bits.sf.bits.wayOH    := reg.dir.sf.wayOH
+  io.writeDir.bits.sf.bits.hit      := reg.dir.sf.hit
+  io.writeDir.bits.sf.bits.metaVec  := reg.dir.sf.metaVec
+  io.writeDir.bits.sf.bits.hnIdx    := reg.repl.getHnIdx
   // HAssert
   HAssert.withEn(io.writeDir.bits.llc.bits.hit, io.writeDir.valid & io.writeDir.bits.llc.valid & io.writeDir.bits.llc.bits.meta.isInvalid)
   HAssert.withEn(io.writeDir.bits.sf.bits.hit,  io.writeDir.valid & io.writeDir.bits.sf.valid  & Cat(io.writeDir.bits.sf.bits.allVec) === 0.U)
@@ -227,35 +227,39 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   /*
    * Update PoS Tag and Save Message of Addr
    */
-  val sfRespHit   = taskReg.isValid & io.respDir.sf.valid   & io.respDir.sf.bits.hnTxnID  === taskReg.repl.hnTxnID
-  val llcRespHit  = taskReg.isValid & io.respDir.llc.valid  & io.respDir.llc.bits.hnTxnID === taskReg.repl.hnTxnID
+  val sfRespHit   = reg.isValid & io.respDir.sf.valid   & io.respDir.sf.bits.hnTxnID  === reg.repl.hnTxnID
+  val llcRespHit  = reg.isValid & io.respDir.llc.valid  & io.respDir.llc.bits.hnTxnID === reg.repl.hnTxnID
   val dirRespHit  = sfRespHit | llcRespHit
   val needReplSF  = io.respDir.sf.valid   & io.respDir.sf.bits.metaVec.map(_.isValid).reduce(_ | _)
   val needReplLLC = io.respDir.llc.valid  & io.respDir.llc.bits.metaVec.head.isValid
   val respAddr    = Mux(io.respDir.sf.valid, io.respDir.sf.bits.addr, io.respDir.llc.bits.addr)
-  HardwareAssertion(!(io.respDir.sf.valid & io.respDir.llc.valid))
+  HAssert(!(io.respDir.sf.valid & io.respDir.llc.valid))
+  HAssert.withEn(reg.isReplSF,  sfRespHit)
+  HAssert.withEn(reg.isReplLLC, llcRespHit)
   // Update PosTag when resp need repl
   io.updPosTag.valid        := dirRespHit // Even when needReplSF or needReplLLC is false, updTag must still be sent to unlock the PoS Lock.
   io.updPosTag.bits.addrVal := Mux(io.respDir.sf.valid, io.respDir.sf.bits.metaIsVal, io.respDir.llc.bits.metaIsVal)
   io.updPosTag.bits.addr    := respAddr
-  io.updPosTag.bits.hnIdx   := taskReg.repl.getHnIdx
+  io.updPosTag.bits.hnIdx   := reg.repl.getHnIdx
   // Save toLan and dsIdx in replace message
   when(llcRespHit) {
-    taskNext.repl.toLan     := io.respDir.llc.bits.Addr.isToLAN(io.config.ci)
-    taskNext.repl.ds.set(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)
+    next.repl.toLan         := io.respDir.llc.bits.Addr.isToLAN(io.config.ci)
+    next.ds.set(io.respDir.llc.bits.addr, io.respDir.llc.bits.way)
   }
-  // save already replace sf
+  // save flag
   when(sfRespHit) {
-    taskNext.alrReplSF := true.B
-    HAssert(!taskReg.alrReplSF)
-  }.elsewhen(taskNext.isFree) {
-    taskNext.alrReplSF := false.B
+    next.needSnp    := needReplSF
+    next.alrReplSF  := true.B
+    HAssert(!reg.alrReplSF)
+  }.elsewhen(next.isFree) {
+    next.needSnp    := false.B
+    next.alrReplSF  := false.B
   }
 
   /*
    * Send Replace Req to SnoopCM
    */
-  io.cmTaskVec(CMID.SNP).valid              := taskReg.isReplSF
+  io.cmTaskVec(CMID.SNP).valid              := reg.isSnoop
   io.cmTaskVec(CMID.SNP).bits               := DontCare
   io.cmTaskVec(CMID.SNP).bits.chi.nodeId    := DontCare
   io.cmTaskVec(CMID.SNP).bits.chi.channel   := ChiChannel.SNP
@@ -263,236 +267,184 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.cmTaskVec(CMID.SNP).bits.chi.dataVec   := Seq(true.B, true.B)
   io.cmTaskVec(CMID.SNP).bits.chi.retToSrc  := true.B
   io.cmTaskVec(CMID.SNP).bits.chi.toLAN     := DontCare
-  io.cmTaskVec(CMID.SNP).bits.hnTxnID       := taskReg.repl.hnTxnID
-  io.cmTaskVec(CMID.SNP).bits.alr.reqs      := false.B
-  io.cmTaskVec(CMID.SNP).bits.snpVec        := taskReg.dir.sf.metaVec.map(_.state.asBool)
+  io.cmTaskVec(CMID.SNP).bits.hnTxnID       := reg.repl.hnTxnID
+  io.cmTaskVec(CMID.SNP).bits.snpVec        := reg.dir.sf.metaVec.map(_.state.asBool)
   io.cmTaskVec(CMID.SNP).bits.fromRepl      := true.B
-  io.cmTaskVec(CMID.SNP).bits.dataOp.reqs   := true.B
 
   /*
    * Send Replace Req to WriteCN
    */
-  io.cmTaskVec(CMID.WRI).valid                      := taskReg.isReplLLC
+  io.cmTaskVec(CMID.WRI).valid                      := reg.isWrite
   io.cmTaskVec(CMID.WRI).bits                       := DontCare
   io.cmTaskVec(CMID.WRI).bits.chi.nodeId            := DontCare
   io.cmTaskVec(CMID.WRI).bits.chi.channel           := ChiChannel.REQ
-  io.cmTaskVec(CMID.WRI).bits.chi.opcode            := Mux(taskReg.repl.toLan, WriteNoSnpFull, Mux(taskReg.dir.llc.meta.isDirty, WriteBackFull, WriteEvictOrEvict))
+  io.cmTaskVec(CMID.WRI).bits.chi.opcode            := Mux(reg.repl.toLan, WriteNoSnpFull, Mux(reg.dir.llc.meta.isDirty, WriteBackFull, WriteEvictOrEvict))
   io.cmTaskVec(CMID.WRI).bits.chi.dataVec           := Seq(true.B, true.B)
   io.cmTaskVec(CMID.WRI).bits.chi.memAttr.allocate  := false.B
   io.cmTaskVec(CMID.WRI).bits.chi.memAttr.device    := false.B
   io.cmTaskVec(CMID.WRI).bits.chi.memAttr.cacheable := true.B
   io.cmTaskVec(CMID.WRI).bits.chi.memAttr.ewa       := true.B
-  io.cmTaskVec(CMID.WRI).bits.chi.toLAN             := taskReg.repl.toLan
-  io.cmTaskVec(CMID.WRI).bits.hnTxnID               := taskReg.repl.hnTxnID
+  io.cmTaskVec(CMID.WRI).bits.chi.toLAN             := reg.repl.toLan
+  io.cmTaskVec(CMID.WRI).bits.hnTxnID               := reg.repl.hnTxnID
   io.cmTaskVec(CMID.WRI).bits.fromRepl              := true.B
-  io.cmTaskVec(CMID.WRI).bits.ds                    := taskReg.repl.ds
-  io.cmTaskVec(CMID.WRI).bits.cbResp                := Mux(taskReg.repl.toLan, ChiResp.I, taskReg.dir.llc.meta.cbResp)
-  io.cmTaskVec(CMID.WRI).bits.alr.reqs              := true.B
+  io.cmTaskVec(CMID.WRI).bits.ds                    := reg.ds
+  io.cmTaskVec(CMID.WRI).bits.cbResp                := Mux(reg.repl.toLan, ChiResp.I, reg.dir.llc.meta.cbResp)
   io.cmTaskVec(CMID.WRI).bits.dataOp.repl           := true.B
+
+  /*
+   * Request DataBuffer
+   */
+  io.reqDB.valid                := reg.isReqDB
+  io.reqDB.bits.hnTxnID         := reg.repl.hnTxnID
+  io.reqDB.bits.dataVec         := DataVec.Full
 
   /*
    * Replace HnTxnID in DataBlock
    */
-  io.cutHnTxnID.valid           := taskReg.isCutHnTxnID
-  io.cutHnTxnID.bits.before     := taskReg.hnTxnID
-  io.cutHnTxnID.bits.next       := taskReg.repl.hnTxnID
+  io.cutHnTxnID.valid           := reg.isCutHnTxnID
+  io.cutHnTxnID.bits.before     := reg.hnTxnID
+  io.cutHnTxnID.bits.next       := reg.repl.hnTxnID
 
   /*
    * Send Task to DataBlock
    */
-  io.dataTask.valid             := taskReg.isDataTask
+  io.dataTask.valid             := reg.isSaveData
   io.dataTask.bits              := DontCare
-  io.dataTask.bits.hnTxnID      := Mux(taskReg.isSaveData, taskReg.hnTxnID, taskReg.repl.hnTxnID)
-  io.dataTask.bits.dataOp.save  := taskReg.isSaveData
-  io.dataTask.bits.dataOp.clean := true.B
+  io.dataTask.bits.hnTxnID      := reg.hnTxnID
+  io.dataTask.bits.dataOp.save  := true.B
   io.dataTask.bits.dataVec      := DataVec.Full
-  io.dataTask.bits.ds           := taskReg.repl.ds
+  io.dataTask.bits.ds           := reg.ds
 
   /*
    * Clean PoS
    */
-  io.cleanPoS.valid         := taskReg.isCleanPoS
-  io.cleanPoS.bits.hnIdx    := Mux(taskReg.isCleanPoS0, taskReg.getHnIdx, taskReg.repl.getHnIdx)
-  io.cleanPoS.bits.channel  := Mux(taskReg.isCleanPoS1, ChiChannel.REQ,   ChiChannel.SNP)
+  io.cleanPoS.valid             := reg.isCleanPoS
+  io.cleanPoS.bits.hnIdx        := Mux(reg.isCleanPosT, reg.getHnIdx, reg.repl.getHnIdx)
+  io.cleanPoS.bits.channel      := Mux(reg.isCleanPosT, ChiChannel.SNP, Mux(reg.isReplSF, ChiChannel.SNP, ChiChannel.REQ))
 
   /*
    * Send Resp to Commit
    */
-  io.resp.valid         := taskReg.sResp
-  io.resp.bits.hnTxnID  := taskReg.hnTxnID
-  HAssert.withEn(!taskReg.alrSResp, io.resp.valid )
+  io.resp.valid                 := reg.isRespCmt
+  io.resp.bits.hnTxnID          := reg.hnTxnID
 
   /*
    * Get Next State
    */
-  val cmRespData  = io.cmResp.bits.taskInst.valid       & io.cmResp.bits.taskInst.channel === ChiChannel.DAT
-  val cmRespHit   = taskReg.isValid & io.cmResp.valid   & io.cmResp.bits.hnTxnID === taskReg.repl.hnTxnID
-  val dataRespHit = taskReg.isValid & io.dataResp.valid & io.dataResp.bits.hnTxnID === Mux(taskReg.isWaitResp0, taskReg.hnTxnID, taskReg.repl.hnTxnID)
-  switch(taskReg.state) {
+  val cmRespData  = io.cmResp.bits.taskInst.valid   & io.cmResp.bits.taskInst.channel === ChiChannel.DAT
+  val cmRespHit   = reg.isValid & io.cmResp.valid   & io.cmResp.bits.hnTxnID === reg.repl.hnTxnID
+  val dataRespHit = reg.isValid & io.dataResp.valid & io.dataResp.bits.hnTxnID === reg.hnTxnID
+  switch(reg.state) {
     // Free
     is(FREE) {
-      when(io.alloc.fire)               { taskNext.state := Mux(io.alloc.bits.replDIR, REQPOS, WRIDIR) }
+      when(io.alloc.fire)               { next.state := Mux(io.alloc.bits.isReplDIR, REQPOS, WRIDIR) }
     }
     // Request PoS
     is(REQPOS) {
-      when(io.reqPoS.req.fire)          { taskNext.state := WRIDIR }
+      when(io.reqPoS.req.fire)          { next.state := WRIDIR }
     }
     // Write Directory
     is(WRIDIR) {
-      when(io.writeDir.fire)            { taskNext.state := Mux(taskReg.replDIR, WAITDIR, FREE) }
+      when(io.writeDir.fire)            { next.state := Mux(reg.isReplDIR, WAITDIR, Mux(reg.wriLLC, SAVEDATA, RESPCMT)) }
     }
     // Wait Directory write response
     is(WAITDIR) {
-      when(dirRespHit)                  { taskNext.state := Mux(sfRespHit, Mux(needReplSF, REPLSF, CLEANPOS2), Mux(needReplLLC, CUTID, SAVEDATA)) }
+      when(dirRespHit)                  { next.state := Mux(sfRespHit, RESPCMT, Mux(needReplLLC, CUTID, SAVEDATA)) }
     }
     // Cut HnTxnID in DataBlock
     is(CUTID) {
-      when(io.cutHnTxnID.fire)          { taskNext.state := REPLLLC }
+      when(io.cutHnTxnID.fire)          { next.state := WRITE }
+    }
+    // Send resp to Commit
+    is(RESPCMT) {
+      when(io.resp.fire)                { next.state := Mux(reg.isReplSF, Mux(reg.needSnp, REQDB, CLEANPOSR), Mux(reg.isReplLLC, CLEANPOSR, FREE)) }
+    }
+    // Request DataBuffer
+    is(REQDB) {
+      when(io.reqDB.fire)               { next.state := SNOOP }
     }
     // Send replace task to WriteCM
-    is(REPLLLC) {
-      when(io.cmTaskVec(CMID.WRI).fire) { taskNext.state := WAITRWRI }
+    is(WRITE) {
+      when(io.cmTaskVec(CMID.WRI).fire) { next.state := WAITRWRI }
     }
     // Send replace task to SnoopCM
-    is(REPLSF) {
-      when(io.cmTaskVec(CMID.SNP).fire) { taskNext.state := WAITRSNP }
+    is(SNOOP) {
+      when(io.cmTaskVec(CMID.SNP).fire) { next.state := WAITRSNP }
     }
     // Wait WriteCM response
     is(WAITRWRI) {
-      when(cmRespHit)                   { taskNext.state := Mux(taskReg.alrReplSF, CLEANPOS0, CLEANPOS1) }
+      when(cmRespHit)                   { next.state := Mux(reg.alrReplSF, CLEANPOST, RESPCMT) }
     }
     // Wait SnoopCM response
     is(WAITRSNP) {
-      when(cmRespHit)                   { taskNext.state := Mux(cmRespData, COPYID, CLEANDATA) }
+      when(cmRespHit)                   { next.state := Mux(cmRespData, COPYID, CLEANPOSR) }
     }
     // Copy repl.hnTxnID to task.hnTxnID in ReplaceCM
     is(COPYID) {
-      when(taskReg.alrSResp)            { taskNext.state := REQPOS }
+      when(true.B)                      { next.state := REQPOS }
     }
     // Send DataTask to DataBlock
     is(SAVEDATA) {
-      when(io.dataTask.fire)            { taskNext.state := WAITRESP0 }
+      when(io.dataTask.fire)            { next.state := WAITRESP }
     }
-    // Send DataTask to DataBlock
-    is(CLEANDATA) {
-      when(io.dataTask.fire)            { taskNext.state := WAITRESP1 }
+    // Wait DataBlock response
+    is(WAITRESP) {
+      when(dataRespHit)                 { next.state := Mux(reg.alrReplSF, CLEANPOST, RESPCMT) }
     }
-    // Wait DataBlock response 0
-    is(WAITRESP0) {
-      when(dataRespHit)                 { taskNext.state := Mux(taskReg.alrReplSF, CLEANPOS0, CLEANPOS1) }
+    // Clean PoS
+    is(CLEANPOST) {
+      when(io.cleanPoS.fire)            { next.state := CLEANPOSR }
     }
-    // Wait DataBlock response 1
-    is(WAITRESP1) {
-      when(dataRespHit)                 { taskNext.state := CLEANPOS2 }
-    }
-    // Clean PoS 0
-    is(CLEANPOS0) {
-      when(io.cleanPoS.fire)            { taskNext.state := CLEANPOS1 }
-    }
-    // Clean PoS 1
-    is(CLEANPOS1) {
-      when(io.cleanPoS.fire)            { taskNext.state := FREE }
-    }
-    // Clean PoS 2
-    is(CLEANPOS2) {
-      when(io.cleanPoS.fire)            { taskNext.state := FREE }
+    // Clean PoS
+    is(CLEANPOSR) {
+      when(io.cleanPoS.fire)            { next.state := FREE }
     }
   }
 
   /*
    * HAssert
    */
-  HAssert.withEn(taskReg.isFree,        io.alloc.fire)
-  HAssert.withEn(taskReg.isReqPoS,      taskReg.isValid & io.reqPoS.req.fire)
-  HAssert.withEn(taskReg.isWriDir,      taskReg.isValid & io.writeDir.fire)
-  HAssert.withEn(taskReg.isWaitDir,     taskReg.isValid & dirRespHit)
-  HAssert.withEn(taskReg.isCutHnTxnID,  taskReg.isValid & io.cutHnTxnID.fire)
-  HAssert.withEn(taskReg.isReplSF,      taskReg.isValid & io.cmTaskVec(CMID.SNP).fire)
-  HAssert.withEn(taskReg.isReplLLC,     taskReg.isValid & io.cmTaskVec(CMID.WRI).fire)
-  HAssert.withEn(taskReg.isWaitRepl,    taskReg.isValid & cmRespHit)
-  HAssert.withEn(taskReg.isDataTask,    taskReg.isValid & io.dataTask.fire)
-  HAssert.withEn(taskReg.isCleanPoS,    taskReg.isValid & io.cleanPoS.fire)
-  HAssert.withEn(taskReg.isWaitRepl | taskReg.isWaitResp, taskReg.isValid & dataRespHit)
-
-  /*
-  * Get next sResp
-  * ----------------------
-  * | wSF | wLLC | sResp |
-  * |--------------------|
-  * |  I  |  I   |   T   |
-  * |  V  |  I   |   T   |
-  * |  I  |  V   |   F   |
-  * |  V  |  V   |   X   |
-  * ----------------------
-  * Node:
-  *  The above table applies only to cases where substitutions may be required
-  *  X: This does not happen with the Exclusive policy
-  */
-  when(io.resp.fire) {
-    taskNext.sResp    := false.B
-    taskNext.alrSResp := true.B
-    // HAssert
-    HAssert(taskReg.sResp)
-    HAssert(!taskReg.alrSResp)
-  // Send resp no need wait replace task done
-  }.elsewhen(io.writeDir.fire) {
-    val wriSFVal      = io.writeDir.bits.sf.valid  & io.writeDir.bits.sf.bits.metaIsVal
-    val wriLLCVal     = io.writeDir.bits.llc.valid & io.writeDir.bits.llc.bits.metaIsVal
-    taskNext.sResp    := PriorityMux(Seq(
-      (taskNext.state === FREE) -> true.B,  // No need replace
-      taskReg.alrSResp          -> false.B, // already send resp
-      (!wriSFVal & !wriLLCVal)  -> true.B,
-      ( wriSFVal & !wriLLCVal)  -> true.B,
-      (!wriSFVal &  wriLLCVal)  -> false.B
-    ))
-    // HAssert
-    HAssert(!(wriSFVal & wriLLCVal))
-    HAssert.withEn(!taskReg.sResp,    taskNext.sResp)
-    HAssert.withEn(!taskReg.alrSResp, taskNext.sResp)
-  // Replace task done
-  }.elsewhen(io.cleanPoS.fire) {
-    taskNext.sResp    := !taskReg.alrSResp
-  }
+  HAssert.withEn(reg.isFree,        io.alloc.fire)
+  HAssert.withEn(reg.isReqPoS,      reg.isValid & io.reqPoS.req.fire)
+  HAssert.withEn(reg.isWriDir,      reg.isValid & io.writeDir.fire)
+  HAssert.withEn(reg.isWaitDir,     reg.isValid & dirRespHit)
+  HAssert.withEn(reg.isCutHnTxnID,  reg.isValid & io.cutHnTxnID.fire)
+  HAssert.withEn(reg.isReqDB,       reg.isValid & io.reqDB.fire)
+  HAssert.withEn(reg.isReplSF,      reg.isValid & io.cmTaskVec(CMID.SNP).fire)
+  HAssert.withEn(reg.isReplLLC,     reg.isValid & io.cmTaskVec(CMID.WRI).fire)
+  HAssert.withEn(reg.isWaitRepl,    reg.isValid & cmRespHit)
+  HAssert.withEn(reg.isSaveData,    reg.isValid & io.dataTask.fire)
+  HAssert.withEn(reg.isCleanPoS,    reg.isValid & io.cleanPoS.fire)
+  // TODO: HAssert.withEn(reg.isWaitWrite | reg.isWaitResp, reg.isValid & dataRespHit)
 
 
   /*
    * Get new write directory message
    */
-  val cmRespDirty     = io.cmResp.bits.taskInst.resp.asTypeOf(new ChiResp).passDirty
-  when(sfRespHit) {
-    taskNext.wriSF    := false.B
-    taskNext.wriLLC   := false.B
-    taskNext.dir.sf   := io.respDir.sf.bits
-    taskNext.dir.llc  := DontCare
-    HAssert(taskReg.replSF)
-  }.elsewhen(llcRespHit) {
-    taskNext.wriSF    := false.B
-    taskNext.wriLLC   := false.B
-    taskNext.dir.sf   := DontCare
-    taskNext.dir.llc  := io.respDir.llc.bits
-    HAssert(taskReg.replLLC)
-  }.elsewhen(cmRespHit & cmRespData) {
-    taskNext.wriSF    := false.B
-    taskNext.wriLLC   := true.B
-    taskNext.dir.sf   := DontCare
-    taskNext.dir.llc.wayOH      := DontCare
-    taskNext.dir.llc.hit        := false.B
-    taskNext.dir.llc.meta.state := Mux(cmRespDirty, ChiState.UD, ChiState.SC)
+  val cmRespDirty               = io.cmResp.bits.taskInst.resp.asTypeOf(new ChiResp).passDirty
+  when(cmRespHit & cmRespData) {
+    next.wriSF              := false.B
+    next.wriLLC             := true.B
+    next.dir.sf             := DontCare
+    next.dir.llc.wayOH      := DontCare
+    next.dir.llc.hit        := false.B
+    next.dir.llc.meta.state := Mux(cmRespDirty, ChiState.UD, ChiState.SC)
+    HAssert(reg.isReplSF)
   }
 
   /*
    * Set new task
    */
-  val set = io.alloc.fire | taskReg.isValid; dontTouch(set)
+  val set = io.alloc.fire | reg.isValid; dontTouch(set)
   when(set) {
-    taskReg       := Mux(io.alloc.fire, taskAlloc, taskNext)
-    taskReg.state := taskNext.state
+    reg       := Mux(io.alloc.fire, alloc, next)
+    reg.state := next.state
   }
 
   /*
    * Check timeout
    */
-  HAssert.checkTimeout(taskReg.isFree, TIMEOUT_REPLACE, cf"TIMEOUT: Replace State[${taskReg.state}]")
+  HAssert.checkTimeout(reg.isFree, TIMEOUT_REPLACE, cf"TIMEOUT: Replace State[${reg.state}]")
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -525,6 +477,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
       val sf            = Flipped(Valid(new DirEntry("sf")  with HasHnTxnID))
     }
     // Send Task To Data
+    val reqDB           = Decoupled(new HnTxnID with HasDataVec)
     val cutHnTxnID      = Valid(new CutHnTxnID)
     val dataTask        = Decoupled(new DataTask)
     val dataResp        = Flipped(Valid(new HnTxnID)) // broadcast signal
@@ -542,7 +495,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   /*
    * Receive Replace Task from Commit
    */
-  Alloc(entries.map(_.io.alloc), io.task)
+  Alloc(entries.map(_.io.alloc), FastQueue(io.task))
 
   /*
    * Request PoS
@@ -569,18 +522,20 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     e.io.dataResp := io.dataResp
   }
 
-
   /*
    * Connect IO <- Replace
    */
+  io.reqDB        <> fastRRArb(entries.map(_.io.reqDB))
   io.resp         := fastRRArb.validOut(entries.map(_.io.resp))
   io.cutHnTxnID   := fastRRArb.validOut(entries.map(_.io.cutHnTxnID))
   io.updPosTag    := fastRRArb(entries.map(_.io.updPosTag))
   io.cleanPoS     <> fastRRArb(entries.map(_.io.cleanPoS))
   io.dataTask     <> fastRRArb(entries.map(_.io.dataTask))
   io.writeDir     <> fastRRArb(entries.map(_.io.writeDir))
+  HAssert(PopCount(entries.map(_.io.updPosTag.valid)) <= 1.U)
   // Send cmTask
   io.cmTaskVec.zip(entries.map(_.io.cmTaskVec).transpose).foreach { case(a, b) => a <> fastRRArb(b) }
+
 
   /*
    * HAssert placePipe

@@ -16,34 +16,30 @@ import zhujiang.chi.ReqOpcode._
 import dongjiang.frontend._
 import dongjiang.frontend.decode._
 
-class CommitTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasPackDirMsg with HasAlready with HasDsIdx with HasDecList
+class CommitTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasPackDirMsg with HasAlready
+  with HasDsIdx with HasDecList with HasPackTaskCode with HasPackCmtCode
 
-class CMTask(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPackChi
-  with HasAlready with HasPackDataOp with HasDsIdx {
-  val snpVec    = Vec(nrSfMetas, Bool())  // Only use in SnoopCM
+class CMTask(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPackChi // Common
+  with HasPackDataOp with HasDsIdx {      // for WriteCM
   val fromRepl  = Bool()                  // from ReplaceCM
+  val snpVec    = Vec(nrSfMetas, Bool())  // Only use in SnoopCM
   val cbResp    = UInt(ChiResp.width.W)   // CopyBack Resp //  Only use in WriteCM
   val doDMT     = Bool()                  // Only use in ReadCM
-  // def
-  def needReqDB = dataOp.reqs & !alr.reqs
 }
 
 trait HasPackCMTask { this: DJBundle => val task = new CMTask }
 
-class PackCMTask(implicit p: Parameters) extends DJBundle with HasPackCMTask
-
-class CMResp(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPackTaskInst
-  with HasAlready {
+class CMResp(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPackTaskInst {
   val fromRec = Bool() // from ReceiveCM
   val toRepl  = Bool() // to ReplaceCM
 }
 
 class ReplTask(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPackDirMsg {
-  val wriSF   = Bool()
-  val wriLLC  = Bool()
-  def replSF  = wriSF  & !dir.sf.hit
-  def replLLC = wriLLC & !dir.llc.hit
-  def replDIR = replSF | replLLC
+  val wriSF     = Bool()
+  val wriLLC    = Bool()
+  def isReplSF  = wriSF  & !dir.sf.hit
+  def isReplLLC = wriLLC & !dir.llc.hit
+  def isReplDIR = isReplSF | isReplLLC
 }
 
 // ReplaceCM request PoS

@@ -16,66 +16,13 @@ import xs.utils.debug._
  */
 // Optional Combination
 trait HasDataOp { this: Bundle =>
-  // flag
-  // if set repl, dont care other flag or operation
-  val reqs      = Bool() // Request DataCM and DataBuffer
-  val repl      = Bool() // Replace, exchanging data between data storage and data buffer
   // operation (need resp to Backend when all done)
-  // If both read and save are true, they will be executed concurrently to complete the cache line replacement operation.
+  val repl      = Bool() // Replace, exchanging data between data storage and data buffer
   val read      = Bool() // data storage  -> data buffer
   val send      = Bool() // data buffer   -> chi tx data
   val save      = Bool() // data buffer   -> data storage
-  val clean     = Bool() // Release DataBuf
-
-  def data0     =   reqs | read | send
-  def data1     =   save | clean
-  def valid     =   reqs | read | send | save  | clean
-  def onlyClean = !(reqs | read | send | save) & clean
-
-  // Use in DataCM
-  def getNextState(state: UInt)(implicit p: Parameters, s: SourceInfo) = {
-    HAssert(state === ALLOC | state === REPL | state === READ | state === SEND | state === SAVE | state === CLEAN)
-    // Without replace
-    val next0 = WireInit(0.U(CTRLSTATE.width.W))
-    switch(state) {
-      is(ALLOC) {
-        next0 := PriorityMux(Seq(
-          read    -> READ,
-          send    -> SEND,
-          save    -> SAVE,
-          clean   -> CLEAN,
-          reqs    -> RESP
-        ))
-      }
-      is(READ)  {
-        next0 := PriorityMux(Seq(
-          send    -> SEND,
-          save    -> SAVE,
-          clean   -> CLEAN,
-          true.B  -> RESP
-        ))
-      }
-      is(SEND)  {
-        next0 := PriorityMux(Seq(
-          save    -> SAVE,
-          clean   -> CLEAN,
-          true.B  -> RESP
-        ))
-      }
-      is(SAVE)  { next0 := Mux(clean, CLEAN, RESP) }
-      is(CLEAN) { next0 := RESP }
-    }
-    // With replace
-    val next1 = WireInit(0.U(CTRLSTATE.width.W))
-    switch(state) {
-      is(ALLOC) { next1 := REPL   }
-      is(REPL)  { next1 := SEND   }
-      is(SEND)  { next1 := CLEAN  }
-      is(CLEAN) { next1 := RESP   }
-    }
-    Mux(repl, next1, next0)
-  }
-
+  def onlySave  = !repl & !read & !send & save
+  def isValid   =  repl |  read |  send | save
 }
 
 class DataOp extends Bundle with HasDataOp
@@ -161,7 +108,7 @@ class ReadDS(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID
  */
 class GetDBID(implicit p: Parameters) extends DJBundle {
   val hnTxnID   = Output(UInt(hnTxnIDBits.W))
-  val dbidVec   = Input(Vec(djparam.nrBeat, UInt(dbIdBits.W)))
+  val dbidVec   = Vec(djparam.nrBeat, Flipped(Valid(UInt(dbIdBits.W))))
 }
 
 /*

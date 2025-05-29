@@ -4,11 +4,11 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
-import dongjiang.{backend, _}
+import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
+import xs.utils.queue.FastQueue
 import xs.utils.debug._
-import dongjiang.directory.{DirEntry, DirMsg}
 import dongjiang.frontend._
 import dongjiang.frontend.decode._
 import zhujiang.chi.RspOpcode._
@@ -21,29 +21,27 @@ import chisel3.experimental.BundleLiterals._
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
 object READSTATE {
-  val width       = 4
+  val width       = 3
   val FREE        = 0x0.U
   val CANNEST     = 0x1.U
-  val REQDB       = 0x2.U
-  val SENDREQ     = 0x3.U
-  val WAITDATA0   = 0x4.U
-  val WAITDATA1   = 0x5.U
-  val CANTNEST    = 0x6.U
-  val SENDACK     = 0x7.U
-  val RESPCMT     = 0x8.U
+  val SENDREQ     = 0x2.U
+  val WAITDATA0   = 0x3.U
+  val WAITDATA1   = 0x4.U
+  val CANTNEST    = 0x5.U
+  val SENDACK     = 0x6.U
+  val RESPCMT     = 0x7.U
 }
 
 class ReadState(implicit p: Parameters) extends DJBundle {
   // REQ To LAN:
-  // CHI: Free --> ReqDB --> SendReq --> WaitData0 --> WaitData1 --> RespCmt --> Free
+  // CHI: Free --> SendReq --> WaitData0 --> WaitData1 --> RespCmt --> Free
   // REQ To BBN:
-  // CHI: Free --> CanNest --> ReqDB --> SendReq --> WaitData0 --> WaitData1 --> CantNest --> SendCompAck --> RespCmt --> Free
+  // CHI: Free --> CanNest --> SendReq --> WaitData0 --> WaitData1 --> CantNest --> SendCompAck --> RespCmt --> Free
   val state         = UInt(READSTATE.width.W)
 
   def isFree        = state === FREE
   def isValid       = !isFree
   def isCanNest     = state === CANNEST
-  def isReqDB       = state === REQDB
   def isSendReq     = state === SENDREQ
   def isWaitData0   = state === WAITDATA0
   def isWaitData1   = state === WAITDATA1
@@ -70,8 +68,6 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
     val txReq         = Decoupled(new ReqFlit(true))
     val txRsp         = Decoupled(new RespFlit())
     val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
-    // Req To Data
-    val reqDB         = Decoupled(new HnTxnID with HasDataVec)
     // Update PoS
     val updPosNest    = Decoupled(new PosCanNest)
     // For Debug
@@ -96,13 +92,6 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
    */
   io.alloc.ready := reg.isFree
   HAssert.withEn(!io.alloc.bits.doDMT, io.alloc.valid & io.alloc.bits.chi.toBBN)
-
-  /*
-   * ReqDB
-   */
-  io.reqDB.valid          := reg.isReqDB
-  io.reqDB.bits.hnTxnID   := reg.task.hnTxnID
-  io.reqDB.bits.dataVec   := reg.task.chi.dataVec
 
   /*
    * SendReq
@@ -142,7 +131,6 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   io.resp.valid         := reg.isRespCmt
   // bits
   io.resp.bits.hnTxnID  := reg.task.hnTxnID
-  io.resp.bits.alr      := reg.task.alr
   io.resp.bits.fromRec  := false.B
   io.resp.bits.toRepl   := false.B
   when(!reg.task.doDMT) {
@@ -173,9 +161,6 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   when(io.alloc.fire) {
     next.task             := io.alloc.bits
     next.taskInst         := 0.U.asTypeOf(new TaskInst)
-  // store already reqs
-  }.elsewhen(io.reqDB.fire) {
-    next.task.alr.reqs    := true.B
   // Store Message
   }.elsewhen(recDataHit) {
     // chi
@@ -188,13 +173,10 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   // Get Next State
   switch(reg.state) {
     is(FREE) {
-      when(io.alloc.fire)       { next.state := Mux(io.alloc.bits.chi.toBBN, CANNEST, Mux(io.alloc.bits.needReqDB, REQDB, SENDREQ)) }
+      when(io.alloc.fire)       { next.state := Mux(io.alloc.bits.chi.toBBN, CANNEST, SENDREQ) }
     }
     is(CANNEST) {
-      when(io.updPosNest.fire)  { next.state := Mux(io.alloc.bits.needReqDB, REQDB, SENDREQ) }
-    }
-    is(REQDB) {
-      when(io.reqDB.fire)       { next.state := SENDREQ }
+      when(io.updPosNest.fire)  { next.state := SENDREQ }
     }
     is(SENDREQ) {
       when(io.txReq.fire)       { next.state := Mux(reg.task.doDMT, RESPCMT, WAITDATA0) }
@@ -221,7 +203,6 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
    */
   HAssert.withEn(reg.isFree,        io.alloc.fire)
   HAssert.withEn(reg.isUpdNest,     reg.isValid & io.updPosNest.fire)
-  HAssert.withEn(reg.isReqDB,       reg.isValid & io.reqDB.fire)
   HAssert.withEn(reg.isSendReq,     reg.isValid & io.txReq.fire)
   HAssert.withEn(reg.isWaitData,    reg.isValid & recDataHit)
   HAssert.withEn(reg.isRespCmt,     reg.isValid & io.resp.fire)
@@ -256,8 +237,6 @@ class ReadCM(implicit p: Parameters) extends DJModule {
     val txReq         = Decoupled(new ReqFlit(true))
     val txRsp         = Decoupled(new RespFlit())
     val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
-    // Req To Data
-    val reqDB         = Decoupled(new HnTxnID with HasDataVec)
     // Update PoS
     val updPosNest    = Decoupled(new PosCanNest)
   })
@@ -273,7 +252,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
    * Connect CM <- IO
    */
   entries.foreach(_.io.config := io.config)
-  Alloc(entries.map(_.io.alloc), io.alloc)
+  Alloc(entries.map(_.io.alloc), FastQueue(io.alloc))
   entries.foreach(_.io.rxDat := io.rxDat)
 
   /*
@@ -282,7 +261,6 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   io.txReq      <> fastRRArb(entries.map(_.io.txReq)) // TODO: split to LAN and BBN
   io.txRsp      <> fastRRArb(entries.map(_.io.txRsp))
   io.resp       <> fastRRArb(entries.map(_.io.resp))
-  io.reqDB      <> fastRRArb(entries.map(_.io.reqDB))
   io.updPosNest <> fastRRArb(entries.map(_.io.updPosNest))
 
   /*

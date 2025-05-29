@@ -91,6 +91,7 @@ class DBIDPool(implicit p: Parameters) extends DJModule {
   }
   io.deq0.valid := q0.io.deq.valid & rstDoneReg
   io.deq1.valid := q1.io.deq.valid & rstDoneReg
+  HAssert.withEn(q0.io.deq.bits =/= q1.io.deq.bits, q0.io.deq.valid & q1.io.deq.valid)
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -109,7 +110,7 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
    */
   val pool          = Module(new DBIDPool)
   val dbidRegVec2   = Reg(Vec(djparam.nrPoS, Vec(2, UInt(dbIdBits.W))))
-  val validRegVec2  = RegInit(VecInit(Seq.fill(djparam.nrPoS) { VecInit(false.B, false.B) })) // valid is use for assert
+  val validRegVec2  = RegInit(VecInit(Seq.fill(djparam.nrPoS) { VecInit(false.B, false.B) }))
   val reqId         = io.req.bits.hnTxnID
   val relId         = io.release.bits.hnTxnID
   val newReplId     = io.cutHnTxnID.bits.next
@@ -155,8 +156,8 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
    * Receive release
    */
   // Set pool enq valid
-  pool.io.enq0.valid  := io.release.valid & io.release.bits.dataVec(0)
-  pool.io.enq1.valid  := io.release.valid & io.release.bits.dataVec(1)
+  pool.io.enq0.valid  := io.release.valid & io.release.bits.dataVec(0) & validRegVec2(relId)(0)
+  pool.io.enq1.valid  := io.release.valid & io.release.bits.dataVec(1) & validRegVec2(relId)(1)
   // Set pool enq bits
   pool.io.enq0.bits   := dbidRegVec2(relId)(0)
   pool.io.enq1.bits   := dbidRegVec2(relId)(1)
@@ -177,9 +178,6 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
     }.elsewhen(relHit | oldHit) {
       v(0) := v(0) & !io.release.bits.dataVec(0) & !oldHit
       v(1) := v(1) & !io.release.bits.dataVec(1) & !oldHit
-      // HAssert
-      HAssert.withEn(v(0), io.release.bits.dataVec(0))
-      HAssert.withEn(v(1), io.release.bits.dataVec(1))
     }
     HAssert(PopCount(Seq(reqHit, relHit, newHit, oldHit)) <= 1.U)
 
@@ -190,8 +188,10 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
    * Get dbid from reg
    */
   io.getDBIDVec.foreach { get =>
-    get.dbidVec(0) := dbidRegVec2(get.hnTxnID)(0)
-    get.dbidVec(1) := dbidRegVec2(get.hnTxnID)(1)
+    get.dbidVec(0).valid  := validRegVec2(get.hnTxnID)(0)
+    get.dbidVec(1).valid  := validRegVec2(get.hnTxnID)(1)
+    get.dbidVec(0).bits   := dbidRegVec2(get.hnTxnID)(0)
+    get.dbidVec(1).bits   := dbidRegVec2(get.hnTxnID)(1)
   }
 
   /*

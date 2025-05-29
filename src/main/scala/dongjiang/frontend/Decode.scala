@@ -16,6 +16,7 @@ import xs.utils.debug._
 import dongjiang.frontend.decode._
 import dongjiang.data._
 import xs.utils.ParallelLookUp
+import dongjiang.backend.GetDecRes
 
 class Decode(implicit p: Parameters) extends DJModule {
   /*
@@ -32,20 +33,20 @@ class Decode(implicit p: Parameters) extends DJModule {
     val cmtTask_s3      = Valid(new CommitTask with HasHnTxnID)
     val recRespType_s3  = Valid(new RecRespType)
     // To DataBlock
+    val reqDB_s3        = Decoupled(new HnTxnID with HasDataVec)
     val fastData_s3     = Decoupled(new DataTask)
+    val cleanDB_s3      = Valid(new HnTxnID with HasDataVec)
+
   })
   dontTouch(io)
 
   /*
    * Module Reg and Wire declaration
    */
-  val decInit             = WireInit(0.U.asTypeOf(new PackDecList()))
-  val getDecRes           = GetDecRes()
+  val getDecRes           = Module(new GetDecRes)
   val validReg_s3         = RegNext(io.task_s2.valid)
   val taskReg_s3          = RegEnable(io.task_s2.bits, io.task_s2.valid)
   val stateInst_s3        = Wire(new StateInst())
-  val respCompData_s3     = Wire(Bool())
-  val cleanUnuseDB_s3     = Wire(Bool())
 
   /*
    * Get ChiInst and StateInst
@@ -65,8 +66,8 @@ class Decode(implicit p: Parameters) extends DJModule {
   /*
    * Get Decode Result
    */
-  val decList_s2          = decInit.firstDec(chiInst_s2)
-  val decList_s3          = RegNext(decList_s2.asTypeOf(new PackDecList)).secondDec(stateInst_s3)
+  val decList_s2          = Decode.firstDec(chiInst_s2)
+  val decList_s3          = Decode.secondDec(RegEnable(decList_s2, io.task_s2.valid), stateInst_s3)
   val taskCode_s3         = getDecRes.io.taskCode
   val cmtCode_s3          = getDecRes.io.commitCode
   getDecRes.io.list.valid := validReg_s3
@@ -80,56 +81,65 @@ class Decode(implicit p: Parameters) extends DJModule {
   io.cmtTask_s3.valid                 := validReg_s3
   io.cmtTask_s3.bits.hnTxnID          := taskReg_s3.hnIdx.getTxnID
   io.cmtTask_s3.bits.chi              := taskReg_s3.chi
-  io.cmtTask_s3.bits.chi.dataVec      := Mux(taskCode_s3.snoop, DataVec.Full, taskReg_s3.chi.dataVec)
+  io.cmtTask_s3.bits.chi.dataVec      := taskReg_s3.chi.dataVec
   io.cmtTask_s3.bits.dir              := respDir_s3
-  io.cmtTask_s3.bits.alr.reqs         := io.fastData_s3.fire & io.fastData_s3.bits.dataOp.reqs | taskReg_s3.alr.reqs
-  io.cmtTask_s3.bits.alr.sData        := io.fastData_s3.fire & respCompData_s3
-  io.cmtTask_s3.bits.alr.cleanDB      := io.fastData_s3.fire & cleanUnuseDB_s3
+  io.cmtTask_s3.bits.alr.reqDB        := io.reqDB_s3.fire | taskReg_s3.alr.reqDB
+  io.cmtTask_s3.bits.alr.sData        := io.fastData_s3.fire
+  io.cmtTask_s3.bits.alr.getSnpData   := false.B
   io.cmtTask_s3.bits.decList          := decList_s3
+  io.cmtTask_s3.bits.task             := taskCode_s3
+  io.cmtTask_s3.bits.cmt              := Mux(taskCode_s3.isValid, 0.U.asTypeOf(new CommitCode), cmtCode_s3)
   io.cmtTask_s3.bits.ds.set(taskReg_s3.addr, respDir_s3.llc.way)
-  HardwareAssertion.withEn(taskCode_s3.valid | cmtCode_s3.valid, validReg_s3)
+  HardwareAssertion.withEn(taskCode_s3.isValid | cmtCode_s3.isValid, validReg_s3)
   HardwareAssertion.withEn(respDir_s3.sf.metaIsVal, validReg_s3 & taskCode_s3.snoop)
 
   /*
    * Send RespType to ReceiveCM for WriteEvictOrEvict
    */
-  io.recRespType_s3.valid              := validReg_s3 & taskReg_s3.chi.reqIs(WriteEvictOrEvict)
-  io.recRespType_s3.bits.hnTxnID       := taskReg_s3.hnIdx.getTxnID
-  io.recRespType_s3.bits.dbid          := stateInst_s3.srcHit & !stateInst_s3.othHit & stateInst_s3.llcState === ChiState.I
+  io.recRespType_s3.valid           := validReg_s3 & taskReg_s3.chi.reqIs(WriteEvictOrEvict)
+  io.recRespType_s3.bits.hnTxnID    := taskReg_s3.hnIdx.getTxnID
+  io.recRespType_s3.bits.dbid       := stateInst_s3.srcHit & !stateInst_s3.othHit & stateInst_s3.llcState === ChiState.I
 
-  // fastData
-  respCompData_s3                     := cmtCode_s3.sendResp & cmtCode_s3.channel === ChiChannel.DAT & cmtCode_s3.commitOp === CompData // TODO: SnpRespData
-  cleanUnuseDB_s3                     := taskReg_s3.alr.reqs & taskReg_s3.chi.isHalfSize & !taskCode_s3.snoop
-  HAssert.withEn(!(respCompData_s3 & cleanUnuseDB_s3), validReg_s3)
-  HAssert.withEn(respDir_s3.llc.hit, validReg_s3 & !taskCode_s3.valid & respCompData_s3)
-  // valid and base bits
-  io.fastData_s3.valid                := validReg_s3 & ((!taskCode_s3.valid & respCompData_s3) | cleanUnuseDB_s3)
-  io.fastData_s3.bits                 := DontCare
-  io.fastData_s3.bits.hnTxnID         := taskReg_s3.hnIdx.getTxnID
-  // respCompData_s3
-  when(respCompData_s3) {
-    io.fastData_s3.bits.txDat.DBID    := taskReg_s3.hnIdx.getTxnID
-    io.fastData_s3.bits.txDat.Resp    := cmtCode_s3.resp
-    io.fastData_s3.bits.txDat.Opcode  := CompData
-    io.fastData_s3.bits.txDat.HomeNID := DontCare // remap in SAM
-    io.fastData_s3.bits.txDat.TxnID   := taskReg_s3.chi.txnID
-    io.fastData_s3.bits.txDat.SrcID   := taskReg_s3.chi.getNoC
-    io.fastData_s3.bits.txDat.TgtID   := taskReg_s3.chi.nodeId
-    // other bits
-    io.fastData_s3.bits.dataOp        := 0.U.asTypeOf(new DataOp)
-    io.fastData_s3.bits.dataOp.reqs   := true.B
-    io.fastData_s3.bits.dataOp.read   := true.B
-    io.fastData_s3.bits.dataOp.send   := true.B
-    io.fastData_s3.bits.dataVec       := taskReg_s3.chi.dataVec
-    io.fastData_s3.bits.ds.set(taskReg_s3.addr, respDir_s3.llc.way)
-    HardwareAssertion.withEn(cmtCode_s3.dataOp.reqs & cmtCode_s3.dataOp.read & cmtCode_s3.dataOp.send & cmtCode_s3.dataOp.clean, io.fastData_s3.valid)
-  // cleanUnuseDB_s3
-  }.otherwise {
-    io.fastData_s3.bits.dataVec       := VecInit(taskReg_s3.chi.dataVec.map(!_))
-    io.fastData_s3.bits.dataOp        := 0.U.asTypeOf(new DataOp)
-    io.fastData_s3.bits.dataOp.clean  := true.B
-    HardwareAssertion.withEn(io.fastData_s3.ready, io.fastData_s3.valid)
-  }
+  /*
+   * Request DataBuffer & Fast send CompData to CHI
+   */
+  val respCompData_s3               = validReg_s3 & !taskCode_s3.isValid & cmtCode_s3.sendResp & cmtCode_s3.channel === ChiChannel.DAT & cmtCode_s3.opcode === CompData // TODO: SnpRespData
+  // reqDB
+  io.reqDB_s3.valid                 := respCompData_s3
+  io.reqDB_s3.bits.hnTxnID          := taskReg_s3.hnIdx.getTxnID
+  io.reqDB_s3.bits.dataVec          := taskReg_s3.chi.dataVec
+  HAssert.withEn(!taskReg_s3.alr.reqDB, io.reqDB_s3.valid)
+  // CompData
+  io.fastData_s3.valid              := respCompData_s3 & io.reqDB_s3.ready
+  io.fastData_s3.bits               := DontCare
+  io.fastData_s3.bits.hnTxnID       := taskReg_s3.hnIdx.getTxnID
+  // CompData.txDat
+  io.fastData_s3.bits.txDat.DBID    := taskReg_s3.hnIdx.getTxnID
+  io.fastData_s3.bits.txDat.Resp    := cmtCode_s3.resp
+  io.fastData_s3.bits.txDat.Opcode  := CompData
+  io.fastData_s3.bits.txDat.HomeNID := DontCare // remap in SAM
+  io.fastData_s3.bits.txDat.TxnID   := taskReg_s3.chi.txnID
+  io.fastData_s3.bits.txDat.SrcID   := taskReg_s3.chi.getNoC
+  io.fastData_s3.bits.txDat.TgtID   := taskReg_s3.chi.nodeId
+  // CompData.other bits
+  io.fastData_s3.bits.dataOp        := 0.U.asTypeOf(new DataOp)
+  io.fastData_s3.bits.dataOp.read   := true.B
+  io.fastData_s3.bits.dataOp.send   := true.B
+  io.fastData_s3.bits.dataVec       := taskReg_s3.chi.dataVec
+  io.fastData_s3.bits.ds.set(taskReg_s3.addr, respDir_s3.llc.way)
+  HardwareAssertion.withEn(cmtCode_s3.dataOp.isValid, io.fastData_s3.valid)
+
+
+  /*
+   * Clean unues DataBuffer
+   */
+  val cleanUnuseDB_s3               = validReg_s3 & taskReg_s3.alr.reqDB & !taskReg_s3.chi.isFullSize & !taskCode_s3.snoop
+  io.cleanDB_s3.valid               := cleanUnuseDB_s3
+  io.cleanDB_s3.bits.hnTxnID        := taskReg_s3.hnIdx.getTxnID
+  io.cleanDB_s3.bits.dataVec        := VecInit(taskReg_s3.chi.dataVec.map(!_))
+  // HAssert
+  HAssert(!(respCompData_s3 & cleanUnuseDB_s3))
+  HAssert.withEn(io.cleanDB_s3.bits.isHalfSize, io.cleanDB_s3.valid)
 
   /*
    * HardwareAssertion placePipe
