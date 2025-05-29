@@ -5,7 +5,8 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
-import xs.utils.{PickOneLow, ResetRRArbiter}
+import xs.utils.PickOneLow
+import xs.utils.arb.VipArbiter
 import zhujiang.ZJModule
 import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.chi.{DatOpcode, DataFlit, ReqFlit, RespFlit}
@@ -28,10 +29,10 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
 
   private val wakeups = Wire(Vec(node.outstanding, Valid(UInt(raw.W))))
 
-  private val icnRspArb = Module(new ResetRRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
+  private val icnRspArb = Module(new VipArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
   icn.tx.resp.get <> icnRspArb.io.out
 
-  private val tlaArb = Module(new ResetRRArbiter(tl.a.bits.cloneType, node.outstanding))
+  private val tlaArb = Module(new VipArbiter(tl.a.bits.cloneType, node.outstanding))
   tl.a <> tlaArb.io.out
 
   private val cms = for(idx <- 0 until node.outstanding) yield {
@@ -101,11 +102,13 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
     readDataPipe.io.enq.bits.TgtID := ctrlSel.returnNid.get
     readDataPipe.io.enq.bits.HomeNID := ctrlSel.srcId
     readDataPipe.io.enq.bits.DBID := ctrlSel.txnId
+    readDataPipe.io.enq.bits.QoS := ctrlSel.qos
   } else {
     readDataPipe.io.enq.bits.TxnID := ctrlSel.txnId
     readDataPipe.io.enq.bits.TgtID := ctrlSel.srcId
     readDataPipe.io.enq.bits.HomeNID := nodeId
     readDataPipe.io.enq.bits.DBID := tl.d.bits.source
+    readDataPipe.io.enq.bits.QoS := ctrlSel.qos
   }
 
   connIcn(icn.tx.data.get, readDataPipe.io.deq)

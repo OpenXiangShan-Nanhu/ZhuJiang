@@ -130,6 +130,7 @@ abstract class BaseCtrlMachine[
     icnComp -> RspOpcode.Comp,
     icnCompCmo -> RspOpcode.CompCMO
   )))
+  icn.tx.resp.bits.QoS := payload.info.qos
   icn.tx.resp.bits.DBID := io.idx
   icn.tx.resp.bits.TxnID := Mux(icnDBID && dwt, payload.info.returnTxnId.getOrElse(0.U), payload.info.txnId)
   icn.tx.resp.bits.SrcID := 0.U

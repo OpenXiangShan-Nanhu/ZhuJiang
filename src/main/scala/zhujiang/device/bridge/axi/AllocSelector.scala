@@ -2,8 +2,7 @@ package zhujiang.device.bridge.axi
 
 import chisel3._
 import chisel3.util._
-import xs.utils.ResetRRArbiter
-import zhujiang.utils.SelNto1
+import xs.utils.arb.{SelNto1, VipArbiter}
 
 class DataBufferAllocReq(outstanding: Int) extends Bundle {
   val qos = UInt(4.W)
@@ -21,7 +20,7 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
   }
   private val selector = Module(new SelNto1(new DataBufferAllocReq(outstanding), outstanding, selFunc))
   private val selReg = RegNext(selector.io.out) // Do not gate this reg
-  private val selArb = Module(new ResetRRArbiter(new AxiDataBufferAllocReq(outstanding), outstanding))
+  private val selArb = Module(new VipArbiter(new AxiDataBufferAllocReq(outstanding), outstanding))
   private val selPipe = Module(new Queue(new AxiDataBufferAllocReq(outstanding), entries = 2))
 
   for(i <- io.in.indices) {

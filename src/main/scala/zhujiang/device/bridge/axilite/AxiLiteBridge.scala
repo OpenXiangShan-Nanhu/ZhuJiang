@@ -5,11 +5,12 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
-import xs.utils.{PickOneLow, ResetRRArbiter}
+import xs.utils.PickOneLow
 import zhujiang.ZJModule
 import zhujiang.axi._
 import zhujiang.chi.{DatOpcode, DataFlit, ReqFlit, RespFlit}
-import zhujiang.utils.ConditionRRArbiter
+import xs.utils.arb.ConditionVipArbiter
+import zhujiang.chi.FlitHelper.connIcn
 
 class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Parameters) extends ZJModule {
   private val compareTagBits = 16
@@ -28,14 +29,15 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
 
   private val wakeups = Wire(Vec(node.outstanding, Valid(UInt(raw.W))))
 
-  private val icnRspArb = Module(new ResetRRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
-  icn.tx.resp.get <> icnRspArb.io.out
+  private def rspSelFunc(self:RespFlit, other:RespFlit):Bool = self.QoS >= other.QoS
+  private val icnRspArb = Module(new ConditionVipArbiter(new RespFlit, node.outstanding, rspSelFunc))
+  connIcn(icn.tx.resp.get, icnRspArb.io.out)
 
   private def axSelFunc(self:AXFlit, other:AXFlit):Bool = self.qos >= other.qos
-  private val awArb = Module(new ConditionRRArbiter(new AXFlit(axiParams), node.outstanding, axSelFunc))
+  private val awArb = Module(new ConditionVipArbiter(new AXFlit(axiParams), node.outstanding, axSelFunc))
   axi.aw <> awArb.io.out
 
-  private val arArb = Module(new ConditionRRArbiter(new AXFlit(axiParams), node.outstanding, axSelFunc))
+  private val arArb = Module(new ConditionVipArbiter(new AXFlit(axiParams), node.outstanding, axSelFunc))
   axi.ar <> arArb.io.out
 
   private val cms = for(idx <- 0 until node.outstanding) yield {
@@ -118,8 +120,7 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
   readDataPipe.io.enq.bits.HomeNID := nodeId
   readDataPipe.io.enq.bits.TgtID := ctrlSel.srcId
   readDataPipe.io.enq.bits.Resp := "b010".U
+  readDataPipe.io.enq.bits.QoS := ctrlSel.qos
 
-  icn.tx.data.get.valid := readDataPipe.io.deq.valid
-  icn.tx.data.get.bits := readDataPipe.io.deq.bits.asTypeOf(icn.tx.data.get.bits)
-  readDataPipe.io.deq.ready := icn.tx.data.get.ready
+  connIcn(icn.tx.data.get, readDataPipe.io.deq)
 }
