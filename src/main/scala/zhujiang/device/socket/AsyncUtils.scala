@@ -11,7 +11,7 @@ import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.{ZJBundle, ZJModule}
 
 object AsyncUtils {
-  val params = AsyncQueueParams(depth = 4, sync = 2)
+  val params = AsyncQueueParams(depth = 8, sync = 3)
 }
 
 class AsyncSink[T <: Data](gen: T) extends AsyncQueueSink(gen, AsyncUtils.params)
