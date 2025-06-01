@@ -89,7 +89,7 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   dataRam.io.wreq.bits.data(0) := wrRamQ.io.deq.bits.data
   dataRam.io.wreq.bits.addr := wrRamQ.io.deq.bits.set
 
-  readRamStage1Pipe.io.enq.valid := io.readDataReq.valid
+  readRamStage1Pipe.io.enq.valid := io.readDataReq.fire
   readRamStage1Pipe.io.enq.bits.id := io.readDataReq.bits.id
   readRamStage1Pipe.io.enq.bits.last := io.readDataReq.bits.last
   readRamStage1Pipe.io.enq.bits.resp := io.readDataReq.bits.resp
@@ -104,7 +104,7 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   readRamStage2Pipe.io.enq.bits.data := dataRam.io.rresp.bits.asUInt
   readRamStage2Pipe.io.deq.ready := io.readDataResp.ready
 
-  dataRam.io.rreq.valid := io.readDataReq.valid & readRamStage1Pipe.io.enq.ready
+  dataRam.io.rreq.valid := io.readDataReq.fire
   dataRam.io.rreq.bits := io.readDataReq.bits.set
 
   rFlitBdl := 0.U.asTypeOf(rFlitBdl)
@@ -114,7 +114,7 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   rFlitBdl.last := readRamStage2Pipe.io.deq.bits.last
   rFlitBdl.user := 0.U
 
-  io.readDataReq.ready := readRamStage1Pipe.io.enq.ready
+  io.readDataReq.ready := readRamStage1Pipe.io.enq.ready & !((readRamStage2Pipe.io.count === 1.U) & readRamStage2Pipe.io.enq.fire) & readRamStage2Pipe.io.enq.ready
   io.readDataResp.valid := readRamStage2Pipe.io.deq.valid
   io.readDataResp.bits := rFlitBdl
   io.relSet.valid := readRamStage1Pipe.io.deq.fire
