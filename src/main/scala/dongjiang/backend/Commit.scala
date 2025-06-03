@@ -261,9 +261,10 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.decListOut       := taskReg.decList
   // Input
   when(io.decListIn.valid) {
-    taskNext.decList  := io.decListIn.bits
-    taskNext.task     := io.taskCode
-    taskNext.cmt      := Mux(stateReg.isFstTask & io.cmtCode.waitSecDone, 0.U.asTypeOf(new CommitCode), io.cmtCode)
+    taskNext.decList      := io.decListIn.bits
+    taskNext.task         := io.taskCode
+    taskNext.task.snpTgt  := taskReg.task.snpTgt
+    taskNext.cmt          := Mux(stateReg.isFstTask & io.cmtCode.waitSecDone, 0.U.asTypeOf(new CommitCode), io.cmtCode)
     // HAssert state
     HAssert(instReg.valid)
     HAssert(stateReg.isFstTask | stateReg.isSecTask)
