@@ -244,8 +244,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val BeatBits         = djparam.BeatByte * 8
   lazy val MaskBits         = djparam.BeatByte
   lazy val ChiFullSize      = log2Ceil(djparam.CacheLine) // 6
-  lazy val ChiHalfSize      = log2Ceil(djparam.BeatByte) // 5
-  lazy val beatSize         = log2Ceil(djparam.BeatByte) // 5
+  lazy val beatSize         = log2Ceil(djparam.BeatByte)  // 5
   require(MaskBits == zjParams.beBits)
 
   // Frontend(Per dirBank) and Directory Parameters
@@ -283,10 +282,10 @@ trait HasDJParam extends HasParseZJParam {
 
   // TIMEOUT CHECK CNT VALUE
   lazy val TIMEOUT_TASKBUF  = 30000 * 2
+  lazy val TIMEOUT_DATACM   = 30000 * 2
   lazy val TIMEOUT_POS      = 20000 * 2
-  lazy val TIMEOUT_DATACM   = 20000 * 2
+  lazy val TIMEOUT_LOCK     = 20000 * 2
   lazy val TIMEOUT_COMMIT   = 18000 * 2
-  lazy val TIMEOUT_LOCK     = 18000 * 2
   lazy val TIMEOUT_REPLACE  = 15000 * 2
   lazy val TIMEOUT_ISSUE    = 10000 * 2
   lazy val TIMEOUT_SNP      = 10000 * 2

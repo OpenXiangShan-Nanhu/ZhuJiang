@@ -134,12 +134,12 @@ object DataVec {
 }
 
 trait HasDataVec extends DJBundle { this: DJBundle =>
-  val dataVec = Vec(djparam.nrBeat, Bool())
-  def isZero = PopCount(dataVec) === 0.U
-  def isFullSize = dataVec.asUInt.andR
-  def isHalfSize = !isZero & !isFullSize
-  def getSize = Mux(isFullSize, 6.U, Mux(isHalfSize, 5.U, 0.U))
-  def getOffset: UInt = {
+  val dataVec     = Vec(djparam.nrBeat, Bool())
+  def isZero      = PopCount(dataVec) === 0.U
+  def isFullSize  = dataVec.asUInt.andR
+  def isHalfSize  = !isZero & !isFullSize
+  def getSize     = Mux(isFullSize, 6.U, Mux(isHalfSize, 5.U, 0.U))
+  def getOffset   = {
     val offset = Wire(UInt(offsetBits.W))
     when(isFullSize | isZero) {
       offset := 0.U
