@@ -316,9 +316,9 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
           // modify lock
           when(unLockHit) {
             lock.valid  := false.B
-            lock.way    := selWay_d2
           }.elsewhen((read & hit_d2) | readRepl) {
             lock.valid  := true.B
+            lock.set    := reqSet_d2
             lock.way    := selWay_d2
           }
 
