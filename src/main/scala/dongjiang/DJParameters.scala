@@ -245,6 +245,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val MaskBits         = djparam.BeatByte
   lazy val ChiFullSize      = log2Ceil(djparam.CacheLine) // 6
   lazy val ChiHalfSize      = log2Ceil(djparam.BeatByte) // 5
+  lazy val beatSize         = log2Ceil(djparam.BeatByte) // 5
   require(MaskBits == zjParams.beBits)
 
   // Frontend(Per dirBank) and Directory Parameters

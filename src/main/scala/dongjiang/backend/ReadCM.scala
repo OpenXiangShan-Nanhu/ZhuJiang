@@ -103,7 +103,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   io.txReq.bits.ExpCompAck      := reg.task.chi.expCompAck
   io.txReq.bits.MemAttr         := reg.task.chi.memAttr.asUInt
   io.txReq.bits.Order           := Order.None
-  io.txReq.bits.Addr            := DontCare // set in chi xbar
+  io.txReq.bits.Addr            := Cat(0.U((addrBits - offsetBits).W), reg.task.chi.getOffset) // set in chi xbar
   io.txReq.bits.Size            := reg.task.chi.getSize
   io.txReq.bits.Opcode          := reg.task.chi.opcode
   io.txReq.bits.ReturnTxnID.get := Mux(reg.task.doDMT, reg.task.chi.txnID,  reg.task.hnTxnID)

@@ -139,6 +139,16 @@ trait HasDataVec extends DJBundle { this: DJBundle =>
   def isFullSize = dataVec.asUInt.andR
   def isHalfSize = !isZero & !isFullSize
   def getSize = Mux(isFullSize, 6.U, Mux(isHalfSize, 5.U, 0.U))
+  def getOffset: UInt = {
+    val offset = Wire(UInt(offsetBits.W))
+    when(isFullSize | isZero) {
+      offset := 0.U
+    }.otherwise {
+      val beatIdx = PriorityEncoder(dataVec)
+      offset := beatIdx << beatSize
+    }
+    offset
+  }
 }
 
 
