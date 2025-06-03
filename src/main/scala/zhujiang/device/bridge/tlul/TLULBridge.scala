@@ -2,6 +2,7 @@ package zhujiang.device.bridge.tlul
 
 import chisel3._
 import chisel3.util._
+import freechips.rocketchip.util.MaskGen
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
@@ -97,6 +98,7 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
   readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4)
   readDataPipe.io.enq.bits.SrcID := 0.U
   readDataPipe.io.enq.bits.Resp := "b010".U
+  readDataPipe.io.enq.bits.BE := MaskGen(ctrlSel.addr, ctrlSel.size, bew)
   if(node.nodeType == NodeType.S) {
     readDataPipe.io.enq.bits.TxnID := ctrlSel.returnTxnId.get
     readDataPipe.io.enq.bits.TgtID := ctrlSel.returnNid.get

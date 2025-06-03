@@ -2,6 +2,7 @@ package zhujiang.device.bridge.axi
 
 import chisel3._
 import chisel3.util._
+import freechips.rocketchip.util.MaskGen
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
@@ -131,6 +132,7 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule {
   readDataPipe.io.enq.bits.DBID := ctrlSel.txnId
   readDataPipe.io.enq.bits.Resp := "b010".U
   readDataPipe.io.enq.bits.QoS := ctrlSel.qos
+  readDataPipe.io.enq.bits.BE := Mux(ctrlSel.size === 6.U, Fill(bew, true.B), MaskGen(ctrlSel.addr, ctrlSel.size, bew))
 
   connIcn(icn.tx.data.get, readDataPipe.io.deq)
 
