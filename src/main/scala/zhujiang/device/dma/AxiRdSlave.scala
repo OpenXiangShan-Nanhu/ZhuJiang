@@ -105,7 +105,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
         e.shift      := uTailE.exAddr(rni.offset - 1, 0)
         e.byteMask   := uTailE.byteMask(rni.offset - 1, 0)
         e.nextShift  := nextAddr
-        e.beat       := uTailE.exAddr(rni.offset - 1)
+        e.beat       := Mux((uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1)) & uTailE.cache(1), 0.U, uTailE.exAddr(rni.offset - 1))
         e.finish     := false.B
         val notModify  = !uTailE.cache(1)
         val lastEntry  = (uTailE.cnt.get + 1.U) === uTailE.num.get
