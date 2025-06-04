@@ -102,26 +102,26 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
         e.id         := uTailE.id
         e.size       := 1.U(log2Ceil(dw/8).W) << uTailE.size
         e.last       := (uTailE.cnt.get + 1.U) === uTailE.num.get
-        e.shift      := uTailE.exAddr(rni.offset - 1, 0)
         e.byteMask   := uTailE.byteMask(rni.offset - 1, 0)
         e.nextShift  := nextAddr
         e.beat       := Mux((uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1)) & uTailE.cache(1), 0.U, uTailE.exAddr(rni.offset - 1))
+        e.outBeat    := uTailE.exAddr(rni.offset - 1)
+        e.merFixLen  := Mux(Burst.isFix(uTailE.burst) & uTailE.cache(1), uTailE.len, 0.U)
         e.finish     := false.B
         val notModify  = !uTailE.cache(1)
         val lastEntry  = (uTailE.cnt.get + 1.U) === uTailE.num.get
         val specWrap   = Burst.isWrap(uTailE.burst) & !uTailE.byteMask(rni.offset)
-        val fixMerge   = Burst.isFix(uTailE.burst)
         e.endShift    := Mux(!uTailE.cache(1), nextAddr, Mux((uTailE.cnt.get + 1.U) === uTailE.num.get, uTailE.endAddr(rni.offset - 1, 0), Mux(Burst.isWrap(uTailE.burst), uTailE.exAddr(rni.offset - 1, 0), 0.U)))
         e.endShift    := PriorityMux(Seq(
           notModify   -> nextAddr,
           specWrap    -> uTailE.exAddr(rni.offset - 1, 0),
-          fixMerge    -> (Cat(uTailE.exAddr) + uTailE.len),
           true.B      -> Mux((uTailE.cnt.get + 1.U) === uTailE.num.get, uTailE.endAddr(rni.offset - 1, 0), 0.U)
         ))
       }.elsewhen(io.uAxiR.fire & dataCtrlQ.io.dataOut.bits.idx === i.U){
-        e.shift     := e.nextShift
+        e.outBeat   := Mux(e.byteMask.orR, e.nextShift(rni.offset - 1), e.outBeat)
         e.nextShift := (e.nextShift + e.size) & e.byteMask | ~e.byteMask & e.nextShift
-        e.finish    := Mux((e.nextShift === e.endShift), true.B, e.finish)
+        e.finish    := Mux(((e.nextShift === e.endShift) & (e.merFixLen === 0.U)) || e.merFixLen === 1.U, true.B, e.finish)
+        e.merFixLen := Mux(e.merFixLen === 0.U, 0.U, e.merFixLen - 1.U)
       }
       when(io.dAxiR.fire & io.dAxiR.bits.id === i.U){
         e.beat  := !e.beat
@@ -153,11 +153,13 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val otherHalf    = (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits- 1, rni.offset)) & (uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U) & (uTailE.exAddr(rni.offset - 1, 0) =/= uTailE.endAddr(rni.offset - 1, 0))
   txArBdl.len             := Mux(!uTailE.cache(1) | incrHalf | wrapHalf | otherHalf | Burst.isFix(uTailE.burst), 0.U, 1.U)
 
+  private val notMerFixLast = (dArEntrys(dataCtrlQ.io.dataOut.bits.idx).nextShift === dArEntrys(dataCtrlQ.io.dataOut.bits.idx).endShift) && (dArEntrys(dataCtrlQ.io.dataOut.bits.idx).merFixLen === 0.U)
+  private val merFixLast    = dArEntrys(dataCtrlQ.io.dataOut.bits.idx).merFixLen === 1.U
   io.uAxiAr.ready     := rxArPipe.io.enq.ready
   io.uAxiR.bits       := 0.U.asTypeOf(io.uAxiR.bits)
   io.uAxiR.bits.data  := dataCtrlQ.io.dataOut.bits.data
   io.uAxiR.bits.id    := dataCtrlQ.io.dataOut.bits.id
-  io.uAxiR.bits.last  := dArEntrys(dataCtrlQ.io.dataOut.bits.idx).last & (dArEntrys(dataCtrlQ.io.dataOut.bits.idx).nextShift === dArEntrys(dataCtrlQ.io.dataOut.bits.idx).endShift)
+  io.uAxiR.bits.last  := dArEntrys(dataCtrlQ.io.dataOut.bits.idx).last & (notMerFixLast || merFixLast)
   io.uAxiR.bits.resp  := dataCtrlQ.io.dataOut.bits.resp
   io.uAxiR.valid      := dataCtrlQ.io.dataOut.valid
 
@@ -177,7 +179,8 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 
   dataCtrlQ.io.ptr.endShift       := dArEntrys(dataCtrlQ.io.dataOut.bits.idx).endShift
   dataCtrlQ.io.ptr.nextShift      := dArEntrys(dataCtrlQ.io.dataOut.bits.idx).nextShift
-  dataCtrlQ.io.ptr.shift          := dArEntrys(dataCtrlQ.io.dataOut.bits.idx).shift
+  dataCtrlQ.io.ptr.outBeat        := dArEntrys(dataCtrlQ.io.dataOut.bits.idx).outBeat
+  dataCtrlQ.io.ptr.merFixLen      := dArEntrys(dataCtrlQ.io.dataOut.bits.idx).merFixLen
   
   rxArPipe.io.enq.valid   := io.uAxiAr.valid
   rxArPipe.io.enq.bits    := rxArBdl.pipeInit(io.uAxiAr.bits)

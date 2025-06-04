@@ -29,9 +29,10 @@ class SendDataOut(node: Node)(implicit p: Parameters) extends ZJBundle {
 }
 class Pointer(node: Node)(implicit p: Parameters) extends ZJBundle {
   private val rni = DmaParams(node = node)
-  val shift       = UInt(rni.offset.W)
+  val outBeat     = UInt(1.W)
   val nextShift   = UInt(rni.offset.W)
   val endShift    = UInt(rni.offset.W)
+  val merFixLen   = UInt(8.W)
 }
 class RBundle(node: Node)(implicit p: Parameters) extends  ZJBundle {
   private val rni = DmaParams(node = node)
@@ -67,12 +68,12 @@ class SendReg(node: Node)(implicit p: Parameters) extends ZJModule {
   sendQueue.io.enq.bits.data   := mergeData
   sendQueue.io.enq.bits.id     := RegNext(io.dataIn.bits.id)
   sendQueue.io.enq.bits.idx    := RegNext(io.dataIn.bits.idx)
-  sendQueue.io.deq.ready       := io.ptr.nextShift === io.ptr.endShift && io.dataOut.fire
+  sendQueue.io.deq.ready       := ((io.ptr.nextShift === io.ptr.endShift) & (io.ptr.merFixLen === 0.U) || io.ptr.merFixLen === 1.U) && io.dataOut.fire
 
 
   io.dataIn.ready         := sendQueue.io.enq.ready & !(sendQueue.io.deq.valid & !sendQueue.io.deq.ready) || !io.dataIn.bits.last
   io.dataOut.valid        := sendQueue.io.deq.valid
-  io.dataOut.bits.data    := sendQueue.io.deq.bits.data(io.ptr.shift(rni.offset - 1))
+  io.dataOut.bits.data    := sendQueue.io.deq.bits.data(io.ptr.outBeat)
   io.dataOut.bits.id      := sendQueue.io.deq.bits.id
   io.dataOut.bits.idx     := sendQueue.io.deq.bits.idx
   io.dataOut.bits.resp    := DontCare

@@ -94,15 +94,14 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
   }  
   def entryInit[T <: AxiRdEntry](info: T): AxiRdEntry = {
     this.preAddr      := info.preAddr
-    // this.exAddr       := Mux(info.cache(1) & (info.range.get(rni.pageBits - 1, rni.offset) === 0.U), Cat(info.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U(5.W)), info.exAddr)
     this.exAddr       := info.exAddr
     this.endAddr      := Mux(Burst.isWrap(info.burst), info.exAddr, Mux(Burst.isFix(info.burst), info.exAddr + (1.U << info.size), info.endAddr))
     this.qos          := info.qos
     this.id           := info.id
-    this.byteMask     := Mux(Burst.isWrap(info.burst), info.byteMask, Mux(Burst.isIncr(info.burst) || Burst.isFix(info.burst) && info.cache(1), 0xFFF.U, 0.U))
+    this.byteMask     := Mux(Burst.isWrap(info.burst), info.byteMask, Mux(Burst.isIncr(info.burst), 0xFFF.U, 0.U))
     this.cnt.get      := 0.U
     this.num.get      := getNum(info.cache(1).asBool, info.range.get, info.endAddr, info.exAddr, info.len, info.burst)
-    this.size         := Mux(Burst.isFix(info.burst) && info.cache(1), 0.U, info.size)
+    this.size         := info.size
     this.len          := info.len
     this.cache        := info.cache
     this.burst        := info.burst
@@ -183,22 +182,15 @@ class AxiRMstEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   private val rni = DmaParams(node = node)
   val id          = UInt(rni.idBits.W)
   val last        = Bool()
-  val shift       = UInt(rni.offset.W)
   val nextShift   = UInt(rni.offset.W)
   val endShift    = UInt(rni.offset.W)
   val byteMask    = UInt(rni.offset.W)
   val size        = UInt(6.W)
   val beat        = UInt(1.W)
+  val outBeat     = UInt(1.W)
+  val merFixLen   = UInt(8.W)
   val finish      = Bool()
 }
-
-//class DataCtrl(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
-//  private val rni = zjParams.dmaParams
-//  val data   = UInt(dw.W)
-//  val id     = UInt(rni.idBits.W)
-//  val idx    = UInt(log2Ceil(outstanding).W)
-//  val resp   = UInt(2.W)
-//}
 
 class CHIREntry(node: Node)(implicit p : Parameters) extends ZJBundle {
   private val rni    = DmaParams(node = node)
@@ -260,11 +252,6 @@ class DataBufferAlloc(outstanding: Int)(implicit p: Parameters) extends ZJBundle
   val buf          = Vec(2, UInt(log2Ceil(outstanding).W))
   val num          = UInt(2.W)
 }
-
-// class DataBufferTxReq(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
-//   val idxOH = UInt(outstanding.W)
-//   val flit  = new DataFlit
-// }
 
 class writeRdDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   val set    = UInt(log2Ceil(outstanding).W)
