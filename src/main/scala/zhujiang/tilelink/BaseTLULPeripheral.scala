@@ -45,8 +45,6 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
 
       val maxByte = pregSeq.map(r => r._8).max + 1
       val busBytes = tlParams.dataBits / 8
-      val maxAddrBits = log2Ceil(maxByte)
-      val busOffBits = log2Ceil(busBytes)
       val readMatrixRow = (maxByte + busBytes - 1) / busBytes
       val readMatrix = Wire(Vec(readMatrixRow, Vec(busBytes, UInt(8.W))))
       readMatrix := 0.U.asTypeOf(readMatrix)
@@ -99,12 +97,7 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
         finalWdata.suggestName(s"${name}_write_data")
         finalWmask.suggestName(s"${name}_write_mask")
         regUpdate.suggestName(s"${name}_write_en")
-        val addrMatch = if(maxAddrBits <= busOffBits) {
-          true.B
-        } else {
-          addr(maxAddrBits - 1, busOffBits) === regAddr(maxAddrBits - 1, busOffBits)
-        }
-        regUpdate := wen && addr(addrBits - 1, maxAddrBits) === 0.U && addrMatch
+        regUpdate := wen && addr(addrBits - 1, size) === regAddr(addrBits - 1, size)
         when(regUpdate) {
           dst := ((finalWmask & finalWdata) | (keepMask & src.asUInt)).asTypeOf(dst)
         }
