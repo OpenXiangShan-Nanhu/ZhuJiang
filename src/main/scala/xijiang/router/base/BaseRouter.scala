@@ -213,7 +213,7 @@ trait BaseRouterUtils {
       tap.get.io.inject.bits.src := src.asUInt
 
       mon.foreach(m => {
-        m.suggestName(s"inject${chn.toLowerCase().capitalize}Monitor")
+        m.suggestName(s"cosim_inject${chn.toLowerCase()}_mon")
         m.io.clock := clock
         m.io.valid := tap.get.io.inject.fire
         m.io.nodeId := nid
@@ -231,7 +231,7 @@ trait BaseRouterUtils {
       val mon = if(hasTfb) Some(Module(new FlitMonitor)) else None
       connIcn(ringEjectsMap(chn), tap.get.io.eject)
       mon.foreach(m => {
-        m.suggestName(s"eject${chn.toLowerCase().capitalize}Monitor")
+        m.suggestName(s"cosim_eject_${chn.toLowerCase()}_mon")
         m.io.clock := clock
         m.io.valid := tap.get.io.eject.fire
         m.io.nodeId := nid
@@ -253,6 +253,7 @@ class BaseRouter(val node: Node)(implicit p: Parameters) extends ZJModule with B
   dontTouch(router.nodeId)
   private val tfbNodeRegister = if((node.injects ++ node.ejects).nonEmpty && hasTfb) Some(Module(new NodeRegister)) else None
   tfbNodeRegister.foreach(r => {
+    r.suggestName("cosim_node_register")
     r.io.nodeId := nid
     r.io.nodeType := tfbNodeType
   })
