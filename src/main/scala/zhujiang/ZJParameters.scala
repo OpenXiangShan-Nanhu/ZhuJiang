@@ -197,7 +197,6 @@ case class ZJParameters(
   hnxBankOff: Int = 12,
   cpuSpaceBits: Int = 20,
   reqEjectBufDepth: Int = 5,
-  externalInterruptNum: Int = 32,
   clusterCacheSizeInB: Int = 512 * 1024,
   cacheSizeInB: Int = 16 * 1024 * 1024,
   cacheWays: Int = 16,
