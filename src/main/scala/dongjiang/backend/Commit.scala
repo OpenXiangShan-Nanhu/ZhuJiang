@@ -149,8 +149,9 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.valid               := valid & flagReg.intl.s.dataTask & taskReg.alr.reqDB
   io.dataTask.bits                := DontCare
   // dataOp
+  val replLLC                     =  flagReg.intl.s.wriDir & taskReg.cmt.wriLLC & !taskReg.dir.llc.hit
   io.dataTask.bits.dataOp         := taskReg.cmt.dataOp
-  io.dataTask.bits.dataOp.save    := taskReg.cmt.dataOp.save & !flagReg.intl.s.wriDir
+  io.dataTask.bits.dataOp.save    := taskReg.cmt.dataOp.save & !replLLC
   HAssert.withEn(PopCount(io.dataTask.bits.dataOp.asUInt) =/= 0.U, io.dataTask.valid)
   // txDat
   // TODO: SnpRespData
@@ -292,10 +293,11 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     val alrReqDB              = Mux(io.decListIn.valid, taskReg.alr.reqDB,  io.alloc.bits.alr.reqDB)
     val alrSendData           = Mux(io.decListIn.valid, taskReg.alr.sData,  io.alloc.bits.alr.sData)
     val needWaitAck           = Mux(io.decListIn.valid, flagReg.chi.w_ack,  io.alloc.bits.chi.expCompAck & !io.alloc.bits.chi.reqIs(WriteEvictOrEvict))
+    val replLLC               = cmt.wriLLC & !taskReg.dir.llc.hit
      // task flag internal send
     flagNext.intl.s.reqDB     := (task.needDB | cmt.dataOp.isValid) & !alrReqDB
     flagNext.intl.s.cmTask    := task.opsIsValid
-    flagNext.intl.s.dataTask  := Mux(cmt.dataOp.onlySave, !cmt.isWriDir, cmt.dataOp.isValid) & !alrSendData
+    flagNext.intl.s.dataTask  := Mux(cmt.dataOp.onlySave, !replLLC, cmt.dataOp.isValid) & !alrSendData
     flagNext.intl.s.wriDir    := cmt.isWriDir
     // task flag internal wait
     flagNext.intl.w.recResp   := task.waitRecDone

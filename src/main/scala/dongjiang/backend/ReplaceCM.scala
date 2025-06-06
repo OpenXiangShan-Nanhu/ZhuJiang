@@ -54,10 +54,7 @@ trait HasReplMes { this: DJBundle =>
   //                                                         |                                        ^
   //                                                         |------------(replWayIsInvalid)----------|
   // 2. No need replace:
-  //  2.1 Write LLC valid & hit:
-  //    State: Free -> WriDir -> SaveData -> WaitResp -> RespCmt -> Free
-  //  2.2 Write SF valid & hit:
-  //    State: Free -> WriDir -> RespCmt -> Free
+  //  State: Free -> WriDir -> RespCmt -> Free
   //
   // Node: only do CleanPosT when alrReplSF in replace LLC directory
   // Node: dont do RespCmt when alrReplSF in replace LLC directory
@@ -349,7 +346,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     }
     // Write Directory
     is(WRIDIR) {
-      when(io.writeDir.fire)            { next.state := Mux(reg.isReplDIR, WAITDIR, Mux(reg.wriLLC, SAVEDATA, RESPCMT)) }
+      when(io.writeDir.fire)            { next.state := Mux(reg.isReplDIR, WAITDIR, RESPCMT) }
     }
     // Wait Directory write response
     is(WAITDIR) {

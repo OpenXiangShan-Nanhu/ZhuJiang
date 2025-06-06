@@ -17,7 +17,9 @@ import dongjiang.frontend._
 import dongjiang.frontend.decode._
 
 class CommitTask(implicit p: Parameters) extends DJBundle with HasPackChi with HasPackDirMsg with HasAlready
-  with HasDsIdx with HasDecList with HasPackTaskCode with HasPackCmtCode
+  with HasDsIdx with HasDecList with HasPackTaskCode with HasPackCmtCode {
+  def isReplLLC = cmt.wriLLC & !dir.llc.hit
+}
 
 class CMTask(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPackChi // Common
   with HasPackDataOp with HasDsIdx {      // for WriteCM

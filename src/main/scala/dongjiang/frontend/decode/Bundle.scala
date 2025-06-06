@@ -306,7 +306,7 @@ object Code {
   def wriLLC  (x: UInt)    : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.llcState  := toState(x);  temp.wriLLC := true.B;  require(x.getWidth == DecodeCHI.width); temp.asUInt }
 
   // Commit Code DataOp
-  // If need write llc, the save operation will be handed over to ReplaceCM for execution.
+  // If need write llc and llc no hit, the save operation will be handed over to ReplaceCM for execution.
   def cdop(x: String*): UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // CommitCode NoCMT or ERROR
