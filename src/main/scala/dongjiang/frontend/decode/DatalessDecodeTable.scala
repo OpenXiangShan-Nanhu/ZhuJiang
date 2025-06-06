@@ -54,7 +54,88 @@ object Dataless_LAN {
     (srcHit | othHit | llcIs(I))  -> first(cmtRsp(Comp) | resp(I) | wriSRC(false)),
   ))
 
+  // cleanShared
+  def cleanShared: DecodeType = (fromLAN | toLAN | reqIs(CleanShared), Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(I)),
+    // I I SC -> I I SC
+    (sfMiss | llcIs(SC)) -> first(cmtRsp(Comp) | resp(I)),
+    // I I UC -> I I UC
+    (sfMiss | llcIs(UC)) -> first(cmtRsp(Comp) | resp(I)),
+    // I I UD -> I I UC
+    (sfMiss | llcIs(UD)) -> first(tdop("read", "send") | write(WriteNoSnpFull), cmtRsp(Comp) | resp(I) | wriLLC(UC)),
+    // I V I
+    (srcMiss | othHit | llcIs(I)) -> (snpAll(SnpCleanShared) | needDB, Seq(
+      (rspIs(SnpResp)     | respIs(I))      -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)), // I I  I
+      (rspIs(SnpResp)     | respIs(UC))     -> second(cmtRsp(Comp) | resp(I)), // I UC I
+      (rspIs(SnpResp)     | respIs(SC))     -> second(cmtRsp(Comp) | resp(I)), // I SC I
+      (datIs(SnpRespData) | respIs(UC_PD))  -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)), // I UC I
+      (datIs(SnpRespData) | respIs(SC_PD))  -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)), // I SC I
+      (datIs(SnpRespData) | respIs(I_PD))   -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cdop("save") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UC)), // I I I
+    )),
+    // V I I
+    (srcHit | othMiss | llcIs(I)) -> (snpAll(SnpCleanShared) | needDB, Seq(
+      (rspIs(SnpResp)     | respIs(I))      -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)), // I I  I
+      (rspIs(SnpResp)     | respIs(UC))     -> second(cmtRsp(Comp) | resp(I)), // I UC I
+      (rspIs(SnpResp)     | respIs(SC))     -> second(cmtRsp(Comp) | resp(I)), // I SC I
+      (datIs(SnpRespData) | respIs(UC_PD))  -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)), // I UC I
+      (datIs(SnpRespData) | respIs(SC_PD))  -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)), // I SC I
+      (datIs(SnpRespData) | respIs(I_PD))   -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cdop("save") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UC)), // I I I
+    )),
+    // V V I  -> V V I
+    (srcHit | othHit | llcIs(I)) -> first(cmtRsp(Comp) | resp(I)),
+  ))
 
+  // cleanInvalid
+  def cleanInvalid: DecodeType = (fromLAN | toLAN | reqIs(CleanInvalid), Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(I)),
+    // I I SC -> I I I
+    (sfMiss | llcIs(SC)) -> first(cmtRsp(Comp) | resp(I) | wriLLC(I)),
+    // I I UC -> I I I
+    (sfMiss | llcIs(UC)) -> first(cmtRsp(Comp) | resp(I) | wriLLC(I)),
+    // I I UD -> I I I
+    (sfMiss | llcIs(UD)) -> first(tdop("read", "send") | write(WriteNoSnpFull), cmtRsp(Comp) | resp(I) | wriLLC(I)),
+    // I V I  -> I I I
+    (srcMiss | othHit | llcIs(I)) -> (snpAll(SnpCleanInvalid) | needDB, Seq(
+      (rspIs(SnpResp)     | respIs(I))      -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)),
+      (datIs(SnpRespData) | respIs(I_PD))   -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)),
+    )),
+    // V I I  -> I I I
+    (srcHit | othMiss | llcIs(I)) -> (snpAll(SnpCleanShared) | needDB, Seq(
+      (rspIs(SnpResp)     | respIs(I))      -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)),
+      (datIs(SnpRespData) | respIs(I_PD))   -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)),
+    )),
+    // V V I  -> I V I
+    (srcHit | othHit | llcIs(I))   -> (snpAll(SnpMakeInvalid), Seq(
+      (rspIs(SnpResp) | respIs(I)) -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)),
+    )),
+  ))
+
+  // makeInvalid
+  def makeInvalid: DecodeType = (fromLAN | toLAN | reqIs(MakeInvalid), Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(I)),
+    // I I SC -> I I I
+    (sfMiss | llcIs(SC)) -> first(cmtRsp(Comp) | resp(I) | wriLLC(I)),
+    // I I UC -> I I I
+    (sfMiss | llcIs(UC)) -> first(cmtRsp(Comp) | resp(I) | wriLLC(I)),
+    // I I UD -> I I I
+    (sfMiss | llcIs(UD)) -> first(cmtRsp(Comp) | resp(I) | wriLLC(I)),
+    // I V I  -> I I I
+    (srcMiss | othHit | llcIs(I))  -> (snpAll(SnpMakeInvalid), Seq(
+      (rspIs(SnpResp) | respIs(I)) -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)),
+    )),
+    // V I I  -> I I I
+    (srcHit | othMiss | llcIs(I))  -> (snpAll(SnpMakeInvalid), Seq(
+      (rspIs(SnpResp) | respIs(I)) -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)),
+    )),
+    // V V I  -> I V I
+    (srcHit | othHit | llcIs(I))   -> (snpAll(SnpMakeInvalid), Seq(
+      (rspIs(SnpResp) | respIs(I)) -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)),
+    )),
+  ))
+  
   // makeUnique ++ evict ++ cleanShared ++ cleanInvalid ++ makeInvalid
-  def table: Seq[DecodeType] = Seq(makeUnique, evict)
+  def table: Seq[DecodeType] = Seq(makeUnique, evict, cleanShared, cleanInvalid, makeInvalid)
 }
