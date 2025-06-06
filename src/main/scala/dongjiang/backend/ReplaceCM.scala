@@ -221,8 +221,12 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.writeDir.bits.sf.bits.metaVec  := reg.dir.sf.metaVec
   io.writeDir.bits.sf.bits.hnIdx    := reg.repl.getHnIdx
   // HAssert
+  // when write dir meta is invalid, it must be hit
   HAssert.withEn(io.writeDir.bits.llc.bits.hit, io.writeDir.valid & io.writeDir.bits.llc.valid & io.writeDir.bits.llc.bits.meta.isInvalid)
-  HAssert.withEn(io.writeDir.bits.sf.bits.hit,  io.writeDir.valid & io.writeDir.bits.sf.valid  & Cat(io.writeDir.bits.sf.bits.allVec) === 0.U)
+  HAssert.withEn(io.writeDir.bits.sf.bits.hit,  io.writeDir.valid & io.writeDir.bits.sf.valid  & io.writeDir.bits.sf.bits.metaIsInv)
+  // when write dir no hit, meta must be valid
+  HAssert.withEn(io.writeDir.bits.llc.bits.meta.isValid,  io.writeDir.valid & io.writeDir.bits.llc.valid & !io.writeDir.bits.llc.bits.hit)
+  HAssert.withEn(io.writeDir.bits.sf.bits.metaIsVal,      io.writeDir.valid & io.writeDir.bits.sf.valid  & !io.writeDir.bits.sf.bits.hit)
 
   /*
    * Update PoS Tag and Save Message of Addr

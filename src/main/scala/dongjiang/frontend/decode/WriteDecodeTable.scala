@@ -21,11 +21,11 @@ object Write_LAN {
   def writeNoSnpPtl_noEWA: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | isOWO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)))),
-    // I I SC -> I I UD
+    // I I SC -> I I I
     (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
-    // I I UC -> I I UD
+    // I I UC -> I I I
     (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
-    // I I UD -> I I UD
+    // I I UD -> I I I
     (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (waitRecDone | snpOth(SnpUnique) | retToSrc, Seq(
@@ -39,11 +39,11 @@ object Write_LAN {
   def writeNoSnpPtl_EWA: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | isOWO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp)))),
-    // I I SC -> I I UD
+    // I I SC -> I I I
     (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
-    // I I UC -> I I UD
+    // I I UC -> I I I
     (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
-    // I I UD -> I I UD
+    // I I UD -> I I I
     (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (waitRecDone | snpOth(SnpUnique) | retToSrc | needDB, Seq(
