@@ -286,6 +286,8 @@ class PosSet(implicit p: Parameters) extends DJModule {
     io.stateVec(i)          := e.io.state
   }
   io.wakeup                 := fastArb(entries.map(_.io.wakeup))
+  //HAssert
+  HAssert.withEn(!VecInit(esVec.map(es => es.valid & es.tagVal & es.addr === io.updTag.bits.addr)).asUInt.orR, io.updTag.valid & io.updTag.bits.addrVal)
 }
 
 

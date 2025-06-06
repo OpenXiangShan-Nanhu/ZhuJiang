@@ -288,6 +288,23 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   newReplMes_d2 := repl.get_next_state(replMes_d2,  OHToUInt(Mux(shiftReg.wriUpdRepl_d2, req_d2.wriWayOH, selWayOH_d2)))
 
   // Update Lock Table
+  // ------------------------------------------------------------------------------
+  // | operation | read | write | repl | hit | old | new |         node           |
+  // |----------------------------------------------------------------------------|
+  // | none      |   0  |   0   |   0  |  -  |  -  |  -  | no operation           |
+  // | read      |   1  |   0   |   0  |  F  |  F  |  F  | read  dir without hit  |
+  // | read      |   1  |   0   |   0  |  T  |  F  |  T  | read  dir with hit     |
+  // | write     |   0  |   1   |   0  |  -  |  -  |  -  | write dir with hit     |
+  // | readRepl  |   1  |   0   |   1  |  F  |  F  |  T  | read  dir for write    |
+  // | wriRepl   |   0  |   1   |   1  |  -  |  -  |  -  | write dir without hit  |
+  // ------------------------------------------------------------------------------
+  // Node:
+  //  1. '-' indicate dont care
+  //  2. 'old' and 'new' indicate 'lock' state
+  val read_d2     =  shiftReg.read(0) & !shiftReg.write(0) & !shiftReg.repl(0)
+  val write_d2    = !shiftReg.read(0) &  shiftReg.write(0) & !shiftReg.repl(0)
+  val readRepl_d2 =  shiftReg.read(0) & !shiftReg.write(0) &  shiftReg.repl(0)
+  val wriRepl_d2  = !shiftReg.read(0) &  shiftReg.write(0) &  shiftReg.repl(0)
   lockTable.zipWithIndex.foreach {
     case(lockSet, i) =>
       lockSet.zipWithIndex.foreach {
@@ -299,40 +316,49 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
           hnIdx.pos.way   := j.U
 
           // hit message
-          val reqHit      = req_d2.hnIdx.asUInt === hnIdx.asUInt
-          val write       = !shiftReg.read(0) &  shiftReg.write(0) & !shiftReg.repl(0) & reqHit
-          val readRepl    =  shiftReg.read(0) & !shiftReg.write(0) &  shiftReg.repl(0) & reqHit
-          val read        =  shiftReg.read(0) & !shiftReg.write(0) & !shiftReg.repl(0) & reqHit
-          val wriRepl     = !shiftReg.read(0) &  shiftReg.write(0) &  shiftReg.repl(0) & reqHit
-          val unLockHit   = io.unlock.valid   & io.unlock.bits.hnIdx.asUInt === hnIdx.asUInt
+          val unLockHit   = io.unlock.valid & io.unlock.bits.hnIdx.asUInt === hnIdx.asUInt
+          val reqHit      = shiftReg.req(0) & req_d2.hnIdx.asUInt === hnIdx.asUInt
+          val readMiss    = read_d2     & reqHit & !hit_d2
+          val readHit     = read_d2     & reqHit &  hit_d2
+          val write       = write_d2    & reqHit
+          val readRepl    = readRepl_d2 & reqHit
+          val wriRepl     = wriRepl_d2  & reqHit
 
           reqHit.suggestName(f"reqHit_${i}_${j}")
-          reqHit.suggestName(f"write_${i}_${j}")
-          reqHit.suggestName(f"readRepl_${i}_${j}")
-          reqHit.suggestName(f"read_${i}_${j}")
-          reqHit.suggestName(f"wriRepl_${i}_${j}")
-          reqHit.suggestName(f"unLockHit_${i}_${j}")
+          readMiss.suggestName(f"write_${i}_${j}")
+          readHit.suggestName(f"readRepl_${i}_${j}")
+          write.suggestName(f"read_${i}_${j}")
+          readRepl.suggestName(f"wriRepl_${i}_${j}")
+          wriRepl.suggestName(f"unLockHit_${i}_${j}")
 
-          // modify lock
-          when(unLockHit) {
-            lock.valid  := false.B
-          }.elsewhen((read & hit_d2) | readRepl) {
+          // get state
+          val dontCare  = Cat(lock.valid, lock.valid)
+          val state     = PriorityMux(Seq(
+            unLockHit   -> Cat(lock.valid, false.B),
+            readMiss    -> "b00".U,
+            readHit     -> "b01".U,
+            write       -> dontCare,
+            readRepl    -> "b01".U,
+            wriRepl     -> dontCare,
+            true.B      -> dontCare
+          ))
+
+          // modify lock state
+          val (oldLock, newLock) = (state(1), state(0))
+          oldLock.suggestName(f"oldLock_${i}_${j}")
+          newLock.suggestName(f"newLock_${i}_${j}")
+          when(!oldLock & newLock) {
             lock.valid  := true.B
             lock.set    := reqSet_d2
             lock.way    := selWay_d2
+          }.elsewhen(!newLock) {
+            lock.valid  := false.B
           }
 
-          // read_hit -> write -> clean
-          //     ^                  ^
-          //    lock              unlock
-          //
-          // read_miss -> readRepl -> wriRepl -> clean
-          //                 ^                     ^
-          //                lock                 unlock
-          HardwareAssertion(PopCount(Seq(read & hit_d2, readRepl, unLockHit)) <= 1.U, cf"Lock Table Index[${i.U}][${j.U}]")
-          HardwareAssertion.withEn(!lock.valid, read, cf"Lock Table Index[${i.U}][${j.U}]")
-          HardwareAssertion.withEn(!lock.valid, readRepl, cf"Lock Table Index[${i.U}][${j.U}]")
-          HardwareAssertion.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i.U}][${j.U}]")
+          // HAssert
+          HAssert(!(readMiss & readHit & readRepl & unLockHit), cf"Lock Table Index[${i.U}][${j.U}]")
+          HAssert(lock.valid === oldLock, cf"Lock Table Index[${i.U}][${j.U}]")
+          HAssert.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i.U}][${j.U}]")
       }
   }
 
