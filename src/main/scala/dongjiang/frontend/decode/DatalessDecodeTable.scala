@@ -54,7 +54,7 @@ object Dataless_LAN {
     (srcHit | othHit | llcIs(I))  -> first(cmtRsp(Comp) | resp(I) | wriSRC(false)),
   ))
 
-  // cleanShared
+  // CleanShared
   def cleanShared: DecodeType = (fromLAN | toLAN | reqIs(CleanShared), Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(I)),
@@ -86,7 +86,7 @@ object Dataless_LAN {
     (srcHit | othHit | llcIs(I)) -> first(cmtRsp(Comp) | resp(I)),
   ))
 
-  // cleanInvalid
+  // CleanInvalid
   def cleanInvalid: DecodeType = (fromLAN | toLAN | reqIs(CleanInvalid), Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(I)),
@@ -112,7 +112,7 @@ object Dataless_LAN {
     )),
   ))
 
-  // makeInvalid
+  // MakeInvalid
   def makeInvalid: DecodeType = (fromLAN | toLAN | reqIs(MakeInvalid), Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))  -> first(cmtRsp(Comp) | resp(I)),

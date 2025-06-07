@@ -218,7 +218,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   /*
    * Store alloc task from taskBuf
    */
-  allocReg_s1.valid := io.alloc_s0.valid & !block_s0
+  allocReg_s1.valid   := io.alloc_s0.valid & !block_s0
   when(io.alloc_s0.valid) {
     allocReg_s1.bits  := io.alloc_s0.bits
     allocWayReg_s1    := Mux(canNest_s0, matTagWay_s0, freeWay_s0)

@@ -124,7 +124,32 @@ object Write_LAN {
     (srcHit  | othHit  | llcIs(I)) -> first(waitRecDone, cbRespIsCompAck, wriSRC(false)),
   ))
 
+  // WriteCleanFull
+  def writeCleanFull: DecodeType = (fromLAN | toLAN | reqIs(WriteCleanFull) | allocate | ewa | noOrder, Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I))  -> first(waitRecDone, cbRespIs(I), noCmt),
+    // I I SC -> I I SC
+    (sfMiss | llcIs(SC)) -> first(waitRecDone, cbRespIs(I), noCmt),
+    // I I UC -> I I UC
+    (sfMiss | llcIs(UC)) -> first(waitRecDone, cbRespIs(I), noCmt),
+    // I I UD -> I I UD
+    (sfMiss | llcIs(UD)) -> first(waitRecDone, cbRespIs(I), noCmt),
+    // I V I  -> I V I
+    (srcMiss | othHit | llcIs(I)) -> first(waitRecDone, cbRespIs(I), noCmt),
+    // V I I -> V I I
+    (srcHit | othMiss | llcIs(I)) -> (waitRecDone, Seq(
+      cbRespIs(UD_PD) -> second(tdop("send") | write(WriteNoSnpFull), noCmt),
+      cbRespIs(UC)    -> second(noCmt),
+      cbRespIs(SC)    -> second(noCmt),
+      cbRespIs(I)     -> second(noCmt),
+    )),
+    // V V I  -> V V I
+    (srcHit | othHit | llcIs(I)) -> (waitRecDone, Seq(
+      cbRespIs(SC)    -> second(noCmt),
+      cbRespIs(I)     -> second(noCmt),
+    )),
+  ))
 
-  // writeNoSnpPtl ++ writeUniquePtl ++ writeBackFull ++ writeCleanFull ++ writeEvictOrEvict
-  def table: Seq[DecodeType] = Seq(writeNoSnpPtl_noEWA, writeNoSnpPtl_EWA, writeUniquePtl_NoAlloc, writeUniquePtl_alloc, writeEvictOrEvict, writeBackFull)
+  // writeNoSnpPtl ++ writeUniquePtl ++ writeBackFull ++ writeCleanFull ++ writeEvictOrEvict ++ writeCleanFull
+  def table: Seq[DecodeType] = Seq(writeNoSnpPtl_noEWA, writeNoSnpPtl_EWA, writeUniquePtl_NoAlloc, writeUniquePtl_alloc, writeEvictOrEvict, writeBackFull, writeCleanFull)
 }
