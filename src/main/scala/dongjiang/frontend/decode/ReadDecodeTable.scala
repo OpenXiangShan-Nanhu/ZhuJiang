@@ -20,7 +20,7 @@ import chisel3.util._
 
 object Read_LAN_DCT_DMT {
   // ReadNoSnp Without ExpCompAck
-  def readNoSnp_NoExpCompAck: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | isEO, Seq(
+  def readNoSnp_noExpCompAck: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | isEO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I)),
     // I I SC -> I I SC
@@ -154,5 +154,5 @@ object Read_LAN_DCT_DMT {
   ))
 
   // readNoSnp ++ readOnce ++ readNotSharedDirty ++ readUnique
-  def table: Seq[DecodeType] = Seq(readNoSnp_NoExpCompAck, readNoSnp_expCompAck, readOnce, readNotSharedDirty, readUnique)
+  def table: Seq[DecodeType] = Seq(readNoSnp_noExpCompAck, readNoSnp_expCompAck, readOnce, readNotSharedDirty, readUnique)
 }
