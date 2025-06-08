@@ -63,7 +63,7 @@ object Dataless_LAN {
     // I I UC -> I I UC
     (sfMiss | llcIs(UC)) -> first(cmtRsp(Comp) | resp(I)),
     // I I UD -> I I UC
-    (sfMiss | llcIs(UD)) -> first(tdop("read", "send") | write(WriteNoSnpFull), cmtRsp(Comp) | resp(I) | wriLLC(UC)),
+    (sfMiss | llcIs(UD)) -> first(needDB | tdop("read", "send") | write(WriteNoSnpFull), cmtRsp(Comp) | resp(I) | wriLLC(UC)),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (snpAll(SnpCleanShared) | needDB, Seq(
       (rspIs(SnpResp)     | respIs(I))      -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)), // I I  I
@@ -95,7 +95,7 @@ object Dataless_LAN {
     // I I UC -> I I I
     (sfMiss | llcIs(UC)) -> first(cmtRsp(Comp) | resp(I) | wriLLC(I)),
     // I I UD -> I I I
-    (sfMiss | llcIs(UD)) -> first(tdop("read", "send") | write(WriteNoSnpFull), cmtRsp(Comp) | resp(I) | wriLLC(I)),
+    (sfMiss | llcIs(UD)) -> first(needDB | tdop("read", "send") | write(WriteNoSnpFull), cmtRsp(Comp) | resp(I) | wriLLC(I)),
     // I V I  -> I I I
     (srcMiss | othHit | llcIs(I)) -> (snpAll(SnpCleanInvalid) | needDB, Seq(
       (rspIs(SnpResp)     | respIs(I))      -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)),
