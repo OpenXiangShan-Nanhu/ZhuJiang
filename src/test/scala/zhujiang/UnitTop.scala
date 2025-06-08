@@ -6,7 +6,7 @@ import circt.stage.FirtoolOption
 import xijiang.c2c.C2cLoopBack
 import xijiang.router.base.{EjectBuffer, SingleChannelTap}
 import xs.utils.stage.XsStage
-import zhujiang.UnitTop.{firtoolOpts, firtoolOptsDebug}
+import zhujiang.UnitTop.{firtoolOpts, firtoolOptsDebug, firtoolOptsWithDebugInfo, firtoolOptsDebugWithDebugInfo}
 import zhujiang.chi.{RingFlit, SnoopFlit}
 import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
@@ -29,14 +29,15 @@ object UnitTop {
     FirtoolOption("--export-module-hierarchy"),
     FirtoolOption("--disable-all-randomization"),
     FirtoolOption("--disable-annotation-unknown"),
-    FirtoolOption("--strip-debug-info"),
     FirtoolOption("--lower-memories"),
     FirtoolOption("--add-vivado-ram-address-conflict-synthesis-bug-workaround"),
     FirtoolOption("--lowering-options=noAlwaysComb," +
       " disallowLocalVariables, disallowMuxInlining," +
       " emittedLineLength=120, explicitBitcast, locationInfoStyle=plain"))
-  val firtoolOpts = Seq(FirtoolOption("-O=release")) ++ _firtoolOpts
-  val firtoolOptsDebug = Seq(FirtoolOption("-O=debug")) ++ _firtoolOpts
+  val firtoolOpts = Seq(FirtoolOption("-O=release"), FirtoolOption("--strip-debug-info")) ++ _firtoolOpts
+  val firtoolOptsWithDebugInfo = Seq(FirtoolOption("-O=release")) ++ _firtoolOpts
+  val firtoolOptsDebug = Seq(FirtoolOption("-O=debug"), FirtoolOption("--strip-debug-info")) ++ _firtoolOpts
+  val firtoolOptsDebugWithDebugInfo = Seq(FirtoolOption("-O=debug")) ++ _firtoolOpts
 }
 
 object AxiBridgeTop extends App {
@@ -142,19 +143,21 @@ object FrontendTop extends App {
 
 object DongJiangTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
-  (new XsStage).execute(firrtlOpts, firtoolOptsDebug ++ Seq(
+  val nrDirBank = 2
+  val nrRNF = 4
+  (new XsStage).execute(firrtlOpts, firtoolOptsWithDebugInfo ++ Seq(
     ChiselGeneratorAnnotation(() => new DongJiangTop()(config.alterPartial({
       case HardwareAssertionKey => config(HardwareAssertionKey).copy(enable = false)
       case ZJParametersKey => config(ZJParametersKey).copy(
         djParamsOpt = Some(DJParam(
-          llcSizeInB = 4 * 1024 / 4,
-          sfSizeInB = 8 * 2 * 1024 / 4,
-          nrReqTaskBuf = 4,
+          llcSizeInB = 8 * 1024 / nrRNF,
+          sfSizeInB = 8 * 2 * 1024 / nrRNF,
+          nrReqTaskBuf = 4 * nrDirBank, // 2 dirBank, each has 4 reqTaskBuf
           nrSnpTaskBuf = 2,
-          nrPoS = 16,
+          nrPoS = 16 * nrDirBank, // posWays = if(hasLLC) min(llcWays, sfWays) else sfWays, posSets = nrPoS / posWays, posSets(for each bank) = posSets / nrDirBank
           dataBufSizeInByte = 8 * 32,
           nrDSBank = 2,
-          nrDirBank = 2,
+          nrDirBank = nrDirBank,
           llcWays = 4,
           sfWays = 4,
         ))
