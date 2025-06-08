@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
+import zhujiang.chi.DatOpcode
 import zhujiang.device.bridge.BaseCtrlMachine
 import zhujiang.tilelink.{AFlit, AOpcode, TilelinkParams}
 
@@ -54,5 +55,9 @@ class TLULBridgeCtrlMachine(
   when(tla.fire) {
     plmnd.wreq := tlaB.opcode === AOpcode.PutPartialData || tlaB.opcode === AOpcode.PutFullData || pld.wreq
     plmnd.rreq := tlaB.opcode === AOpcode.Get || pld.rreq
+  }
+  when(icn.rx.data.valid && icn.rx.data.bits.Opcode === DatOpcode.WriteDataCancel) {
+    plmnd.wreq := true.B || pld.wreq
+    plmnd.wresp := true.B || pld.wresp
   }
 }

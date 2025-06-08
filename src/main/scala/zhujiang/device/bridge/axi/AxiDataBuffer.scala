@@ -4,10 +4,11 @@ import chisel3._
 import chisel3.util._
 import xs.utils.sram.SRAMTemplate
 import org.chipsalliance.cde.config.Parameters
+import xs.utils.queue.MimoQueue
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
 import zhujiang.axi.{AxiParams, WFlit}
 import zhujiang.{ZJBundle, ZJModule}
-import zhujiang.chi.DataFlit
+import zhujiang.chi.{DatOpcode, DataFlit}
 
 class AxiDataBufferCtrlEntry(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
   val buf = Vec(512 / dw, UInt(log2Ceil(bufferSize).W))
@@ -46,13 +47,17 @@ class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
     val req = Flipped(Decoupled(new AxiDataBufferAllocReq(ctrlSize)))
     val resp = Valid(new AxiDataBufferCtrlEntry(bufferSize))
     val release = Input(Valid(new AxiDataBufferCtrlEntry(bufferSize)))
+    val cancel = Input(Valid(new AxiDataBufferCtrlEntry(bufferSize)))
     val idle = Output(Bool())
   })
+  private val maxAllocOnce = 512 / dw
   private val freelist = RegInit(VecInit(Seq.tabulate(bufferSize)(_.U(log2Ceil(bufferSize).W))))
   private val headPtr = RegInit(AxiDataBufferFreelistPtr(f = false.B, v = 0.U))
   private val tailPtr = RegInit(AxiDataBufferFreelistPtr(f = true.B, v = 0.U))
   private val availableSlots = RegInit(bufferSize.U(log2Ceil(bufferSize + 1).W))
+  private val releaseMergeQueue = Module(new MimoQueue(UInt(log2Ceil(bufferSize).W), maxAllocOnce * 2, maxAllocOnce * 2, maxAllocOnce * 4))
   assert(availableSlots === distanceBetween(tailPtr, headPtr))
+  assert(headPtr <= tailPtr)
 
   when(io.req.valid) {
     assert(io.req.bits.size <= 6.U)
@@ -69,15 +74,31 @@ class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
   io.resp.bits.recvCnt := 0.U
   io.idle := headPtr.value === tailPtr.value && headPtr.flag =/= tailPtr.flag
 
+  releaseMergeQueue.io.enq.take(maxAllocOnce).zipWithIndex.foreach({ case(e, i) =>
+    e.valid := io.release.valid && i.U <= io.release.bits.recvMax
+    e.bits := io.release.bits.buf(i)
+    when(e.valid) {
+      assert(e.ready)
+    }
+  })
+  releaseMergeQueue.io.enq.drop(maxAllocOnce).zipWithIndex.foreach({ case(e, i) =>
+    e.valid := io.cancel.valid && i.U <= io.cancel.bits.recvMax
+    e.bits := io.cancel.bits.buf(i)
+    when(e.valid) {
+      assert(e.ready)
+    }
+  })
+  releaseMergeQueue.io.deq.foreach(_.ready := true.B)
+
   private val allocNum = Mux(io.req.fire, reqNum, 0.U)
-  private val relNum = Mux(io.release.valid, io.release.bits.recvMax + 1.U, 0.U)
+  private val relNum = releaseMergeQueue.io.count
   when(io.req.fire || io.release.valid) {
     headPtr := headPtr + allocNum
     tailPtr := tailPtr + relNum
     availableSlots := (availableSlots +& relNum) - allocNum
   }
-  private val releaseMatchSeq = for(i <- io.release.bits.buf.indices) yield (io.release.valid && i.U < relNum, (tailPtr + i.U).value)
-  private val releaseEntrySeq = for(i <- io.release.bits.buf.indices) yield io.release.bits.buf(i)
+  private val releaseMatchSeq = for(i <- releaseMergeQueue.io.deq.indices) yield (releaseMergeQueue.io.deq(i).valid, (tailPtr + i.U).value)
+  private val releaseEntrySeq = releaseMergeQueue.io.deq.map(_.bits)
   for(idx <- freelist.indices) {
     val releaseMatch = releaseMatchSeq.map(elm => elm._1 && elm._2 === idx.U)
     when(Cat(releaseMatch).orR) {
@@ -145,17 +166,24 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implic
   private val txReqBitsReg = RegEnable(io.fromCmDat.bits, io.fromCmDat.fire)
   private val ctrlSelReg = RegEnable(Mux1H(io.fromCmDat.bits.idxOH, ctrlInfoVec), io.fromCmDat.fire)
   private val txReqCntReg = Reg(UInt(8.W))
+  private val rxDatValidReg = RegNext(io.icn.valid, false.B)
+  private val rxDatBitsReg = RegEnable(io.icn.bits, io.icn.valid)
+  private val icnSelCtrlDelay = ctrlInfoVec(rxDatBitsReg.TxnID(log2Ceil(ctrlSize) - 1, 0))
 
   io.alloc.ready := freelist.io.req.ready
   freelist.io.req.valid := io.alloc.valid
   freelist.io.req.bits := io.alloc.bits
   freelist.io.release.valid := dataBuffer.io.readDataReq.fire && ctrlSelReg.recvMax === txReqCntReg
   freelist.io.release.bits := ctrlSelReg
+  freelist.io.cancel.valid := rxDatValidReg && rxDatBitsReg.Opcode === DatOpcode.WriteDataCancel
+  freelist.io.cancel.bits := icnSelCtrlDelay
 
   for(idx <- ctrlValidVec.indices) {
     when(freelist.io.resp.valid && io.alloc.bits.idxOH(idx)) {
       ctrlValidVec(idx) := true.B
     }.elsewhen(freelist.io.release.valid && txReqBitsReg.idxOH(idx)) {
+      ctrlValidVec(idx) := false.B
+    }.elsewhen(freelist.io.cancel.valid && rxDatBitsReg.TxnID(log2Ceil(ctrlSize) - 1, 0) === idx.U) {
       ctrlValidVec(idx) := false.B
     }
 
@@ -184,7 +212,7 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implic
   }
 
   private val icnSelCtrl = ctrlInfoVec(io.icn.bits.TxnID(log2Ceil(ctrlSize) - 1, 0))
-  dataBuffer.io.writeData.valid := io.icn.valid
+  dataBuffer.io.writeData.valid := io.icn.valid && io.icn.bits.Opcode =/= DatOpcode.WriteDataCancel
   io.icn.ready := dataBuffer.io.writeData.ready
   dataBuffer.io.writeData.bits := io.icn.bits
   private val bufIdx = if(dw == 128) {
@@ -203,9 +231,6 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implic
 
   io.axi <> dataBuffer.io.readDataResp
 
-  private val toCmDatValidReg = RegNext(io.icn.valid, false.B)
-  private val toCmDatBitsReg = RegEnable(io.icn.bits, io.icn.valid)
-  private val icnSelCtrlDelay = ctrlInfoVec(toCmDatBitsReg.TxnID(log2Ceil(ctrlSize) - 1, 0))
-  io.toCmDat.valid := toCmDatValidReg && icnSelCtrlDelay.recvCnt === (icnSelCtrlDelay.recvMax + 1.U)
-  io.toCmDat.bits := toCmDatBitsReg
+  io.toCmDat.valid := rxDatValidReg && (icnSelCtrlDelay.recvCnt === (icnSelCtrlDelay.recvMax + 1.U) || rxDatBitsReg.Opcode === DatOpcode.WriteDataCancel)
+  io.toCmDat.bits := rxDatBitsReg
 }

@@ -107,4 +107,9 @@ class AxiBridgeCtrlMachine(
   when(axi.w.fire) {
     plmnd.wdata := true.B || pld.wdata
   }
+  when(icn.rx.data.valid && icn.rx.data.bits.Opcode === DatOpcode.WriteDataCancel) {
+    plmnd.waddr := true.B || pld.waddr
+    plmnd.wdata := true.B || pld.wdata
+    plmnd.wresp := true.B || pld.wresp
+  }
 }

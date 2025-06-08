@@ -110,8 +110,9 @@ abstract class BaseCtrlMachine[
       payloadMiscNext.info.data.get := icnDataVec(dataIdx)
       payloadMiscNext.info.mask.get := icnDataMaskVec(dataIdx)
     }
-    plmnu.wdata := icnDatOp === DatOpcode.NCBWrDataCompAck || icnDatOp === DatOpcode.NonCopyBackWriteData || plu.wdata
-    plmnu.compAck := icnDatOp === DatOpcode.NCBWrDataCompAck || plu.compAck
+    plmnu.wdata := icnDatOp === DatOpcode.NCBWrDataCompAck || icnDatOp === DatOpcode.NonCopyBackWriteData || icnDatOp === DatOpcode.WriteDataCancel || plu.wdata
+    plmnu.compAck := icnDatOp === DatOpcode.NCBWrDataCompAck || icnDatOp === DatOpcode.WriteDataCancel || plu.compAck
+    plmnu.compCmo := icnDatOp === DatOpcode.WriteDataCancel || plu.compCmo
   }
 
   private val dwt = payload.info.dwt.getOrElse(false.B)
