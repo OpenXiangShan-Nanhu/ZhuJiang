@@ -107,7 +107,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  sfWays: ${djparam.sfWays}
        |  sfMetas: ${nrSfMetas}
        |  openDCT: ${djparam.openDCT}
-       |  nrPoS: ${djparam.nrPoS} = dirBank[${djparam.nrDirBank}] x posSets[${posSets}] x posSets[${posWays}]
+       |  nrPoS: ${djparam.nrPoS} = dirBank[${djparam.nrDirBank}] x posSets[${posSets}] x posWays[${posWays}]
        |  dataBufSize: ${djparam.dataBufSizeInByte} B
        |  dataSetup: ${djparam.dataRamSetup}
        |  dataLatency: ${djparam.dataRamSetup}
@@ -120,10 +120,10 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  snNodeIdSeq: $snNodeIdSeq
        |  address slice:
        |    $sFullAddr
+       |                     = [ci(${ci_hi}:${ci_lo})]
        |    [useAddr(${useAddrBits-1}:0)]  = [llcTag(${llcTag_ua_hi}:${llcTag_ua_lo})] + [llcSet(${llcSet_ua_hi}:${llcSet_ua_lo})] $sDirBankId
        |                     = [sfTag(${sfTag_ua_hi}:${sfTag_ua_lo})] + [sfSet(${sfSet_ua_hi}:${sfSet_ua_lo})] $sDirBankId
        |                     = [posTag(${posTag_ua_hi}:${posTag_ua_lo})] $sPosSet$sDirBankId
-       |                     = [ci(${ci_ua_hi}:${ci_ua_lo})] + [unuse(${ci_ua_lo-1}:0)]
        |  HnTxnID slice:
        |     [hnTxnID(${hnTxnIDBits-1}:0)] = [dirBank(${dirBank_hn_hi}:${dirBank_hn_lo})] $sPosSet+ [posWay(${posWay_hn_hi}:${posWay_hn_lo})]
        |  decodeTableSize: ${l_ci*l_si*l_ti} = ChiInst($l_ci) x StateInst($l_si) x TaskInst($l_ti) x SecTaskInst($l_sti)

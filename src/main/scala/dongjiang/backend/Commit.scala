@@ -81,8 +81,9 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     // Commit Task In
     val alloc       = Flipped(Valid(new CommitTask with HasHnTxnID)) // broadcast signal
     // Decode List
-    val trdInst     = new TaskInst
-    val fthInst     = new TaskInst
+    val decValid    = Output(Bool())
+    val trdInst     = Output(new TaskInst)
+    val fthInst     = Output(new TaskInst)
     val decListOut  = Output(MixedVec(UInt(w_ci.W), UInt(w_si.W), UInt(w_ti.W), UInt(w_sti.W)))
     val decListIn   = Flipped(Valid(MixedVec(UInt(w_ci.W), UInt(w_si.W), UInt(w_ti.W), UInt(w_sti.W))))
     // Decode Result
@@ -254,7 +255,9 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    *  3rd decode after Commit gets TaskCM & ReceiveCM response
    *  4th decode after Commit gets TaskCM response again
    */
+  val cmRespHit       = valid & io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID
   // Output
+  io.decValid         := cmRespHit
   io.trdInst          := instReg
   io.trdInst.valid    := stateReg.isFstTask & (flagReg.intl.w.recResp ^ flagReg.intl.w.cmResp)
   io.fthInst          := 0.U.asTypeOf(new TaskInst)
@@ -285,7 +288,6 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    * Get next flag
    */
   val allocHit  = io.alloc.fire & io.alloc.bits.hnTxnID === io.hnTxnID
-  val cmRespHit = valid & io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID
   // Alloc or Decode done
   when(allocHit | io.decListIn.valid) {
     val task                  = Mux(io.decListIn.valid, taskNext.task,      io.alloc.bits.task)
@@ -394,8 +396,9 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    * Check timeout
    */
   HAssert.checkTimeout(!valid, TIMEOUT_COMMIT, cf"\n\nTIMEOUT[${io.hnTxnID}]: " +
-    cf"\nInternal Send: ${flagReg.intl.s}\nInternal Wait: ${flagReg.intl.w}\n" +
-    cf"CHI: ${flagReg.chi}\n${taskReg.chi.getChiInst}\n${taskReg.dir.getStateInst(taskReg.chi.metaIdOH)}\n\n")
+    cf"\nInternal Send: ${flagReg.intl.s}\nInternal Wait: ${flagReg.intl.w}" +
+    cf"\nState: ${stateReg.value}" +
+    cf"\nCHI: ${flagReg.chi}\n${taskReg.chi.getChiInst}\n${taskReg.dir.getStateInst(taskReg.chi.metaIdOH)}\n\n")
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -431,44 +434,36 @@ class Commit(implicit p: Parameters) extends DJModule {
   /*
    * Module and Wire declaration
    */
-  val entries = Seq.fill(djparam.nrPoS) { Module(new CommitEntry()) }
+  val entries = Seq.fill(djparam.nrCommit) { Module(new CommitEntry()) }
   val trdDec  = Module(new Decode("Third"))
   val fthDec  = Module(new Decode("Fourth"))
 
   /*
    * SuggestName of entries
    */
-  def splitInt(value: Int, widths: Seq[Int]): Seq[Int] = {
-    require(widths.forall(_ >= 0), "Widths must be non-negative")
-    require(widths.sum <= 32, "Total width must ≤ 32")
-
-    val totalWidth = widths.sum
-    val maskedValue = if (totalWidth == 0) 0 else value & ((1 << totalWidth) - 1) // 处理全0情况
-
-    widths.foldLeft((List.empty[Int], 0)) { case ((segments, shift), width) =>
-      if (width == 0) {
-        (segments :+ 0, shift) // 位宽为0，直接返回0
-      } else {
-        val segment = (maskedValue >> shift) & ((1 << width) - 1)
-        (segments :+ segment, shift + width)
+  entries.grouped(nrCommit).zipWithIndex.foreach { case(e0, i) =>
+    e0.grouped(posWays-2).zipWithIndex.foreach { case(e1, j) =>
+      e1.zipWithIndex.foreach { case (e2, k) =>
+        val id = i * nrPoS + j * posWays + k
+        e2.io.hnTxnID       := id.U
+        e2.io.hnIdx.dirBank := i.U
+        e2.io.hnIdx.pos.set := j.U
+        e2.io.hnIdx.pos.way := k.U
+        e2.suggestName(s"entries_${id}_bank${i}_set${j}_way${k}")
       }
-    }._1
-  }
-  entries.zipWithIndex.foreach { case(e, i) =>
-    val idx = splitInt(i, Seq(posWayBits, posSetBits, dirBankBits))
-    e.suggestName(s"entries_${i}_bank${idx(2)}_set${idx(1)}_way${idx(0)}")
+    }
   }
 
   /*
    * Receive Commit Task from Frontend
    */
-  entries.map(_.io.alloc).grouped(nrPoS).zip(io.cmtTaskVec).foreach { case(alloc, task) => alloc.foreach(_ := task) }
+  entries.map(_.io.alloc).grouped(nrCommit).zip(io.cmtTaskVec).foreach { case(alloc, task) => alloc.foreach(_ := task) }
 
   /*
    * Decode Input
    */
-  //
-  val decIdIn           = io.cmResp.bits.hnTxnID
+  // decValid
+  val decIdIn           = PriorityEncoder(entries.map(_.io.decValid))
   // listIn
   trdDec.io.listIn      := VecInit(entries.map(_.io.decListOut))(decIdIn)
   fthDec.io.listIn      := VecInit(entries.map(_.io.decListOut))(decIdIn)
@@ -481,8 +476,9 @@ class Commit(implicit p: Parameters) extends DJModule {
   trdDec.io.inst1       := VecInit(entries.map(_.io.trdInst))(decIdIn)
   fthDec.io.inst1       := VecInit(entries.map(_.io.fthInst))(decIdIn)
   // hnTxnIdIn
-  trdDec.io.hnTxnIdIn   := decIdIn
-  fthDec.io.hnTxnIdIn   := decIdIn
+  trdDec.io.hnTxnIdIn   := VecInit(entries.map(_.io.hnTxnID))(decIdIn)
+  fthDec.io.hnTxnIdIn   := VecInit(entries.map(_.io.hnTxnID))(decIdIn)
+  HAssert(PopCount(entries.map(_.io.decValid)) <= 1.U)
 
   /*
    * Decode Output
@@ -491,8 +487,8 @@ class Commit(implicit p: Parameters) extends DJModule {
   val taskCode  = Mux(trdDec.io.valid, trdDec.io.taskCode,    fthDec.io.taskCode)
   val cmtCode   = Mux(trdDec.io.valid, trdDec.io.cmtCode,     fthDec.io.cmtCode)
   val decIdOut  = Mux(trdDec.io.valid, trdDec.io.hnTxnIdOut,  fthDec.io.hnTxnIdOut)
-  entries.zipWithIndex.foreach { case (e, i) =>
-    e.io.decListIn.valid  := (trdDec.io.valid | fthDec.io.valid) & decIdOut === i.U
+  entries.foreach { case e =>
+    e.io.decListIn.valid  := (trdDec.io.valid | fthDec.io.valid) & e.io.hnTxnID === decIdOut
     e.io.decListIn.bits   := decList
     e.io.taskCode         := taskCode
     e.io.cmtCode          := cmtCode
@@ -502,10 +498,8 @@ class Commit(implicit p: Parameters) extends DJModule {
   /*
    * Connect Commit <- IO
    */
-  entries.zipWithIndex.foreach { case(e, i) =>
+  entries.foreach { case e =>
     e.io.config   := io.config
-    e.io.hnTxnID  := i.U
-    e.io.hnIdx    := i.U.asTypeOf(new HnTxnID).getHnIdx
     e.io.rxRsp    := io.rxRsp
     e.io.rxDat    := io.rxDat
     e.io.cmResp   := io.cmResp

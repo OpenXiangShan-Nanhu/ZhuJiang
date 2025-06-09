@@ -50,6 +50,7 @@ case class DJParam(
   // PoS Table
   lazy val posWays   = if(hasLLC) min(llcWays, sfWays) else sfWays
   lazy val posSets   = nrPoS / posWays
+  lazy val nrCommit  = nrPoS - (posSets * 2)
   // Data
   lazy val nrDataBuf = dataBufSizeInByte / BeatByte
   lazy val dsSets    = llcSets * llcWays
@@ -180,8 +181,8 @@ trait HasDJParam extends HasParseZJParam {
   lazy val offset_hi        = offsetBits - 1
   lazy val offset_lo        = 0
   // islandId
-  lazy val ci_ua_hi         = useAddrBits - 1
-  lazy val ci_ua_lo         = useAddrBits - ciBits
+  lazy val ci_hi            = addrBits - 1
+  lazy val ci_lo            = addrBits - ciBits
   // dirBank
   lazy val dirBank_ua_hi    = dirBankBits - 1
   lazy val dirBank_ua_lo    = 0
@@ -212,7 +213,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val dsBank_ds_lo     = 0
 
   // base
-  def getCI       (a: UInt) = a(ci_ua_hi, ci_ua_lo)
+  def getCI       (a: UInt) = a(ci_hi, ci_lo)
   def getUseAddr  (a: UInt) = if(hnxBankOff == offsetBits) a(useAddr_hi, bankId_hi + 1) else Cat(a(useAddr_hi, bankId_hi + 1), a(bankId_lo - 1, useAddr_lo))
   def getBankId   (a: UInt) = a(bankId_hi, bankId_lo)
   def getOffset   (a: UInt) = a(offset_hi, offset_lo)
@@ -252,6 +253,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val nrReqTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
   lazy val nrSnpTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
   lazy val nrPoS            = djparam.nrPoS / djparam.nrDirBank
+  lazy val nrCommit         = djparam.nrCommit / djparam.nrDirBank
   lazy val posWays          = djparam.posWays
   lazy val posWayBits       = log2Ceil(posWays)
   lazy val dirMuticycle     = djparam.dirRamLatency.max(if(djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup)
