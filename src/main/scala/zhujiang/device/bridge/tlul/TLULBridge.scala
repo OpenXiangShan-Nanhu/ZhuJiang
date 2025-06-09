@@ -95,7 +95,15 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
   readDataPipe.io.enq.bits := DontCare
   readDataPipe.io.enq.bits.Data := Fill(dw / busDataBits, tl.d.bits.data)
   readDataPipe.io.enq.bits.Opcode := DatOpcode.CompData
-  readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4)
+  if(dw == 512) {
+    readDataPipe.io.enq.bits.DataID := 0.U
+  } else if(dw == 256) {
+    readDataPipe.io.enq.bits.DataID := Cat(ctrlSel.addr(5), false.B)
+  } else if (dw == 128) {
+    readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4)
+  } else {
+    require(requirement = false, s"illegal DW $dw")
+  }
   readDataPipe.io.enq.bits.SrcID := 0.U
   readDataPipe.io.enq.bits.Resp := "b010".U
   readDataPipe.io.enq.bits.BE := MaskGen(ctrlSel.addr, ctrlSel.size, bew)

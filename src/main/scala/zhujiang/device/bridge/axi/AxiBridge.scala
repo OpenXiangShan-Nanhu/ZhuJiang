@@ -124,6 +124,15 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule {
   readDataPipe.io.enq.bits := DontCare
   readDataPipe.io.enq.bits.Data := axi.r.bits.data
   readDataPipe.io.enq.bits.Opcode := DatOpcode.CompData
+  if(dw == 512) {
+    readDataPipe.io.enq.bits.DataID := 0.U
+  } else if(dw == 256) {
+    readDataPipe.io.enq.bits.DataID := Cat(ctrlSel.addr(5), false.B) + (ctrlSel.readCnt << 1)
+  } else if (dw == 128) {
+    readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4) + ctrlSel.readCnt
+  } else {
+    require(requirement = false, s"illegal DW $dw")
+  }
   readDataPipe.io.enq.bits.DataID := ctrlSel.addr(5, 4) + (ctrlSel.readCnt << log2Ceil(dw / 128))
   readDataPipe.io.enq.bits.TxnID := ctrlSel.returnTxnId.get
   readDataPipe.io.enq.bits.SrcID := 0.U
