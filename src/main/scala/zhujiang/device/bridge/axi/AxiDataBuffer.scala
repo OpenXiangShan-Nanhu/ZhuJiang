@@ -92,7 +92,8 @@ class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
 
   private val allocNum = Mux(io.req.fire, reqNum, 0.U)
   private val relNum = releaseMergeQueue.io.count
-  when(io.req.fire || io.release.valid) {
+  private val relValid = releaseMergeQueue.io.count.orR
+  when(io.req.fire || relValid) {
     headPtr := headPtr + allocNum
     tailPtr := tailPtr + relNum
     availableSlots := (availableSlots +& relNum) - allocNum
@@ -105,6 +106,7 @@ class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
       freelist(idx) := Mux1H(releaseMatch, releaseEntrySeq)
     }
   }
+  assert(releaseMergeQueue.io.count <= (maxAllocOnce * 2).U)
 }
 
 class AxiDataBufferRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Parameters) extends ZJModule {
