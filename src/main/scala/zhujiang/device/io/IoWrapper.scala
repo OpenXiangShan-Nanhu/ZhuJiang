@@ -7,6 +7,7 @@ import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
 import xs.utils.ResetGen
 import xs.utils.debug.HardwareAssertionKey
+import xs.utils.dft.BaseTestBundle
 import xs.utils.mbist.MbistInterface
 import xs.utils.sram.{SramCtrlBundle, SramHelper}
 import zhujiang.axi._
@@ -16,13 +17,14 @@ import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.dma.Axi2Chi
 import zhujiang.device.misc.MiscDevice
 import zhujiang.utils.DoubleCounterClockGate
-import zhujiang.{DftWires, ZJModule, ZhujiangGlobal}
+import zhujiang.{ZJModule, ZhujiangGlobal}
+
 class IoWrapper(nodes: Seq[Node])(implicit p:Parameters) extends ZJModule {
   private val nts = nodes.map(_.nodeType)
   nts.foreach(nt => require(NodeType.testAxiDev(nt), s"illegal node type ${NodeType.strMap(nt)}"))
   override val desiredName = s"IoWrapper${nodes.head.axiDevParams.get.wrapper.capitalize}"
   val io = IO(new Bundle{
-    val dft = Input(new DftWires)
+    val dft = Input(new BaseTestBundle)
     val ramctl = Input(new SramCtrlBundle)
     val onReset = Option.when(nodes.exists(_.nodeType == NodeType.M))(Output(Bool()))
     val intr = Option.when(nodes.exists(_.nodeType == NodeType.M) && p(HardwareAssertionKey).enable)(Output(Bool()))
@@ -38,7 +40,7 @@ class IoWrapper(nodes: Seq[Node])(implicit p:Parameters) extends ZJModule {
     val mst = dev.node.nodeType == NodeType.RI || dev.node.nodeType == NodeType.RH
     val rstGen = Module(new ResetGen)
     rstGen.suggestName(name + "_rst_sync")
-    rstGen.dft := io.dft.reset
+    rstGen.dft := io.dft.toResetDftBundle
     if(mst) rstGen.reset := dev.resetState.get(0).asAsyncReset
     else rstGen.reset := dev.resetState.get(1).asAsyncReset
     rstGen.o_reset
@@ -72,7 +74,7 @@ class IoWrapper(nodes: Seq[Node])(implicit p:Parameters) extends ZJModule {
     val icg = Module(new DoubleCounterClockGate)
     val iop = IO(new AxiBundle(buf.io.out.params.copy(attr = attrStr)))
     icg.reset := dev.reset
-    icg.io.te := io.dft.func.cgen
+    icg.io.te := io.dft.cgen
     icg.io.inbound := dev.icn.rx.req.map(_.valid).getOrElse(false.B) | mbistReq
     icg.io.working := dev.working
     dev.clock := icg.io.ock
@@ -100,7 +102,7 @@ class IoWrapper(nodes: Seq[Node])(implicit p:Parameters) extends ZJModule {
     val icg = Module(new DoubleCounterClockGate)
     val iop = IO(new AxiBundle(buf.io.out.params.copy(attr = attrStr)))
     icg.reset := dev.reset
-    icg.io.te := io.dft.func.cgen
+    icg.io.te := io.dft.cgen
     icg.io.inbound := dev.icn.rx.req.map(_.valid).getOrElse(false.B) | mbistReq
     icg.io.working := dev.working
     dev.clock := icg.io.ock
@@ -128,7 +130,7 @@ class IoWrapper(nodes: Seq[Node])(implicit p:Parameters) extends ZJModule {
     val icg = Module(new DoubleCounterClockGate)
     val iop = IO(Flipped(new AxiBundle(buf.io.out.params.copy(attr = attrStr))))
     icg.reset := dev.reset
-    icg.io.te := io.dft.func.cgen
+    icg.io.te := io.dft.cgen
     icg.io.inbound := buf.io.out.ar.valid | buf.io.out.aw.valid | buf.io.out.w.valid | mbistReq
     icg.io.working := dev.working
     dev.clock := icg.io.ock
@@ -167,14 +169,13 @@ class IoWrapper(nodes: Seq[Node])(implicit p:Parameters) extends ZJModule {
     io.intr.get := mnDev.get.io.intr.get
   }
 
-
   private val hasS = nts.contains(NodeType.S)
   private val hasRI = nts.contains(NodeType.RI)
   private val hasRH = nts.contains(NodeType.RH)
   private val hasM = nts.contains(NodeType.M) && p(HardwareAssertionKey).enable
   if(hasS || hasRI || hasRH || hasM) {
-    val mbistIntf = MbistInterface(desiredName, io.dft.func, hasMbist)
+    val mbistIntf = MbistInterface(desiredName, io.dft, hasMbist)
     SramHelper.genSramCtrlBundleTop() := io.ramctl
-    mbistReq := mbistIntf.map(_.toPipeline.head.mbist_req).getOrElse(false.B)
+    mbistReq := mbistIntf.map(_.toPipeline.head.req).getOrElse(false.B)
   }
 }

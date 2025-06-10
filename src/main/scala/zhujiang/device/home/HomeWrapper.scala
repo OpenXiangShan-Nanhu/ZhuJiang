@@ -9,12 +9,13 @@ import xijiang.router.base.DeviceIcnBundle
 import xijiang.{Node, NodeType}
 import xs.utils.ResetRRArbiter
 import xs.utils.debug.{HAssert, HardwareAssertion, HardwareAssertionKey}
+import xs.utils.dft.{BaseTestBundle, PowerDomainTestBundle}
 import xs.utils.mbist.MbistInterface
 import xs.utils.sram.{SramCtrlBundle, SramHelper}
 import zhujiang.chi.FlitHelper.{connIcn, hwaConn}
 import zhujiang.chi._
 import zhujiang.utils.DoubleCounterClockGate
-import zhujiang.{DftWires, ZJRawModule}
+import zhujiang.{ZJDftWires, ZJRawModule}
 
 @instantiable
 class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) extends ZJRawModule with ImplicitClock with ImplicitReset {
@@ -26,7 +27,7 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
     val nids = Input(Vec(nodes.size, UInt(niw.W)))
     val ci = Input(UInt(ciIdBits.W))
     val bank = Input(UInt(nodes.head.bankBits.W))
-    val dfx = Input(new DftWires)
+    val dfx = new ZJDftWires
     val ramctl = Input(new SramCtrlBundle)
   })
   @public val reset = IO(Input(AsyncReset()))
@@ -34,8 +35,7 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
   val implicitClock = clock
   val implicitReset = reset
 
-  private val mbistCgEn = WireInit(false.B)
-  private val cg = Module(new DoubleCounterClockGate)
+  private val cg = Module(new DoubleCounterClockGate(testctl = true))
   private val hnx = Module(new DongJiang(node))
   private val lanPipes = Seq.tabulate(nodes.length, zjParams.hnxPipelineDepth + 1) { case (i, j) =>
     val pipe = Module(new ChiBuffer(nodes(i)))
@@ -55,8 +55,10 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
     val hprv = lan.tx.hpr.map(_.valid).getOrElse(false.B)
     reqv | hprv
   }).reduce(_ | _)
-  cg.io.te := io.dfx.func.cgen
-  cg.io.inbound := inbound | mbistCgEn
+  cg.io.te := io.dfx.cgen
+  cg.io.test_on.foreach(_ := io.dfx.llc.clk_on)
+  cg.io.test_off.foreach(_ := io.dfx.llc.clk_off)
+  cg.io.inbound := inbound
   cg.io.working := hnx.io.working
   hnx.io.config.ci := io.ci
   hnx.io.config.bankId := io.bank
@@ -135,8 +137,7 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
 
   hnx.io.lan.tx.debug.foreach(_ := DontCare)
 
-  val mbistIntf = MbistInterface("NocHome", io.dfx.func, hasMbist)
-  mbistCgEn := mbistIntf.map(_.toPipeline.head.mbist_req).getOrElse(false.B)
+  val mbistIntf = MbistInterface("NocHome", io.dfx, hasMbist)
   SramHelper.genSramCtrlBundleTop() := io.ramctl
   private val assertionNode = HardwareAssertion.placePipe(Int.MaxValue, moduleTop = true).map(_.head)
   HardwareAssertion.release(assertionNode, "hwa", "home")

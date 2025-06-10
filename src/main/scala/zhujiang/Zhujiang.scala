@@ -6,6 +6,7 @@ import org.chipsalliance.cde.config.Parameters
 import xijiang.router.base.IcnBundle
 import xijiang.{NodeType, Ring}
 import xs.utils.debug.HardwareAssertionKey
+import xs.utils.dft.{BaseTestBundle, PowerDomainTestBundle}
 import xs.utils.mbist.{MbistInterface, MbistPipeline}
 import xs.utils.sram.{SramBroadcastBundle, SramCtrlBundle, SramHelper}
 import xs.utils.{DFTResetSignals, ResetGen}
@@ -18,9 +19,8 @@ import zhujiang.device.io.IoWrapper
 import zhujiang.device.misc.MiscDevice
 import zhujiang.device.socket.{SocketIcnSide, SocketIcnSideBundle}
 
-class DftWires extends Bundle {
-  val reset = new DFTResetSignals
-  val func = new SramBroadcastBundle
+class ZJDftWires extends BaseTestBundle {
+  val llc = new PowerDomainTestBundle(false)
 }
 
 class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
@@ -40,16 +40,16 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
        |""".stripMargin)
 
   private val ring = Module(new Ring)
-  private val dft = Wire(new DftWires)
+  private val dft = Wire(new ZJDftWires)
   private val ramctl = Wire(new SramCtrlBundle)
-  ring.dfx_reset := dft.reset
+  ring.dfx_reset := dft.toResetDftBundle
   ring.clock := clock
 
   private def placeResetGen(name: String, icn: IcnBundle): AsyncReset = {
     val mst = Seq(NodeType.CC, NodeType.RI, NodeType.RF).map(_ == icn.node.nodeType).reduce(_ || _)
     val rstGen = Module(new ResetGen)
     rstGen.suggestName(name + "_rst_sync")
-    rstGen.dft := dft.reset
+    rstGen.dft := dft.toResetDftBundle
     if(mst) rstGen.reset := icn.resetState.get(0).asAsyncReset
     else rstGen.reset := icn.resetState.get(1).asAsyncReset
     rstGen.o_reset
@@ -115,12 +115,12 @@ class Zhujiang(implicit p: Parameters) extends ZJModule with NocIOHelper {
   val io = IO(new Bundle {
     val ci = Input(UInt(ciIdBits.W))
     val onReset = Output(Bool())
-    val dft = Input(new DftWires)
+    val dft = Input(new ZJDftWires)
     val ramctl = Input(new SramCtrlBundle)
     val resetBypass = Output(AsyncReset())
     val intr = Option.when(p(HardwareAssertionKey).enable)(Output(Bool()))
   })
-  io.resetBypass := ResetGen(2, Some(io.dft.reset))
+  io.resetBypass := ResetGen(2, Some(io.dft.toResetDftBundle))
   dft := io.dft
   ramctl := io.ramctl
   private val mnIow = ioWrps.filter(_.io.onReset.isDefined).head
