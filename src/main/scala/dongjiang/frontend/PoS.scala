@@ -212,8 +212,11 @@ class PosSet(implicit p: Parameters) extends DJModule {
   val canNest_s0      = Mux(hasMatTag, esVec(matTagWay_s0).canNest, false.B)
   val blockSnp_s0     = Mux(hasMatTag, !canNest_s0, !hasFree_s0)
 
+  // judge block by s1
+  val matchReqS1_s0   = allocReg_s1.valid & allocTag_s0 === allocReg_s1.bits.Addr.posTag // Make the request for retry
+
   // judge block
-  val block_s0        = Mux(io.alloc_s0.bits.isSnp, blockSnp_s0, blockReq_s0) | lockReg | io.reqPoS.req.valid
+  val block_s0        = Mux(io.alloc_s0.bits.isSnp, blockSnp_s0, blockReq_s0) | matchReqS1_s0 | lockReg | io.reqPoS.req.valid
 
   /*
    * Store alloc task from taskBuf
@@ -223,7 +226,6 @@ class PosSet(implicit p: Parameters) extends DJModule {
     allocReg_s1.bits  := io.alloc_s0.bits
     allocWayReg_s1    := Mux(canNest_s0, matTagWay_s0, freeWay_s0)
   }
-  HardwareAssertion.withEn(io.alloc_s0.bits.Addr.posTag =/= allocReg_s1.bits.Addr.posTag, io.alloc_s0.valid & allocReg_s1.valid, cf"${io.alloc_s0.bits.Addr.posTag} === ${allocReg_s1.bits.Addr.posTag}")
 
   /*
    * Retrun ack to TaskBuffer and Block
@@ -287,6 +289,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   }
   io.wakeup                 := fastArb(entries.map(_.io.wakeup))
   //HAssert
+  HAssert.withEn(!VecInit(esVec.map(es => es.valid & es.tagVal & es.addr === allocReg_s1.bits.addr)).asUInt.orR, allocReg_s1.valid)
   HAssert.withEn(!VecInit(esVec.map(es => es.valid & es.tagVal & es.addr === io.updTag.bits.addr)).asUInt.orR, io.updTag.valid & io.updTag.bits.addrVal)
 }
 
