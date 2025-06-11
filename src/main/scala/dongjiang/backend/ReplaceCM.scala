@@ -426,12 +426,17 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   when(cmRespHit & cmRespData) {
     next.wriSF              := false.B
     next.wriLLC             := true.B
-    next.dir.sf             := DontCare
-    next.dir.llc.wayOH      := DontCare
     next.dir.llc.hit        := false.B
     next.dir.llc.meta.state := Mux(cmRespDirty, ChiState.UD, ChiState.SC)
     HAssert(reg.isReplSF)
   }.elsewhen(io.respDir.sf.valid) {
+    next.dir.sf             := io.respDir.sf.bits
+  }
+  
+  /*
+   * Get new metaVec to determine the snoop target
+   */
+  when(sfRespHit) {
     next.dir.sf             := io.respDir.sf.bits
   }
 
