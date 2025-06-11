@@ -429,12 +429,10 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     next.dir.llc.hit        := false.B
     next.dir.llc.meta.state := Mux(cmRespDirty, ChiState.UD, ChiState.SC)
     HAssert(reg.isReplSF)
-  }.elsewhen(io.respDir.sf.valid) {
-    next.dir.sf             := io.respDir.sf.bits
   }
-  
+
   /*
-   * Get new metaVec to determine the snoop target
+   * Save snoop filter response to determine the snoop target
    */
   when(sfRespHit) {
     next.dir.sf             := io.respDir.sf.bits
