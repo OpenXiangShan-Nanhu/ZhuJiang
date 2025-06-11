@@ -95,9 +95,9 @@ abstract class BaseCtrlMachine[
     payloadMiscNext.info.readCnt := payload.info.readCnt + 1.U
   }
 
-  if(icn.rx.resp.isDefined) {
+  if(icn.rx.resp.isDefined && plmnu.compAck.isDefined) {
     when(icn.rx.resp.get.valid) {
-      plmnu.compAck := icn.rx.resp.get.bits.Opcode === RspOpcode.CompAck || plu.compAck
+      plmnu.compAck.get := icn.rx.resp.get.bits.Opcode === RspOpcode.CompAck || plu.compAck.get
     }
   }
 
@@ -111,8 +111,10 @@ abstract class BaseCtrlMachine[
       payloadMiscNext.info.mask.get := icnDataMaskVec(dataIdx)
     }
     plmnu.wdata := icnDatOp === DatOpcode.NCBWrDataCompAck || icnDatOp === DatOpcode.NonCopyBackWriteData || icnDatOp === DatOpcode.WriteDataCancel || plu.wdata
-    plmnu.compAck := icnDatOp === DatOpcode.NCBWrDataCompAck || icnDatOp === DatOpcode.WriteDataCancel || plu.compAck
     plmnu.compCmo := icnDatOp === DatOpcode.WriteDataCancel || plu.compCmo
+    if(plmnu.compAck.isDefined) {
+      plmnu.compAck.get := icnDatOp === DatOpcode.NCBWrDataCompAck || icnDatOp === DatOpcode.WriteDataCancel || plu.compAck.get
+    }
   }
 
   private val dwt = payload.info.dwt.getOrElse(false.B)

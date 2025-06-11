@@ -9,12 +9,12 @@ import zhujiang.chi._
 import zhujiang.{HasZJParams, ZJBundle, ZJModule}
 
 package object bridge {
-  class ChiUpstreamOpVec(implicit p: Parameters) extends ZJBundle {
+  class ChiUpstreamOpVec(sn: Boolean)(implicit p: Parameters) extends ZJBundle {
     val receiptResp = Bool()
     val dbidResp = Bool()
     val wdata = Bool()
     val rdata = Bool()
-    val compAck = Bool()
+    val compAck = if(sn) None else Some(Bool())
     val comp = Bool()
     val compCmo = Bool()
     def readReq(order: UInt, expCompAck: Bool): Unit = {
@@ -22,7 +22,7 @@ package object bridge {
       dbidResp := true.B
       wdata := true.B
       rdata := false.B
-      compAck := !expCompAck
+      compAck.foreach(_ := !expCompAck)
       comp := true.B
       compCmo := true.B
     }
@@ -31,7 +31,7 @@ package object bridge {
       dbidResp := false.B
       wdata := false.B
       rdata := true.B
-      compAck := !expCompAck
+      compAck.foreach(_ := !expCompAck)
       comp := false.B
       compCmo := !cmo
     }
@@ -57,8 +57,8 @@ package object bridge {
     def decode(req:ReqFlit, check:Bool):Unit
   }
 
-  abstract class IcnIoDevCtrlOpVecCommon(implicit p: Parameters) extends ZJBundle {
-    val u = new ChiUpstreamOpVec
+  abstract class IcnIoDevCtrlOpVecCommon(sn: Boolean)(implicit p: Parameters) extends ZJBundle {
+    val u = new ChiUpstreamOpVec(sn)
     def d: DownstreamOpVec
     def icnReadReceipt:Bool
     def icnDBID:Bool

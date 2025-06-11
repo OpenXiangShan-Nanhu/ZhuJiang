@@ -52,12 +52,6 @@ class AxiBridgeCtrlMachine(
     payloadMiscNext.state.bufferAllocated := true.B || payload.state.bufferAllocated
   }
 
-  when(icn.rx.data.valid) {
-    when(payload.state.u.compAck) {
-      assert(icn.rx.data.bits.Opcode === DatOpcode.NonCopyBackWriteData)
-    }
-  }
-
   axi.b.ready := true.B
   private val plmnd = payloadMiscNext.state.d
   private val pld = payload.state.d

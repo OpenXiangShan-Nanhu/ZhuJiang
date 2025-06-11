@@ -43,7 +43,7 @@ package object axi {
     }
   }
 
-  class AxiBridgeCtrlOpVec(implicit p: Parameters) extends IcnIoDevCtrlOpVecCommon {
+  class AxiBridgeCtrlOpVec(implicit p: Parameters) extends IcnIoDevCtrlOpVecCommon(true) {
     val d = new AxiDownstreamOpVec
     val bufferAllocated = Bool()
     def icnReadReceipt: Bool = !u.receiptResp

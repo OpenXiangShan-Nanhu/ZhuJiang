@@ -43,7 +43,7 @@ package object axilite {
     }
   }
 
-  class AxiLiteBridgeCtrlOpVec(implicit p: Parameters) extends IcnIoDevCtrlOpVecCommon {
+  class AxiLiteBridgeCtrlOpVec(implicit p: Parameters) extends IcnIoDevCtrlOpVecCommon(false) {
     val d = new AxiLiteDownstreamOpVec
     def icnReadReceipt: Bool = !u.receiptResp
     def icnDBID: Bool = !u.dbidResp

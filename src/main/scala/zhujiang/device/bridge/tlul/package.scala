@@ -39,7 +39,7 @@ package object tlul {
     }
   }
 
-  class TLULBridgeCtrlOpVec(implicit p: Parameters) extends IcnIoDevCtrlOpVecCommon {
+  class TLULBridgeCtrlOpVec(sn: Boolean)(implicit p: Parameters) extends IcnIoDevCtrlOpVecCommon(sn) {
     val d = new TlulDownstreamOpVec
     def icnReadReceipt: Bool = !u.receiptResp
     def icnDBID: Bool = !u.dbidResp
@@ -55,7 +55,7 @@ package object tlul {
   class TLULCtrlInfo(ioDataBits: Int, sn:Boolean)(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, mem = sn)
 
   class TLULRsEntry(dataBits: Int, sn:Boolean)(implicit p: Parameters) extends IcnIoDevRsEntryCommon[TLULBridgeCtrlOpVec, TLULCtrlInfo] {
-    val state = new TLULBridgeCtrlOpVec
+    val state = new TLULBridgeCtrlOpVec(sn)
     val info = new TLULCtrlInfo(dataBits, sn)
   }
 }

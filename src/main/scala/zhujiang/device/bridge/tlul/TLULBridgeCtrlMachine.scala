@@ -15,7 +15,7 @@ class TLULBridgeCtrlMachine(
   ioDataBits: Int,
   compareTag: (UInt, UInt) => Bool
 )(implicit p: Parameters) extends BaseCtrlMachine(
-  genOpVec = new TLULBridgeCtrlOpVec,
+  genOpVec = new TLULBridgeCtrlOpVec(icnNode.nodeType == NodeType.S),
   genInfo = new TLULCtrlInfo(ioDataBits, icnNode.nodeType == NodeType.S),
   genRsEntry = new TLULRsEntry(ioDataBits, icnNode.nodeType == NodeType.S),
   node = icnNode,
