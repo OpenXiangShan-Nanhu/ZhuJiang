@@ -58,11 +58,11 @@ class Frontend(implicit p: Parameters) extends DJModule {
    */
   val req2Task    = Module(new ReqToChiTask())
   val hpr2Task    = Module(new ReqToChiTask())
-  val snp2Task    = Module(new SnpToChiTask())
+  val snp2Task    = if(hasBBN) Some(Module(new SnpToChiTask())) else None
   // S0
   val hprTaskBuf  = Module(new TaskBuffer(nrHprTaskBuf, sort = true))
   val reqTaskBuf  = Module(new TaskBuffer(nrReqTaskBuf, sort = true))
-  val snpTaskBuf  = Module(new TaskBuffer(nrSnpTaskBuf, sort = false))
+  val snpTaskBuf  = if(hasBBN) Some(Module(new TaskBuffer(nrSnpTaskBuf, sort = false))) else None
   // S1
   val posTable    = Module(new PosTable())
   val block       = Module(new Block())
@@ -81,7 +81,6 @@ class Frontend(implicit p: Parameters) extends DJModule {
   // config
   req2Task.io.config        := io.config
   hpr2Task.io.config        := io.config
-  snp2Task.io.config        := io.config
   posTable.io.config        := io.config
   block.io.config           := io.config
   decode.io.config          := io.config
@@ -99,7 +98,7 @@ class Frontend(implicit p: Parameters) extends DJModule {
   io.cleanDB                <> cleanDBQ.io.deq
   io.cmtTask                := decode.io.cmtTask_s3
   io.alrUsePoS              := posTable.io.alrUsePoS
-  io.working                := hprTaskBuf.io.working | reqTaskBuf.io.working | snpTaskBuf.io.working | posTable.io.working
+  io.working                := hprTaskBuf.io.working | reqTaskBuf.io.working | snpTaskBuf.map(_.io.working).getOrElse(false.B) | posTable.io.working
 
   // io.fastResp <--- [Queue] --- block.io.fastResp_s1
   //                        ^
@@ -143,22 +142,21 @@ class Frontend(implicit p: Parameters) extends DJModule {
   // snp2Task and snpTaskBuf [S0]
   if(hasBBN) {
     // snp2Task
-    snp2Task.io.rxSnp       <> io.rxSnp
+    snp2Task.get.io.config      := io.config
+    snp2Task.get.io.rxSnp       <> io.rxSnp
     // snpTaskBuf [S0]
-    snpTaskBuf.io.chiTaskIn <> snp2Task.io.chiTask
-    snpTaskBuf.io.retry_s1  := block.io.retry_s1
-    snpTaskBuf.io.sleep_s1  := DontCare // snp never sleep
-    snpTaskBuf.io.wakeup    := DontCare // not need to wakeup
-    HardwareAssertion(!snpTaskBuf.io.chiTask_s0.valid)
+    snpTaskBuf.get.io.chiTaskIn <> snp2Task.get.io.chiTask
+    snpTaskBuf.get.io.retry_s1  := block.io.retry_s1
+    snpTaskBuf.get.io.sleep_s1  := DontCare // snp never sleep
+    snpTaskBuf.get.io.wakeup    := DontCare // not need to wakeup
+    assert(!snpTaskBuf.get.io.chiTask_s0.valid," TODO")
   } else {
-    // DontCare
-    io.rxSnp                <> DontCare
-    snp2Task.io             <> DontCare
-    snpTaskBuf.io           <> DontCare
+    io.rxSnp                    <> DontCare
   }
 
   // posTable [S1]
-  posTable.io.alloc_s0      := fastArb(Seq(snpTaskBuf.io.allocPos_s0, hprTaskBuf.io.allocPos_s0 , reqTaskBuf.io.allocPos_s0))
+  val posReqVec_s0          = if(hasBBN) Seq(snpTaskBuf.get.io.allocPos_s0, hprTaskBuf.io.allocPos_s0 , reqTaskBuf.io.allocPos_s0) else Seq(hprTaskBuf.io.allocPos_s0, reqTaskBuf.io.allocPos_s0)
+  posTable.io.alloc_s0      := fastArb(posReqVec_s0)
   posTable.io.retry_s1      := block.io.retry_s1
   posTable.io.updNest       := io.updPosNest
   posTable.io.clean         := io.cleanPos
@@ -167,7 +165,8 @@ class Frontend(implicit p: Parameters) extends DJModule {
   posTable.io.reqPoS.req.valid := io.reqPoS.req.valid & io.reqPoS.req.bits.dirBank === io.dirBank
 
   // block [S1]
-  block.io.chiTask_s0       := fastArb(Seq(snpTaskBuf.io.chiTask_s0 , hprTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0))
+  val taskVec_s0            = if(hasBBN) Seq(snpTaskBuf.get.io.chiTask_s0, hprTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0) else Seq(hprTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0)
+  block.io.chiTask_s0       := fastArb(taskVec_s0)
   block.io.posBlock_s1      := posTable.io.block_s1
   block.io.hnIdx_s1         := posTable.io.hnIdx_s1
 

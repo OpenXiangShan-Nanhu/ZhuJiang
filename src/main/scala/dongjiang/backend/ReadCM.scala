@@ -66,7 +66,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
     val resp          = Decoupled(new CMResp)
     // CHI
     val txReq         = Decoupled(new ReqFlit(true))
-    val txRsp         = Decoupled(new RespFlit())
+    val txRsp         = if(hasBBN) Some(Decoupled(new RespFlit())) else None
     val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
     // Update PoS
     val updPosNest    = Decoupled(new PosCanNest)
@@ -114,15 +114,16 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   /*
    * Send CompAck
    */
-  // valid
-  io.txRsp.valid        := reg.isSendCompAck
-  // bits
-  io.txRsp.bits         := DontCare
-  io.txRsp.bits.Opcode  := CompAck
-  io.txRsp.bits.TxnID   := reg.task.chi.txnID
-  io.txRsp.bits.SrcID   := reg.task.chi.getNoC
-  io.txRsp.bits.TgtID   := reg.task.chi.nodeId
-
+  if(hasBBN) {
+    // valid
+    io.txRsp.get.valid        := reg.isSendCompAck
+    // bits
+    io.txRsp.get.bits         := DontCare
+    io.txRsp.get.bits.Opcode  := CompAck
+    io.txRsp.get.bits.TxnID   := reg.task.chi.txnID
+    io.txRsp.get.bits.SrcID   := reg.task.chi.getNoC
+    io.txRsp.get.bits.TgtID   := reg.task.chi.nodeId
+  }
 
   /*
    * Send Resp To Commit
@@ -191,7 +192,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
       when(io.updPosNest.fire)  { next.state := Mux(reg.task.chi.expCompAck, SENDACK, FREE) }
     }
     is(SENDACK) {
-      when(io.txRsp.fire)       { next.state := RESPCMT }
+      when(io.txRsp.map(_.fire).getOrElse(false.B)) { next.state := RESPCMT }
     }
     is(RESPCMT) {
       when(io.resp.fire)        { next.state := FREE }
@@ -206,7 +207,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   HAssert.withEn(reg.isSendReq,     reg.isValid & io.txReq.fire)
   HAssert.withEn(reg.isWaitData,    reg.isValid & recDataHit)
   HAssert.withEn(reg.isRespCmt,     reg.isValid & io.resp.fire)
-  HAssert.withEn(reg.isSendCompAck, reg.isValid & io.txRsp.fire)
+  HAssert.withEn(reg.isSendCompAck, reg.isValid & io.txRsp.map(_.fire).getOrElse(false.B))
 
   /*
    * Set new task
@@ -235,7 +236,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
     val resp          = Decoupled(new CMResp)
     // CHI
     val txReq         = Decoupled(new ReqFlit(true))
-    val txRsp         = Decoupled(new RespFlit())
+    val txRsp         = if(hasBBN) Some(Decoupled(new RespFlit())) else None
     val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
     // Update PoS
     val updPosNest    = Decoupled(new PosCanNest)
@@ -258,10 +259,12 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect IO <- CM
    */
-  io.txReq      <> fastRRArb(entries.map(_.io.txReq)) // TODO: split to LAN and BBN
-  io.txRsp      <> fastRRArb(entries.map(_.io.txRsp))
-  io.resp       <> fastRRArb(entries.map(_.io.resp))
-  io.updPosNest <> fastRRArb(entries.map(_.io.updPosNest))
+  io.txReq        <> fastRRArb(entries.map(_.io.txReq)) // TODO: split to LAN and BBN
+  io.resp         <> fastRRArb(entries.map(_.io.resp))
+  io.updPosNest   <> fastRRArb(entries.map(_.io.updPosNest))
+  if(hasBBN) {
+    io.txRsp.get  <> fastRRArb(entries.map(_.io.txRsp.get))
+  }
 
   /*
    * HardwareAssertion placePipe

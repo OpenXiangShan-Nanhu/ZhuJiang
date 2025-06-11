@@ -71,10 +71,10 @@ class Backend(implicit p: Parameters) extends DJModule {
   val snoopCM     = Module(new SnoopCM())
   val writeCM     = Module(new WriteCM())
   val readCM      = Module(new ReadCM())
-  val datalessCM  = Module(new DatalessCM())
+  // val datalessCM  = Module(new DatalessCM()) // TODO
   val receiveCM   = Module(new ReceiveCM())
   val respQueue   = Module(new FastQueue(new RespFlit, fastRespQSzie.max(2), false))
-  val txReqArb    = Module(new ArbiterWithReset(new ReqFlit(true), 3, true))
+  val txReqArb    = Module(new ArbiterWithReset(new ReqFlit(true), 2, true))
 
   /*
    * Connect Config
@@ -83,19 +83,18 @@ class Backend(implicit p: Parameters) extends DJModule {
   replCM.io.config          := io.config
   snoopCM.io.config         := io.config
   readCM.io.config          := io.config
-  datalessCM.io.config      := io.config
   writeCM.io.config         := io.config
   receiveCM.io.config       := io.config
 
   /*
    * Connect To CHI IO
    */
+  val txRspVec              = if(hasBBN) Seq(commit.io.txRsp, readCM.io.txRsp.get, receiveCM.io.txRsp, respQueue.io.deq) else Seq(commit.io.txRsp, receiveCM.io.txRsp, respQueue.io.deq)
   txReqArb.io.in(0)         <> readCM.io.txReq
-  txReqArb.io.in(1)         <> datalessCM.io.txReq
-  txReqArb.io.in(2)         <> writeCM.io.txReq
+  txReqArb.io.in(1)         <> writeCM.io.txReq
   io.txReq                  <> txReqArb.io.out
   io.txSnp                  <> snoopCM.io.txSnp
-  io.txRsp                  <> fastRRArb(Seq(commit.io.txRsp, readCM.io.txRsp, datalessCM.io.txRsp, receiveCM.io.txRsp, respQueue.io.deq))
+  io.txRsp                  <> fastRRArb(txRspVec)
   io.rxRsp.ready            := true.B
 
   /*
@@ -103,7 +102,7 @@ class Backend(implicit p: Parameters) extends DJModule {
    */
   io.reqPosVec.zip(replCM.io.reqPosVec).foreach { case(a, b) => a <> b }
   io.updPosTag              := replCM.io.updPosTag
-  io.updPosNest             := fastRRArb.validOut(Seq(readCM.io.updPosNest, datalessCM.io.updPosNest, writeCM.io.updPosNest))
+  io.updPosNest             := fastRRArb.validOut(Seq(readCM.io.updPosNest, writeCM.io.updPosNest))
 
   /*
    * Release PoS / LockTable / DataBuffer
@@ -148,7 +147,7 @@ class Backend(implicit p: Parameters) extends DJModule {
   /*
    * Connect CMResp
    */
-  val cmResp = Pipe(fastRRArb.validOut(Seq(snoopCM.io.resp, readCM.io.resp, datalessCM.io.resp, writeCM.io.resp, receiveCM.io.resp)))
+  val cmResp = Pipe(fastRRArb.validOut(Seq(snoopCM.io.resp, readCM.io.resp, writeCM.io.resp, receiveCM.io.resp)))
   commit.io.cmResp.valid    := cmResp.valid & !cmResp.bits.toRepl
   replCM.io.cmResp.valid    := cmResp.valid &  cmResp.bits.toRepl
   commit.io.cmResp.bits     := cmResp.bits
@@ -174,12 +173,6 @@ class Backend(implicit p: Parameters) extends DJModule {
    */
   readCM.io.alloc           <> FastQueue(fastRRArb(Seq(commit.io.cmTaskVec(CMID.READ))))
   readCM.io.rxDat           := io.rxDat
-
-  /*
-   * Connect datalessCM
-   */
-  datalessCM.io.alloc       <> FastQueue(fastRRArb(Seq(commit.io.cmTaskVec(CMID.DL))))
-  datalessCM.io.rxRsp       := io.rxRsp
 
   /*
    * Connect receiveCM

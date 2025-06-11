@@ -274,7 +274,7 @@ trait HasDJParam extends HasParseZJParam {
 
   // Backend Parameters
   lazy val nrReplaceCM      = (djparam.nrPoS / 2).max(2)
-  lazy val nrTaskCM         = 4 // SnoopCM + ReadCM + DatalessCM + WriteCM
+  lazy val nrTaskCM         = 3 // SnoopCM + ReadCM + WriteCM // TODO: + DatalessCM
   lazy val nrSnoopCM        = (djparam.nrPoS / 4).max(2)
   lazy val nrReadCM         = (djparam.nrPoS / 2).max(2)
   lazy val nrDatalessCM     = (djparam.nrPoS / 4).max(2)

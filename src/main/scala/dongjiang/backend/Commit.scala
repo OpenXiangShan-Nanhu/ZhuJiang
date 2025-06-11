@@ -216,7 +216,6 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   // alloc
   io.cmTaskVec(CMID.SNP).valid    := valid & flagReg.intl.s.cmTask & !flagReg.intl.s.reqDB & taskReg.task.snoop
   io.cmTaskVec(CMID.READ).valid   := valid & flagReg.intl.s.cmTask & !flagReg.intl.s.reqDB & taskReg.task.read
-  io.cmTaskVec(CMID.DL).valid     := valid & flagReg.intl.s.cmTask & !flagReg.intl.s.reqDB & taskReg.task.dataless
   io.cmTaskVec(CMID.WRI).valid    := valid & flagReg.intl.s.cmTask & !flagReg.intl.s.reqDB & taskReg.task.write
   io.cmTaskVec.foreach(_.bits     := cmTask)
   HAssert(PopCount(io.cmTaskVec.map(_.fire)) <= 1.U)
