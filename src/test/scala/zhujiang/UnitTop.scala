@@ -154,7 +154,7 @@ object DongJiangTop extends App {
           sfSizeInB = 8 * 2 * 1024 / nrRNF,
           nrReqTaskBuf = 4 * nrDirBank, // 2 dirBank, each has 4 reqTaskBuf
           nrSnpTaskBuf = 2,
-          nrPoS = 16 * nrDirBank, // posWays = if(hasLLC) min(llcWays, sfWays) else sfWays, posSets = nrPoS / posWays, posSets(for each bank) = posSets / nrDirBank
+          nrPoS = 8 * nrDirBank, // posWays = if(hasLLC) min(llcWays, sfWays) else sfWays, posSets = nrPoS / posWays, posSets(for each bank) = posSets / nrDirBank
           dataBufSizeInByte = 8 * 32,
           nrDSBank = 2,
           nrDirBank = nrDirBank,

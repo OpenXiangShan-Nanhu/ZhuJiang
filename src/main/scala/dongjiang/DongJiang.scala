@@ -259,6 +259,10 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
 
 // Top module for unit test only
 class DongJiangTop()(implicit p: Parameters) extends DJModule {
+  val nrPosWays = posWays - 2
+  require(nrSnoopCM == 4, f"nrSnoopCM should be 4, but is ${nrSnoopCM}")
+  require(nrPosWays == 2, f"nrPosWays should be 2, but is ${nrPosWays}")
+
   val hnfNode = Node(nodeType = NodeType.HF)
   val rnfNode = Node(nodeType = NodeType.RF)
   val snNode = Node(nodeType = NodeType.S)
