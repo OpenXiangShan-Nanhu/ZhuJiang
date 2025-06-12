@@ -30,11 +30,11 @@ object CTRLSTATE {
 
 trait HasCtrlMes { this: DJBundle =>
   // Without repl flag:
-  //    Free -> Alloc -> Read -> Send -> Save -> Resp --> Alloc
+  //    Free  -> Alloc -> Read -> Send -> Save -> Resp --> Alloc
   // With repl flag:
-  //    Free -> Alloc -> Replace -> Send -> Resp -> Alloc
+  //    Free  -> Alloc -> Replace -> Send -> Resp -> Alloc
   // Clean:
-  //    Free -> CLEAN -> Alloc/Free
+  //    Alloc -> CLEAN -> Alloc/Free
 
   val state     = UInt(CTRLSTATE.width.W)
   val opBeat    = UInt(log2Ceil(djparam.nrBeat).W)    // The beat block being operate (read/send/save/send)

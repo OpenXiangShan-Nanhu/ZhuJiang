@@ -72,8 +72,8 @@ class Frontend(implicit p: Parameters) extends DJModule {
   val decode      = Module(new Decode())
   // Queue
   val fastRespQ   = Module(new FastQueue(new FastResp, size = djparam.nrDirBank.max(2), deqDataNoX = false))
-  val respTypeQ   = Module(new Queue(new RecRespType, entries = readDirLatency, flow = true, pipe = true))
-  val cleanDBQ    = Module(new Queue(new HnTxnID with HasDataVec, entries = readDirLatency, flow = true, pipe = true))
+  val respTypeQ   = Module(new FastQueue(new RecRespType, size = readDirLatency, deqDataNoX = false))
+  val cleanDBQ    = Module(new FastQueue(new HnTxnID with HasDataVec, size = readDirLatency, deqDataNoX = false))
 
   /*
    * Connect
