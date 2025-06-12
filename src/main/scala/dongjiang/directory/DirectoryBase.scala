@@ -108,6 +108,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     val set     = UInt(param.setBits.W)
     val way     = UInt(param.wayBits.W)
   }.Lit(_.valid -> false.B) }) }))
+  val lockNext  = WireInit(lockTable)
 
   val shiftReg      = RegInit(0.U.asTypeOf(new Shift))
 
@@ -123,6 +124,9 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     val wriWayOH      = UInt(param.ways.W)
   }) }))
   val replSftReg_d1   = RegInit(VecInit(Seq.fill(readDirLatency-1) { 0.U(repl.nBits.W) }))
+  val replSftNext_d1  = Wire(Vec(readDirLatency-1, UInt(repl.nBits.W)))
+  val useWayVec_d1    = WireInit(0.U(param.ways.W))
+  dontTouch(useWayVec_d1)
 
   // [D2]: Select Way and Output DIR Resp
   val tagResp_d2      = tagArray.io.resp.bits.data
@@ -139,7 +143,6 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   val metaValVec_d2   = Wire(Vec(param.ways, Bool())); dontTouch(metaValVec_d2)
   // create in d2
   val readHit_d2      = WireInit(false.B)
-  val useWayVec_d2    = WireInit(0.U(param.ways.W))
   val selWayOH_d2     = WireInit(0.U(param.ways.W))
   val newReplMes_d2   = WireInit(0.U(repl.nBits.W))
 
@@ -214,7 +217,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     reqSftReg_d1.last.wriWayOH  := Mux(io.write.valid, io.write.bits.wayOH,   0.U)
     reqSftReg_d1.last.metaVec   := Mux(io.write.valid, io.write.bits.metaVec, 0.U.asTypeOf(reqSftReg_d1.last.metaVec))
   }
-  reqSftReg_d1.zipWithIndex.foreach {  case (sft, i) =>
+  reqSftReg_d1.zipWithIndex.foreach { case(sft, i) =>
     if (i > 0) { reqSftReg_d1(i - 1) := sft }
   }
 
@@ -224,14 +227,20 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   }
 
   // Get Repl Resp and Update Repl Resp
-  replSftReg_d1.last  := Mux(reqSet_d2 === reqSftReg_d1.last.Addr.set, newReplMes_d2, replArray.io.rresp.bits(0))
-  replSftReg_d1.zipWithIndex.foreach {
-    case (sft, i) =>
+  replSftNext_d1.last := Mux(reqSet_d2 === reqSftReg_d1.last.Addr.set, newReplMes_d2, replArray.io.rresp.bits(0))
+  replSftReg_d1.zipWithIndex.foreach { case(reg, i) =>
       if(i > 0) {
-        replSftReg_d1(i-1) := Mux(reqSet_d2 === reqSftReg_d1(i).Addr.set, newReplMes_d2, sft)
+        replSftNext_d1(i-1) := Mux(reqSet_d2 === reqSftReg_d1(i).Addr.set, newReplMes_d2, reg)
       }
+      reg := replSftNext_d1(i)
   }
 
+  // Selet Replace/Unuse Way
+  useWayVec_d1      := lockNext(reqSftReg_d1(1).hnIdx.pos.set).map(lock => Mux(lock.valid & lock.set === reqSftReg_d1(1).Addr.set, UIntToOH(lock.way), 0.U)).reduce(_ | _)
+  val replWay_d1    = repl.get_replace_way(replSftNext_d1.head)
+  val unuseWay_d1   = PriorityEncoder(~useWayVec_d1.asUInt)
+  val selIsUsing_d1 = useWayVec_d1(replWay_d1)
+  val hasUnuseWay   = PopCount(useWayVec_d1) < param.ways.U
 
   // ---------------------------------------------------------------------------------------------------------------------- //
   // ---------------------------------------- [D2]: Select Way and Output DIR Resp ---------------------------------------- //
@@ -254,26 +263,25 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(PopCount(hitVec_d2) <= 1.U, shiftReg.read(0))
 
   // Select Way
-  useWayVec_d2      := lockTable(req_d2.hnIdx.pos.set).map(lock => Mux(lock.valid & lock.set === reqSet_d2, UIntToOH(lock.way), 0.U)).reduce(_ | _)
-  val unuseWay_d2   = PriorityEncoder(~useWayVec_d2.asUInt)
-  val replWay_d2    = repl.get_replace_way(replMes_d2)
-  val hitWay_d2     = PriorityEncoder(hitVec_d2)
-  val invWay_d2     = PriorityEncoder(metaValVec_d2.map(!_))
-  val selIsUsing_d2 = useWayVec_d2(replWay_d2)
-  val selWay_d2     = PriorityMux(Seq(
-    hit_d2          -> hitWay_d2,
-    hasInvalid_d2   -> invWay_d2,
-    selIsUsing_d2   -> unuseWay_d2,
-    true.B          -> replWay_d2
+  val selIsUsingReg_d2  = RegNext(selIsUsing_d1)
+  val unuseWayReg_d2    = RegNext(unuseWay_d1)
+  val replWayReg_d2     = RegNext(replWay_d1)
+  val hitWay_d2         = PriorityEncoder(hitVec_d2)
+  val invWay_d2         = PriorityEncoder(metaValVec_d2.map(!_))
+  val selWay_d2         = PriorityMux(Seq(
+    hit_d2              -> hitWay_d2,
+    hasInvalid_d2       -> invWay_d2,
+    selIsUsingReg_d2    -> unuseWayReg_d2,
+    true.B              -> replWayReg_d2
   ))
+  dontTouch(selIsUsingReg_d2)
+  dontTouch(unuseWayReg_d2)
+  dontTouch(replWayReg_d2)
   dontTouch(hit_d2)
   dontTouch(hasInvalid_d2)
-  dontTouch(selIsUsing_d2)
   dontTouch(hitWay_d2)
   dontTouch(invWay_d2)
-  dontTouch(unuseWay_d2)
-  dontTouch(replWay_d2)
-  HardwareAssertion.withEn(PopCount(useWayVec_d2) < param.ways.U, !hit_d2 & shiftReg.read(0))
+  HardwareAssertion.withEn(RegNext(hasUnuseWay), !hit_d2 & shiftReg.read(0))
 
   // Output Directory Resp
   selWayOH_d2          := UIntToOH(selWay_d2)
@@ -305,61 +313,63 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   val write_d2    = !shiftReg.read(0) &  shiftReg.write(0) & !shiftReg.repl(0)
   val readRepl_d2 =  shiftReg.read(0) & !shiftReg.write(0) &  shiftReg.repl(0)
   val wriRepl_d2  = !shiftReg.read(0) &  shiftReg.write(0) &  shiftReg.repl(0)
-  lockTable.zipWithIndex.foreach {
-    case(lockSet, i) =>
-      lockSet.zipWithIndex.foreach {
-        case(lock, j) =>
-          // hnIdx
-          val hnIdx       = Wire(new HnIndex)
-          hnIdx.dirBank   := io.dirBank
-          hnIdx.pos.set   := i.U
-          hnIdx.pos.way   := j.U
+  lockTable.zipWithIndex.foreach { case(lockSet, i) =>
+    lockSet.zipWithIndex.foreach { case(lock, j) =>
+      // hnIdx
+      val hnIdx       = Wire(new HnIndex)
+      hnIdx.dirBank   := io.dirBank
+      hnIdx.pos.set   := i.U
+      hnIdx.pos.way   := j.U
 
-          // hit message
-          val unLockHit   = io.unlock.valid & io.unlock.bits.hnIdx.asUInt === hnIdx.asUInt
-          val reqHit      = shiftReg.req(0) & req_d2.hnIdx.asUInt === hnIdx.asUInt
-          val readMiss    = read_d2     & reqHit & !hit_d2
-          val readHit     = read_d2     & reqHit &  hit_d2
-          val write       = write_d2    & reqHit
-          val readRepl    = readRepl_d2 & reqHit
-          val wriRepl     = wriRepl_d2  & reqHit
+      // hit message
+      val unLockHit   = io.unlock.valid & io.unlock.bits.hnIdx.asUInt === hnIdx.asUInt
+      val reqHit      = shiftReg.req(0) & req_d2.hnIdx.asUInt === hnIdx.asUInt
+      val readMiss    = read_d2     & reqHit & !hit_d2
+      val readHit     = read_d2     & reqHit &  hit_d2
+      val write       = write_d2    & reqHit
+      val readRepl    = readRepl_d2 & reqHit
+      val wriRepl     = wriRepl_d2  & reqHit
 
-          reqHit.suggestName(f"reqHit_${i}_${j}")
-          readMiss.suggestName(f"write_${i}_${j}")
-          readHit.suggestName(f"readRepl_${i}_${j}")
-          write.suggestName(f"read_${i}_${j}")
-          readRepl.suggestName(f"wriRepl_${i}_${j}")
-          wriRepl.suggestName(f"unLockHit_${i}_${j}")
+      reqHit.suggestName(f"reqHit_${i}_${j}")
+      readMiss.suggestName(f"write_${i}_${j}")
+      readHit.suggestName(f"readRepl_${i}_${j}")
+      write.suggestName(f"read_${i}_${j}")
+      readRepl.suggestName(f"wriRepl_${i}_${j}")
+      wriRepl.suggestName(f"unLockHit_${i}_${j}")
 
-          // get state
-          val dontCare  = Cat(lock.valid, lock.valid)
-          val state     = PriorityMux(Seq(
-            unLockHit   -> Cat(lock.valid, false.B),
-            readMiss    -> "b00".U,
-            readHit     -> "b01".U,
-            write       -> dontCare,
-            readRepl    -> "b01".U,
-            wriRepl     -> dontCare,
-            true.B      -> dontCare
-          ))
+      // get state
+      val dontCare  = Cat(lock.valid, lock.valid)
+      val state     = PriorityMux(Seq(
+        unLockHit   -> Cat(lock.valid, false.B),
+        readMiss    -> "b00".U,
+        readHit     -> "b01".U,
+        write       -> dontCare,
+        readRepl    -> "b01".U,
+        wriRepl     -> dontCare,
+        true.B      -> dontCare
+      ))
 
-          // modify lock state
-          val (oldLock, newLock) = (state(1), state(0))
-          oldLock.suggestName(f"oldLock_${i}_${j}")
-          newLock.suggestName(f"newLock_${i}_${j}")
-          when(!oldLock & newLock) {
-            lock.valid  := true.B
-            lock.set    := reqSet_d2
-            lock.way    := selWay_d2
-          }.elsewhen(!newLock) {
-            lock.valid  := false.B
-          }
-
-          // HAssert
-          HAssert(!(readMiss & readHit & readRepl & unLockHit), cf"Lock Table Index[${i.U}][${j.U}]")
-          HAssert(lock.valid === oldLock, cf"Lock Table Index[${i.U}][${j.U}]")
-          HAssert.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i.U}][${j.U}]")
+      // modify lock state
+      val (oldLock, newLock) = (state(1), state(0))
+      oldLock.suggestName(f"oldLock_${i}_${j}")
+      newLock.suggestName(f"newLock_${i}_${j}")
+      when(!oldLock & newLock) {
+        lockNext(i)(j).valid  := true.B
+        lockNext(i)(j).set    := reqSet_d2
+        lockNext(i)(j).way    := selWay_d2
+      }.elsewhen(!newLock) {
+        lockNext(i)(j).valid  := false.B
       }
+
+      // HAssert
+      HAssert(!(readMiss & readHit & readRepl & unLockHit), cf"Lock Table Index[${i.U}][${j.U}]")
+      HAssert(lock.valid === oldLock, cf"Lock Table Index[${i.U}][${j.U}]")
+      HAssert.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i.U}][${j.U}]")
+    }
+  }
+
+  when(shiftReg.req(0) | io.unlock.valid) {
+    lockTable := lockNext
   }
 
   /*
