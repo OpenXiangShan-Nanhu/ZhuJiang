@@ -41,6 +41,13 @@ class AxiBridgeCtrlMachine(
   dataBufferAlloc.req.bits.size := payload.info.size
   dataBufferAlloc.req.bits.qos := payload.info.qos
   dataBufferAlloc.req.bits.waitNum := waiting
+  if(dw == 128) {
+    dataBufferAlloc.req.bits.dataIdOffset := payload.info.addr(5, 4)
+  } else if(dw == 256) {
+    dataBufferAlloc.req.bits.dataIdOffset := Cat(payload.info.addr(5), false.B)
+  } else {
+    dataBufferAlloc.req.bits.dataIdOffset := 0.U
+  }
 
   when(icn.rx.req.fire) {
     allocReqIssued := false.B

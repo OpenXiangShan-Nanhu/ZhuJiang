@@ -8,6 +8,7 @@ class DataBufferAllocReq(outstanding: Int) extends Bundle {
   val qos = UInt(4.W)
   val size = UInt(3.W)
   val waitNum = UInt(log2Ceil(outstanding).W)
+  val dataIdOffset = UInt(2.W)
 }
 
 class DataBufferAllocReqSelector(outstanding: Int) extends Module {
@@ -31,6 +32,7 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
     selArb.io.in(i).valid := selReg(i)
     selArb.io.in(i).bits.idxOH := (1.U(outstanding.W)) << i
     selArb.io.in(i).bits.size := io.in(i).bits.size
+    selArb.io.in(i).bits.dataIdOffset := io.in(i).bits.dataIdOffset
   }
   selPipe.io.enq <> selArb.io.out
   io.out <> selPipe.io.deq

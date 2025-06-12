@@ -12,6 +12,7 @@ import zhujiang.chi.{DatOpcode, DataFlit}
 
 class AxiDataBufferCtrlEntry(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
   val buf = Vec(512 / dw, UInt(log2Ceil(bufferSize).W))
+  val dataIdOffset = UInt(2.W)
   val recvMax = UInt(3.W)
   val recvCnt = UInt(3.W)
 }
@@ -19,6 +20,7 @@ class AxiDataBufferCtrlEntry(bufferSize: Int)(implicit p: Parameters) extends ZJ
 class AxiDataBufferAllocReq(ctrlSize: Int) extends Bundle {
   val idxOH = UInt(ctrlSize.W)
   val size = UInt(3.W)
+  val dataIdOffset = UInt(2.W)
 }
 
 class AxiDataBufferReadReq(axiParams: AxiParams, bufferSize: Int) extends Bundle {
@@ -72,6 +74,7 @@ class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
   io.resp.valid := io.req.fire
   io.resp.bits.recvMax := reqNum - 1.U
   io.resp.bits.recvCnt := 0.U
+  io.resp.bits.dataIdOffset := io.req.bits.dataIdOffset
   io.idle := headPtr.value === tailPtr.value && headPtr.flag =/= tailPtr.flag
 
   releaseMergeQueue.io.enq.take(maxAllocOnce).zipWithIndex.foreach({ case(e, i) =>
@@ -192,6 +195,7 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implic
     when(freelist.io.resp.valid && io.alloc.bits.idxOH(idx)) {
       ctrlInfoVec(idx).buf := freelist.io.resp.bits.buf
       ctrlInfoVec(idx).recvMax := freelist.io.resp.bits.recvMax
+      ctrlInfoVec(idx).dataIdOffset := freelist.io.resp.bits.dataIdOffset
     }
 
     when(freelist.io.resp.valid && io.alloc.bits.idxOH(idx)) {
@@ -217,12 +221,16 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implic
   dataBuffer.io.writeData.valid := io.icn.valid && io.icn.bits.Opcode =/= DatOpcode.WriteDataCancel
   io.icn.ready := dataBuffer.io.writeData.ready
   dataBuffer.io.writeData.bits := io.icn.bits
+  private val _dataID = io.icn.bits.DataID - icnSelCtrl.dataIdOffset
   private val bufIdx = if(dw == 128) {
-    io.icn.bits.DataID
+    _dataID(1, 0)
   } else if(dw == 256) {
-    (io.icn.bits.DataID >> 1).asUInt(log2Ceil(ctrlSelReg.buf.length) - 1, 0)
+    _dataID(1, 1)
   } else {
     0.U
+  }
+  when(io.icn.fire && (io.icn.bits.Opcode === DatOpcode.NonCopyBackWriteData || io.icn.bits.Opcode === DatOpcode.NCBWrDataCompAck)) {
+    assert(io.icn.bits.DataID >= icnSelCtrl.dataIdOffset)
   }
   dataBuffer.io.writeData.bits.TxnID := icnSelCtrl.buf(bufIdx)
 
