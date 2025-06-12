@@ -249,7 +249,7 @@ case class ZJParameters(
     nrDSBank = hnxDirSRAMBank * 2,
     nrDirBank = hnxDirSRAMBank,
     nrPoS = hnxOutstanding / bank,
-    dataBufSizeInByte = 64 * hnxOutstanding / bank,
+    dataBufSizeInByte = 32 * hnxOutstanding / bank,
   ))
 }
 

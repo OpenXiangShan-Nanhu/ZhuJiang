@@ -262,7 +262,7 @@ trait HasDJParam extends HasParseZJParam {
 
   // DataBlock Parameters
   // dc/db
-  lazy val nrDataCM         = djparam.nrDataBuf
+  lazy val nrDataCM         = (djparam.nrDataBuf / 2).max(2)
   lazy val dbIdBits         = log2Ceil(djparam.nrDataBuf)
   lazy val dcIdBits         = log2Ceil(nrDataCM)
   //ds
