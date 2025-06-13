@@ -405,6 +405,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   /*
    * HAssert
    */
+  HAssert.withEn(!(reg.isReplSF & reg.isReplLLC), reg.isValid)
   HAssert.withEn(reg.isFree,        io.alloc.fire)
   HAssert.withEn(reg.isReqPoS,      reg.isValid & io.reqPoS.req.fire)
   HAssert.withEn(reg.isWriDir,      reg.isValid & io.writeDir.fire)
