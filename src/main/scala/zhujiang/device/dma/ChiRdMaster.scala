@@ -135,7 +135,6 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
       }
       when(dataTxnid === i.U & io.chiDat.fire & !e.double & fromDCT(io.chiDat.bits.SrcID)){
         en.fromDCT   := true.B
-        en.haveWrDB1 := Mux(io.wrDB.fire, true.B, e.haveWrDB1)
       }
       if(rni.readDMT){
         when(io.wrDB.fire & dataTxnid === i.U){
