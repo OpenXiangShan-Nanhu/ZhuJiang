@@ -262,6 +262,10 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   val nrPosWays = posWays - 2
   require(nrSnoopCM == 4, f"nrSnoopCM should be 4, but is ${nrSnoopCM}")
   require(nrPosWays == 2, f"nrPosWays should be 2, but is ${nrPosWays}")
+  require(llcSets == 4, f"llcSets should be 4, but is ${llcSets}")
+  require(sfSets == 8, f"sfSets should be 8, but is ${sfSets}")
+  require(nrDataCM == 8, f"nrDataCM should be 8, but is ${nrDataCM}")
+  require(nrReadCM == 8, f"nrReadCM should be 8, but is ${nrReadCM}")
 
   val hnfNode = Node(nodeType = NodeType.HF)
   val rnfNode = Node(nodeType = NodeType.RF)
@@ -342,7 +346,7 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   djTxDatFlitWire.SrcID := djNodeId.U
   djTxDatFlitWire.HomeNID := djNodeId.U
   dj.io.lan.tx.data.get.ready := Mux(djTxDatToRNF, rnfRxDat.ready, snRxDat.ready)
-  io.sn.tx.data.get.ready := rnfRxDat.ready && !djTxDatToRNF
+  io.sn.tx.data.get.ready := Mux(snTxDatToRNF, rnfRxDat.ready && !djTxDatToRNF, djRxDat.ready && !rnfTxDatToHNF)  
   when(dj.io.lan.tx.data.get.valid) {
     assert(djTxDatToRNF || djTxDatToSN, "djTxDatToRNF or djTxDatToSN must be true")
   }
