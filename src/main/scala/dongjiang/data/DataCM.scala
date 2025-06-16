@@ -325,9 +325,10 @@ class DataCM(implicit p: Parameters) extends DJModule {
   /*
    * Module declaration
    */
-  val entries = Seq.fill(nrDataCM) { Module(new DataCtrlEntry()) }
-  val taskReg = RegEnable(io.task.bits, io.task.fire)
-  val dbgVec  = VecInit(entries.map(_.io.state))
+  val entries     = Seq.fill(nrDataCM) { Module(new DataCtrlEntry()) }
+  val taskFireReg = RegNext(io.task.fire)
+  val taskReg     = RegEnable(io.task.bits, io.task.fire)
+  val dbgVec      = VecInit(entries.map(_.io.state))
   dontTouch(dbgVec)
 
   /*
@@ -336,6 +337,7 @@ class DataCM(implicit p: Parameters) extends DJModule {
   val freeDCVec             = VecInit(entries.map(_.io.alloc.ready))
   val hasFreeDC             = freeDCVec.asUInt.orR
   val freeDCID              = WireInit(PriorityEncoder(freeDCVec)); dontTouch(freeDCID)
+
   // reqDBOut
   io.reqDBOut.valid         := io.reqDBIn.valid & hasFreeDC
   io.reqDBOut.bits          := io.reqDBIn.bits
@@ -352,11 +354,11 @@ class DataCM(implicit p: Parameters) extends DJModule {
     e.io.alloc.bits         := io.reqDBIn.bits
     HAssert.withEn(io.reqDBOut.fire, e.io.alloc.fire, cf"DCID[${i.U}]")
     // Task
-    e.io.task.valid         := RegNext(io.task.fire)
+    e.io.task.valid         := taskFireReg
     e.io.task.bits          := taskReg
   }
   HAssert.withEn(io.reqDBOut.fire & PopCount(entries.map(_.io.alloc.fire)) === 1.U, io.reqDBIn.fire)
-  HAssert.withEn(PopCount(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === taskReg.hnTxnID)) === 1.U, RegNext(io.task.fire))
+  HAssert.withEn(PopCount(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === taskReg.hnTxnID)) === 1.U, taskFireReg)
 
   /*
    * Connect CM <- IO
