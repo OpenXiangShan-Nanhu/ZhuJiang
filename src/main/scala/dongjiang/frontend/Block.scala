@@ -66,7 +66,7 @@ class Block(implicit p: Parameters) extends DJModule {
    * Block logic
    */
   block_s1.pos      := io.posBlock_s1
-  block_s1.dir      := !io.readDir_s1.ready
+  block_s1.dir      := taskReg_s1.chi.memAttr.cacheable & !io.readDir_s1.ready
   block_s1.resp     := blockByDB_s1 | (shouldResp_s1 & !io.fastResp_s1.ready)
   io.retry_s1       := validReg_s1 & block_s1.all
 
@@ -84,7 +84,7 @@ class Block(implicit p: Parameters) extends DJModule {
   /*
    * Read Directory
    */
-  io.readDir_s1.valid         := validReg_s1 & !(block_s1.pos | block_s1.resp)
+  io.readDir_s1.valid         := validReg_s1 & taskReg_s1.chi.memAttr.cacheable & !(block_s1.pos | block_s1.resp)
   io.readDir_s1.bits.addr     := taskReg_s1.addr
   io.readDir_s1.bits.hnIdx    := io.hnIdx_s1
 

@@ -22,53 +22,13 @@ object Read_LAN_DCT_DMT {
   // ReadNoSnp Without ExpCompAck
   def readNoSnp_noExpCompAck: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | isEO, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I)),
-    // I I SC -> I I SC
-    (sfMiss | llcIs(SC))  -> first(cdop("read", "send") | cmtDat(CompData) | resp(I)),
-    // I I UC -> I I UC
-    (sfMiss | llcIs(UC))  -> first(cdop("read", "send") | cmtDat(CompData) | resp(I)),
-    // I I UD -> I I UD
-    (sfMiss | llcIs(UD))  -> first(cdop("read", "send") | cmtDat(CompData) | resp(I)),
-    // I V I // Cant do DCT because RNF cant deal full size data when it only need half size
-    (srcMiss | othHit | llcIs(I)) -> (snpOne(SnpOnce) | retToSrc | needDB, Seq(
-      // other RNF is UD
-      (datIs(SnpRespData) | respIs(UD))     -> second(cdop("send") | cmtDat(CompData) | resp(I)),                                                     // I UD I
-      (datIs(SnpRespData) | respIs(SC_PD))  -> second(tdop("send") | write(WriteNoSnpFull), waitSecDone | cdop("send") | cmtDat(CompData) | resp(I)), // I SC I
-      (datIs(SnpRespData) | respIs(I_PD))   -> second(cdop("send", "save") | cmtDat(CompData) | resp(I) | wriSNP(false) | wriLLC(UD)),                // I I  UD
-      // other RNF is UC / SC / I
-      (datIs(SnpRespData) | respIs(UC))     -> second(cdop("send") | cmtDat(CompData) | resp(I)),                                                                   // I UC I
-      (datIs(SnpRespData) | respIs(SC))     -> second(cdop("send") | cmtDat(CompData) | resp(I)),                                                                   // I SC I
-      (datIs(SnpRespData) | respIs(I))      -> second(cdop("send", "save") | cmtDat(CompData) | resp(I) | wriSNP(false) | wriLLC(UC)),                              // I I  UC
-      (rspIs(SnpResp)     | respIs(UC))     -> second(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I)),                  // I UC I
-      (rspIs(SnpResp)     | respIs(SC))     -> second(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I)),                  // I SC I
-      (rspIs(SnpResp)     | respIs(I))      -> second(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I) | wriSNP(false)),  // I I  I
-    )),
+    (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I))
   ))
 
   // ReadNoSnp With ExpCompAck
   def readNoSnp_expCompAck: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck | isEO, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | doDMT, noCmt),
-    // I I SC -> I I SC
-    (sfMiss | llcIs(SC))  -> first(cdop("read", "send") | cmtDat(CompData) | resp(I)),
-    // I I UC -> I I UC
-    (sfMiss | llcIs(UC))  -> first(cdop("read", "send") | cmtDat(CompData) | resp(I)),
-    // I I UD -> I I UD
-    (sfMiss | llcIs(UD))  -> first(cdop("read", "send") | cmtDat(CompData) | resp(I)),
-    // I V I // Cant do DCT because RNF cant deal full size data when it only need half size
-    (srcMiss | othHit | llcIs(I)) -> (snpOne(SnpOnce) | retToSrc | needDB, Seq(
-      // other RNF is UD
-      (datIs(SnpRespData) | respIs(UD))     -> second(cdop("send") | cmtDat(CompData) | resp(I)),                                                     // I UD I
-      (datIs(SnpRespData) | respIs(SC_PD))  -> second(tdop("send") | write(WriteNoSnpFull), waitSecDone | cdop("send") | cmtDat(CompData) | resp(I)), // I SC I
-      (datIs(SnpRespData) | respIs(I_PD))   -> second(cdop("send", "save") | cmtDat(CompData) | resp(I) | wriSNP(false) | wriLLC(UD)),                // I I  UD
-      // other RNF is UC / SC / I
-      (datIs(SnpRespData) | respIs(UC))     -> second(cdop("send") | cmtDat(CompData) | resp(I)),                                       // I UC I
-      (datIs(SnpRespData) | respIs(SC))     -> second(cdop("send") | cmtDat(CompData) | resp(I)),                                       // I SC I
-      (datIs(SnpRespData) | respIs(I))      -> second(cdop("send", "save") | cmtDat(CompData) | resp(I) | wriSNP(false) | wriLLC(UC)),  // I I  UC
-      (rspIs(SnpResp)     | respIs(UC))     -> second(read(ReadNoSnp) | doDMT, noCmt),                                                  // I UC I
-      (rspIs(SnpResp)     | respIs(SC))     -> second(read(ReadNoSnp) | doDMT, noCmt),                                                  // I SC I
-      (rspIs(SnpResp)     | respIs(I))      -> second(read(ReadNoSnp) | doDMT, wriSNP(false)),                                          // I I  I
-    )),
+    (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | doDMT, noCmt)
   ))
 
   // ReadOnce

@@ -61,7 +61,8 @@ class Decode(implicit p: Parameters) extends DJModule {
   dontTouch(chiInst_s2)
   dontTouch(stateInst_s3)
   // HAssert
-  HAssert.withEn( io.respDir_s3.valid, validReg_s3)
+  HAssert.withEn( io.respDir_s3.valid, validReg_s3 & taskReg_s3.chi.memAttr.cacheable)
+  HAssert.withEn(!io.respDir_s3.valid, validReg_s3 & !taskReg_s3.chi.memAttr.cacheable)
 
   /*
    * Get Decode Result
