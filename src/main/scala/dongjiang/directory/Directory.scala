@@ -21,7 +21,7 @@ class Directory(implicit p: Parameters) extends DJModule {
     // Resp to frontends
     val rRespVec    = Vec(djparam.nrDirBank, Valid(new DirMsg))
     // Write From backend
-    val write       = Flipped(Decoupled(new DJBundle {
+    val write       = Flipped(Decoupled(new DJBundle { // TODO: split llc and sf
       val llc       = Valid(new DirEntry("llc") with HasPackHnIdx)
       val sf        = Valid(new DirEntry("sf") with HasPackHnIdx)
     }))
@@ -37,10 +37,8 @@ class Directory(implicit p: Parameters) extends DJModule {
   /*
    * Module declaration
    */
-  val llcs            = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("llc")))
-  val sfs             = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("sf")))
-  val wriLLCBankPipe  = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
-  val wriSFBankPipe   = Module(new Pipe(UInt(dirBankBits.W), readDirLatency))
+  val llcs  = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("llc")))
+  val sfs   = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("sf")))
   MbistPipeline.PlaceMbistPipeline(2, "HomeDirectory", hasMbist)
 
   /*
@@ -83,30 +81,24 @@ class Directory(implicit p: Parameters) extends DJModule {
    * Connect IO
    */
   // Read Resp
-  io.rRespVec.map(_.valid).zip(llcs.map(_.io.resp)).foreach    { case(a, b) => a := b.valid }
+  io.rRespVec.map(_.valid).zip(llcs.map(_.io.resp)).foreach    { case(a, b) => a := b.valid & !b.bits.toRepl }
   io.rRespVec.map(_.bits.llc).zip(llcs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
   io.rRespVec.map(_.bits.sf ).zip( sfs.map(_.io.resp)).foreach { case(a, b) => a := b.bits }
-
-  // Store Write LLC Resp DirBank
-  wriLLCBankPipe.io.enq.valid := io.write.fire & io.write.bits.llc.valid & !io.write.bits.llc.bits.hit
-  wriLLCBankPipe.io.enq.bits  := io.write.bits.llc.bits.hnIdx.dirBank
-
-  // Store Write SF Resp DirBank
-  wriSFBankPipe.io.enq.valid  := io.write.fire & io.write.bits.sf.valid & !io.write.bits.sf.bits.hit
-  wriSFBankPipe.io.enq.bits   := io.write.bits.sf.bits.hnIdx.dirBank
-
-  // Output wResp and rHitMesVec
+  // Output llc wResp
   val llcRespVec      = VecInit(llcs.map(_.io.resp))
+  val llctoReplVec    = VecInit(llcRespVec.map(r => r.valid & r.bits.toRepl))
+  val llcToReplId     = PriorityEncoder(llctoReplVec)
+  io.wResp.llc.valid  := llctoReplVec.asUInt.orR
+  io.wResp.llc.bits   := llcRespVec(llcToReplId).bits
+  HAssert(PopCount(llctoReplVec) <= 1.U)
+  // Output sf wResp
   val sfRespVec       = VecInit(sfs.map(_.io.resp))
-  // llc
-  io.wResp.llc.valid  := wriLLCBankPipe.io.deq.valid
-  io.wResp.llc.bits   := llcRespVec(wriLLCBankPipe.io.deq.bits).bits
-  // sf
-  io.wResp.sf.valid   := wriSFBankPipe.io.deq.valid
-  io.wResp.sf.bits    := sfRespVec(wriSFBankPipe.io.deq.bits).bits
-  // HardwareAssertion
-  HardwareAssertion.withEn(llcRespVec(wriLLCBankPipe.io.deq.bits).valid, wriLLCBankPipe.io.deq.valid)
-  HardwareAssertion.withEn(sfRespVec(wriSFBankPipe.io.deq.bits).valid,   wriSFBankPipe.io.deq.valid)
+  val sftoReplVec     = VecInit(sfRespVec.map(r => r.valid & r.bits.toRepl))
+  val sfToReplId      = PriorityEncoder(sftoReplVec)
+  io.wResp.sf.valid   := sftoReplVec.asUInt.orR
+  io.wResp.sf.bits    := sfRespVec(sfToReplId).bits
+  HAssert(PopCount(sftoReplVec) <= 1.U)
+
 
   /*
    * HardwareAssertion placePipe

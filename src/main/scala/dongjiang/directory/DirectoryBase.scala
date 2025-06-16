@@ -48,7 +48,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     val dirBank   = Input(UInt(dirBankBits.W))
     val read      = Flipped(Decoupled(new Addr(dirType) with HasPackHnIdx))
     val write     = Flipped(Decoupled(new DirEntry(dirType) with HasPackHnIdx))
-    val resp      = Valid(new DirEntry(dirType) with HasHnTxnID)
+    val resp      = Valid(new DirEntry(dirType) with HasHnTxnID { val toRepl = Bool() })
     val unlock    = Flipped(Valid(new PackHnIdx))
   })
   dontTouch(io)
@@ -291,6 +291,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   io.resp.bits.hit     := hit_d2
   io.resp.bits.metaVec := metaResp_d2(selWay_d2)
   io.resp.bits.hnTxnID := req_d2.hnIdx.getTxnID
+  io.resp.bits.toRepl  := shiftReg.repl(0)
 
   // Get New replace message
   newReplMes_d2 := repl.get_next_state(replMes_d2,  OHToUInt(Mux(shiftReg.wriUpdRepl_d2, req_d2.wriWayOH, selWayOH_d2)))
