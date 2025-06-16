@@ -111,7 +111,6 @@ abstract class BaseCtrlMachine[
       payloadMiscNext.info.mask.get := icnDataMaskVec(dataIdx)
     }
     plmnu.wdata := icnDatOp === DatOpcode.NCBWrDataCompAck || icnDatOp === DatOpcode.NonCopyBackWriteData || icnDatOp === DatOpcode.WriteDataCancel || plu.wdata
-    plmnu.compCmo := icnDatOp === DatOpcode.WriteDataCancel || plu.compCmo
     if(plmnu.compAck.isDefined) {
       plmnu.compAck.get := icnDatOp === DatOpcode.NCBWrDataCompAck || icnDatOp === DatOpcode.WriteDataCancel || plu.compAck.get
     }
@@ -123,15 +122,13 @@ abstract class BaseCtrlMachine[
   private val icnReadReceipt = payload.state.icnReadReceipt
   private val icnDBID = payload.state.icnDBID
   private val icnComp = allowComp && payload.state.icnComp
-  private val icnCompCmo = payload.state.icnCompCmo && !payload.state.icnComp
   private val icnCompDBID = icnDBID && icnComp
-  icn.tx.resp.valid := valid & (icnReadReceipt || icnDBID || icnComp || icnCompCmo)
+  icn.tx.resp.valid := valid & (icnReadReceipt || icnDBID || icnComp)
   icn.tx.resp.bits := DontCare
   icn.tx.resp.bits.Opcode := Mux(icnCompDBID, RspOpcode.CompDBIDResp, MuxCase(0.U, Seq(
     icnReadReceipt -> RspOpcode.ReadReceipt,
     icnDBID -> RspOpcode.DBIDResp,
-    icnComp -> RspOpcode.Comp,
-    icnCompCmo -> RspOpcode.CompCMO
+    icnComp -> RspOpcode.Comp
   )))
   icn.tx.resp.bits.QoS := payload.info.qos
   icn.tx.resp.bits.DBID := io.idx
@@ -143,7 +140,6 @@ abstract class BaseCtrlMachine[
     plmnu.receiptResp := icn.tx.resp.bits.Opcode === RspOpcode.ReadReceipt || plu.receiptResp
     plmnu.dbidResp := icn.tx.resp.bits.Opcode === RspOpcode.DBIDResp || icn.tx.resp.bits.Opcode === RspOpcode.CompDBIDResp || plu.dbidResp
     plmnu.comp := icn.tx.resp.bits.Opcode === RspOpcode.Comp || icn.tx.resp.bits.Opcode === RspOpcode.CompDBIDResp || plu.comp
-    plmnu.compCmo := icn.tx.resp.bits.Opcode === RspOpcode.CompCMO || plu.compCmo
   }
 
   private val busDataBytes = slvBusDataBits / 8

@@ -16,7 +16,6 @@ package object bridge {
     val rdata = Bool()
     val compAck = if(sn) None else Some(Bool())
     val comp = Bool()
-    val compCmo = Bool()
     def readReq(order: UInt, expCompAck: Bool): Unit = {
       receiptResp := order === 0.U
       dbidResp := true.B
@@ -24,21 +23,19 @@ package object bridge {
       rdata := false.B
       compAck.foreach(_ := !expCompAck)
       comp := true.B
-      compCmo := true.B
     }
-    def writeReq(expCompAck: Bool, cmo:Bool): Unit = {
+    def writeReq(expCompAck: Bool): Unit = {
       receiptResp := true.B
       dbidResp := false.B
       wdata := false.B
       rdata := true.B
       compAck.foreach(_ := !expCompAck)
       comp := false.B
-      compCmo := !cmo
     }
     def completed: Bool = this.asUInt.andR
     def decode(req: ReqFlit, check: Bool): Unit = {
       when(check) {
-        val legalCode = Seq(ReqOpcode.ReadNoSnp, ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteNoSnpFull, ReqOpcode.WriteNoSnpFullCleanInv)
+        val legalCode = Seq(ReqOpcode.ReadNoSnp, ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteNoSnpFull)
         val legal = Cat(legalCode.map(_ === req.Opcode)).orR
         assert(legal, "opcode: 0x%x", req.Opcode)
         assert(req.Size <= 6.U)
@@ -46,7 +43,7 @@ package object bridge {
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
         readReq(req.Order, req.ExpCompAck)
       }.otherwise {
-        writeReq(req.ExpCompAck, req.Opcode === ReqOpcode.WriteNoSnpFullCleanInv)
+        writeReq(req.ExpCompAck)
       }
     }
   }
@@ -63,7 +60,6 @@ package object bridge {
     def icnReadReceipt:Bool
     def icnDBID:Bool
     def icnComp:Bool
-    def icnCompCmo:Bool = d.completed && !u.compCmo
 
     def needIssue:Bool
     def wakeup: Bool
