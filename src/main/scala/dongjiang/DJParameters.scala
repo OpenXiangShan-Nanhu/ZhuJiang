@@ -289,7 +289,6 @@ trait HasDJParam extends HasParseZJParam {
   lazy val TIMEOUT_LOCK     = 20000 * 2
   lazy val TIMEOUT_COMMIT   = 18000 * 2
   lazy val TIMEOUT_REPLACE  = 15000 * 2
-  lazy val TIMEOUT_ISSUE    = 10000 * 2
   lazy val TIMEOUT_SNP      = 10000 * 2
   lazy val TIMEOUT_READ     = 10000 * 2
   lazy val TIMEOUT_WRITE    = 10000 * 2
