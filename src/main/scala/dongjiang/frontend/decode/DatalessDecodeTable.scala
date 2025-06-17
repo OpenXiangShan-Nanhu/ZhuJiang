@@ -102,7 +102,7 @@ object Dataless_LAN {
       (datIs(SnpRespData) | respIs(I_PD))   -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)),
     )),
     // V I I  -> I I I
-    (srcHit | othMiss | llcIs(I)) -> (snpAll(SnpCleanShared) | needDB, Seq(
+    (srcHit | othMiss | llcIs(I)) -> (snpAll(SnpCleanInvalid) | needDB, Seq(
       (rspIs(SnpResp)     | respIs(I))      -> second(cmtRsp(Comp) | resp(I) | wriSNP(false)),
       (datIs(SnpRespData) | respIs(I_PD))   -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)),
     )),

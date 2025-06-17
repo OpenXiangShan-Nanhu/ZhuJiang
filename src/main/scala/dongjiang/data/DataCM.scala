@@ -37,7 +37,7 @@ trait HasCtrlMes { this: DJBundle =>
   //    Alloc -> CLEAN -> Alloc/Free
 
   val state     = UInt(CTRLSTATE.width.W)
-  val opBeat    = UInt(log2Ceil(djparam.nrBeat).W)    // The beat block being operate (read/send/save/send)
+  val opBeat    = UInt(log2Ceil(djparam.nrBeat).W)    // The beat block being operate (repl/read/send/save)
   val wRBeat    = UInt(log2Ceil(djparam.nrBeat+1).W)  // Wait read DS data to DB
   val wSBeat    = UInt(log2Ceil(djparam.nrBeat+1).W)  // Wait read DB data to CHI
 
