@@ -142,7 +142,7 @@ object Write_LAN {
   ))
 
   // WriteCleanFull
-  def writeCleanFull: DecodeType = (fromLAN | toLAN | reqIs(WriteCleanFull) | allocate | ewa | noOrder, Seq(
+  def writeCleanFull: DecodeType = (fromLAN | toLAN | reqIs(WriteCleanFull) | ewa | noOrder, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))  -> first(waitRecDone, cbRespIs(I), noCmt),
     // I I SC -> I I SC
