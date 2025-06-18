@@ -160,7 +160,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
    * Module and Wire declaration
    */
   val entries       = Seq.fill(nrEntries) { Module(new TaskEntry(log2Ceil(nrEntries), sort)) }
-  val selRREncoder  = Module(new StepRREncoder(nrEntries))
+  val selRREncoder  = Module(new StepRREncoder(nrEntries, hasLock = true))
   val debugVec      = WireInit(VecInit(entries.map(_.io.state)))
   dontTouch(debugVec)
 

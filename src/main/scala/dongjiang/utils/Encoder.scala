@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import xs.utils.ResetRRArbiter
 
-class StepRREncoder(size: Int) extends Module {
+class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 4) extends Module {
   val io = IO(new Bundle {
     val inVec   = Input(Vec(size, Bool()))
     val enable  = Input(Bool())
@@ -14,7 +14,9 @@ class StepRREncoder(size: Int) extends Module {
 
   val indexReg  = RegInit(0.U(log2Ceil(size).W))
   val indexOut  = Wire(UInt(log2Ceil(size).W))
+  val lock      = WireInit(false.B)
 
+  // Inc logic
   def indexInc: UInt = {
     if(isPow2(size)) {
       indexReg + 1.U
@@ -29,6 +31,7 @@ class StepRREncoder(size: Int) extends Module {
     }
   }
 
+  // Select logic
   when(io.inVec(indexReg)) {
     indexReg    := Mux(io.enable, indexInc, indexReg)
     indexOut    := indexReg
@@ -38,7 +41,24 @@ class StepRREncoder(size: Int) extends Module {
   }
   assert(indexReg < size.U)
 
-  io.outIdx     := indexOut
+  // Lock logic
+  if (hasLock) {
+    val cntReg  = RegInit(0.U(log2Ceil(lockCnt+1).W))
+    // reset
+    when(io.enable) {
+      cntReg    := 0.U
+    // lock
+    }.elsewhen(cntReg === lockCnt.U) {
+      cntReg    := cntReg
+    // inc
+    }.elsewhen(io.inVec(indexReg) & !io.enable) {
+      cntReg    := cntReg + 1.U
+    }
+    lock        := RegNext(cntReg === lockCnt.U)
+  }
+
+  // Output logic
+  io.outIdx     := Mux(lock, io.vipIdx, indexOut)
   io.vipIdx     := indexReg
 }
 
