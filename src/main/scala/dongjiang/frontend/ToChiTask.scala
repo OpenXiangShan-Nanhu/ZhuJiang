@@ -71,8 +71,6 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     when(task.chi.fromCcRni & (task.chi.reqIs(ReadNoSnp) | task.chi.reqIs(WriteNoSnpPtl))) {
       HAssert(!task.chi.snpAttr                               , "CC-RNI Request should not assert SnpAttr"                                 )
       HAssert(!task.chi.snoopMe                               , "CC-RNI Request should not assert SnoopMe"                                 )
-      HAssert.withEn( task.chi.isEO  && !task.chi.expCompAck  , task.chi.isRead   , "Requests of read from CC-RNI should use EndpointOrder(EO)")
-      HAssert.withEn( task.chi.isOWO &&  task.chi.expCompAck  , task.chi.isWrite  , "Request of write form CC-RNI should use OWO"              )
     }
     when(task.chi.fromCcRnf & !(task.chi.reqIs(ReadNoSnp) | task.chi.reqIs(WriteNoSnpPtl))) {
       HAssert( task.chi.snpAttr                           , "Requests from CC-RNF must assert SnpAttr"                                                                                                 )

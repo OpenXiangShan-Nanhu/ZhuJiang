@@ -20,13 +20,19 @@ import chisel3.util._
 
 object Read_LAN_DCT_DMT {
   // ReadNoSnp Without ExpCompAck
-  def readNoSnp_noExpCompAck: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | isEO, Seq(
+  def readNoSnp_noExpCompAck_RO: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | isRO, Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I)) -> first(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I))
+  ))
+
+  // ReadNoSnp Without ExpCompAck
+  def readNoSnp_noExpCompAck_EO: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | isEO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I))
   ))
 
   // ReadNoSnp With ExpCompAck
-  def readNoSnp_expCompAck: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck | isEO, Seq(
+  def readNoSnp_expCompAck_EO: DecodeType = (fromLAN | toLAN | reqIs(ReadNoSnp) | expCompAck | isEO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | doDMT, noCmt)
   ))
@@ -114,5 +120,5 @@ object Read_LAN_DCT_DMT {
   ))
 
   // readNoSnp ++ readOnce ++ readNotSharedDirty ++ readUnique
-  def table: Seq[DecodeType] = Seq(readNoSnp_noExpCompAck, readNoSnp_expCompAck, readOnce, readNotSharedDirty, readUnique)
+  def table: Seq[DecodeType] = Seq(readNoSnp_noExpCompAck_RO, readNoSnp_noExpCompAck_EO, readNoSnp_expCompAck_EO, readOnce, readNotSharedDirty, readUnique)
 }

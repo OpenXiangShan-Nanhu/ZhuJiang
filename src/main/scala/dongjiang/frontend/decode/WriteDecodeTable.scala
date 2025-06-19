@@ -17,14 +17,20 @@ import chisel3._
 import chisel3.util._
 
 object Write_LAN {
+  // WriteNoSnpPtl With EWA
+  def writeNoSnpPtl_ewa_RO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | isRO, Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I)) -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp))))
+  ))
+
   // WriteNoSnpPtl Without EWA
-  def writeNoSnpPtl_noEWA: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | isOWO, Seq(
+  def writeNoSnpPtl_noEWA_OWO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | isOWO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp))))
   ))
 
   // WriteNoSnpPtl With EWA
-  def writeNoSnpPtl_ewa: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | isOWO, Seq(
+  def writeNoSnpPtl_ewa_OWO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | isOWO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp))))
   ))
@@ -168,5 +174,5 @@ object Write_LAN {
   ))
 
   // writeNoSnpPtl ++ writeUniquePtl ++ writeBackFull ++ writeCleanFull ++ writeEvictOrEvict ++ writeCleanFull
-  def table: Seq[DecodeType] = Seq(writeNoSnpPtl_noEWA, writeNoSnpPtl_ewa, writeUniquePtl_noAlloc, writeUniquePtl_alloc, writeEvictOrEvict, writeBackFull_noAlloc, writeBackFull_alloc, writeCleanFull)
+  def table: Seq[DecodeType] = Seq(writeNoSnpPtl_ewa_RO, writeNoSnpPtl_noEWA_OWO, writeNoSnpPtl_ewa_OWO, writeUniquePtl_noAlloc, writeUniquePtl_alloc, writeEvictOrEvict, writeBackFull_noAlloc, writeBackFull_alloc, writeCleanFull)
 }
