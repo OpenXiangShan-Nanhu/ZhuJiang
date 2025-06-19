@@ -109,15 +109,18 @@ class ResetDevice extends Module {
     val resetState = Input(Vec(2, Bool()))
     val onReset = Output(Bool())
   })
-  private val resetReg = RegInit(3.U(2.W))
-  io.resetInject(0) := resetReg(0)
-  io.resetInject(1) := resetReg(1)
+  private val resetReg = RegInit("b11".U)
+  private val resetDriveReg = RegNext(resetReg, "b11".U)
+  private val resetState0 = withReset(io.resetState(0).asAsyncReset) { RegNext(false.B, true.B) }
+  private val resetState1 = withReset(io.resetState(1).asAsyncReset) { RegNext(false.B, true.B) }
+  io.resetInject(0) := resetDriveReg(0)
+  io.resetInject(1) := resetDriveReg(1)
   when(resetReg === 3.U) {
     resetReg := 1.U
-  }.elsewhen(resetReg === 1.U && io.resetState(1) === false.B) {
+  }.elsewhen(resetReg === 1.U && resetState1 === false.B) {
     resetReg := 0.U
   }
-  io.onReset := RegNext(Cat(io.resetState).orR)
+  io.onReset := RegNext(resetState0 | resetState1)
 }
 
 class MiscDevice(node: Node)(implicit p:Parameters) extends ZJModule {
