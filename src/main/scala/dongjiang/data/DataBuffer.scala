@@ -13,6 +13,7 @@ import xs.utils.mbist.MbistPipeline
 import xs.utils.queue.FastQueue
 import xs.utils.sram.DualPortSramTemplate
 import zhujiang.utils.SramPwrCtlBoring
+import zhujiang.chi.DatOpcode._
 
 class DataBuffer(implicit p: Parameters) extends DJModule {
   /*
@@ -45,6 +46,7 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
   ))
   SramPwrCtlBoring.addSink(datBuf.io.pwctl)
   // Mask and replace flag
+  val FullMask    = Fill(djparam.BeatByte, 1.U)
   val maskRegVec  = RegInit(VecInit(Seq.fill(djparam.nrDataBuf) { 0.U(djparam.BeatByte.W) }))
   val replRegVec  = RegInit(VecInit(Seq.fill(djparam.nrDataBuf) { false.B }))
   // Reading Reg
@@ -67,6 +69,7 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
   // Set datBuf read io
   datBuf.io.rreq.valid  := io.readToCHI.fire | io.readToDS.fire
   datBuf.io.rreq.bits   := Mux(io.readToDS.valid, io.readToDS.bits.dbid, io.readToCHI.bits.dbid)
+  HAssert.withEn(maskRegVec(io.readToDS.bits.dbid) === FullMask, io.readToDS.valid)
 
   // Set replace flag
   replRegVec.zipWithIndex.foreach { case(r, i) =>
@@ -88,17 +91,17 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
   io.fromCHI.ready  := !io.respDS.valid
 
   // Get write db message
-  val dbid      = Mux(io.respDS.valid, io.respDS.bits.dbid, io.fromCHI.bits.dbid)
-  val FullMask  = Fill(djparam.BeatByte, 1.U)
-  val mask      = maskRegVec(dbid)
-  val repl      = replRegVec(dbid)
+  val dbid        = Mux(io.respDS.valid, io.respDS.bits.dbid, io.fromCHI.bits.dbid)
+  val mask        = maskRegVec(dbid)
+  val repl        = replRegVec(dbid)
 
   // Save Data
   val wDataVec                  = Mux(io.respDS.valid, io.respDS.bits.beat, io.fromCHI.bits.dat.Data).asTypeOf(Vec(djparam.BeatByte, UInt(8.W)))
   datBuf.io.wreq.valid          := io.respDS.valid | io.fromCHI.valid
   datBuf.io.wreq.bits.addr      := dbid
-  datBuf.io.wreq.bits.mask.get  := Mux(io.respDS.valid, Mux(repl, FullMask, ~mask), io.fromCHI.bits.dat.BE)
+  datBuf.io.wreq.bits.mask.get  := Mux(io.respDS.valid, Mux(repl, FullMask, ~mask), Mux(io.fromCHI.bits.dat.Opcode === NonCopyBackWriteData, io.fromCHI.bits.dat.BE, ~mask))
   datBuf.io.wreq.bits.data.zip(wDataVec).foreach { case(a, b) => a := b }
+  HAssert.withEn(io.fromCHI.bits.dat.BE === FullMask, io.fromCHI.valid & io.fromCHI.bits.dat.Opcode =/= NonCopyBackWriteData)
 
   /*
    * Modify mask
