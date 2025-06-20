@@ -257,7 +257,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val posWays          = djparam.posWays
   lazy val posWayBits       = log2Ceil(posWays)
   lazy val dirMuticycle     = djparam.dirRamLatency.max(if(djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup)
-  lazy val readDirLatency   = (if(djparam.dirRamSetup > 1 || djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup) + djparam.dirRamLatency
+  lazy val readDirLatency   = (if(djparam.dirRamSetup > 1 || djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup) + djparam.dirRamLatency + 1
   lazy val llcWayBits       = log2Ceil(djparam.llcWays)
 
   // DataBlock Parameters

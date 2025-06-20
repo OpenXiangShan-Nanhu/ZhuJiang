@@ -14,20 +14,35 @@ import freechips.rocketchip.util.ReplacementPolicy
 import xs.utils.mbist.MbistPipeline
 import chisel3.experimental.BundleLiterals._
 import zhujiang.utils.SramPwrCtlBoring
+import dongjiang.directory.DIR._
+
+object DIR {
+  //  D0 = readDirLatency - 1
+  //  D1 = (D0, D2)
+  val D2 = 1
+  val D3 = 0
+}
 
 class Shift(implicit p: Parameters) extends DJBundle {
+  // value
   val read  = UInt(readDirLatency.W)
   val write = UInt(readDirLatency.W)
   val repl  = UInt(readDirLatency.W)
 
+  // shift
   def recRead_d0(fire: Bool) = this.read   := Cat(fire, read >> 1)
   def recRepl_d0(fire: Bool) = this.repl   := Cat(fire, repl >> 1)
   def recWri_d0 (fire: Bool) = this.write  := Cat(fire, write >> 1)
 
-  def outDirResp_d2 = read(0).asBool
-  def updTagMeta_d2 = read(0).asBool  &  repl(0).asBool
-  def wriUpdRepl_d2 = write(0).asBool & !repl(0).asBool
+  // D2
+  def wriUpdRepl_d2 = write(D2).asBool & !repl(D2).asBool
+  def updTagMeta_d2 = read(D2).asBool  &  repl(D2).asBool
+  // D3
+  def outDirResp_d3 = read(D3).asBool
+  def updTagMeta_d3 = read(D3).asBool  &  repl(D3).asBool
+  def wriUpdRepl_d3 = write(D3).asBool & !repl(D3).asBool
 
+  // other
   private val hi    = readDirLatency - 1
   private val lo    = readDirLatency - (dirMuticycle - 1)
   def req           = read | write
@@ -56,6 +71,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   /*
   * SRAM, Reg and Wire declaration
   */
+  // metaArray
   val metaArray = Module(new SinglePortSramTemplate(
     gen         = Vec(param.nrMetas, new ChiState(dirType)),
     set         = param.sets,
@@ -71,6 +87,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   ))
   SramPwrCtlBoring.addSink(metaArray.io.pwctl)
 
+  // tagArray
   val tagArray  = Module(new SinglePortSramTemplate(
     gen         = UInt(param.tagBits.W),
     set         = param.sets,
@@ -86,6 +103,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   ))
   SramPwrCtlBoring.addSink(tagArray.io.pwctl)
 
+  // replArray
   val replArray = Module(new DualPortSramTemplate(
     gen         = UInt(repl.nBits.W),
     set         = param.sets,
@@ -103,6 +121,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   dontTouch(tagArray.io)
   dontTouch(replArray.io)
 
+  // lockTable
   val lockTable = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { new DJBundle {
     val valid   = Bool()
     val set     = UInt(param.setBits.W)
@@ -110,29 +129,42 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   }.Lit(_.valid -> false.B) }) }))
   val lockNext  = WireInit(lockTable)
 
-  val shiftReg      = RegInit(0.U.asTypeOf(new Shift))
+  // shiftReg
+  val shiftReg        = RegInit(0.U.asTypeOf(new Shift))
 
-  val resetDoneReg  = RegEnable(true.B, false.B, metaArray.io.req.ready & replArray.io.rreq.ready & replArray.io.wreq.ready)
+  // resetDoneReg
+  val resetDoneReg    = RegEnable(true.B, false.B, metaArray.io.req.ready & replArray.io.rreq.ready & replArray.io.wreq.ready)
   HardwareAssertion.withEn(!(metaArray.io.req.ready ^ io.write.ready), resetDoneReg & !shiftReg.replWillWrite) // Check Shift Reg logic
 
-  // [D0]: Receive Req and Read/Write SRAM
-
-  // [D1]: Get SRAM Resp
-  val reqSftReg_d1    = RegInit(VecInit(Seq.fill(readDirLatency) { 0.U.asTypeOf(new DJBundle with HasAddr with HasPackHnIdx {
+  // reqSftReg
+  val reqSftReg       = RegInit(VecInit(Seq.fill(readDirLatency) { 0.U.asTypeOf(new DJBundle with HasAddr with HasPackHnIdx {
     override def addrType: String = dirType
     val metaVec       = Vec(param.nrMetas, new ChiState(dirType))
     val wriWayOH      = UInt(param.ways.W)
   }) }))
-  val replSftReg_d1   = RegInit(VecInit(Seq.fill(readDirLatency-1) { 0.U(repl.nBits.W) }))
-  val replSftNext_d1  = Wire(Vec(readDirLatency-1, UInt(repl.nBits.W)))
+  when(io.write.fire | io.read.fire) {
+    reqSftReg.last.addr      := Mux(io.write.valid, io.write.bits.addr,    io.read.bits.addr)
+    reqSftReg.last.hnIdx     := Mux(io.write.valid, io.write.bits.hnIdx,   io.read.bits.hnIdx)
+    reqSftReg.last.wriWayOH  := Mux(io.write.valid, io.write.bits.wayOH,   0.U)
+    reqSftReg.last.metaVec   := Mux(io.write.valid, io.write.bits.metaVec, 0.U.asTypeOf(reqSftReg.last.metaVec))
+  }
+  reqSftReg.zipWithIndex.foreach { case(sft, i) =>
+    if (i > 0) { when(shiftReg.req.orR | io.read.fire | io.write.fire) { reqSftReg(i - 1) := sft } }
+  }
+
+  // [D0]: Receive req and read/write SRAM
+
+  // [D1]: Wait SRAM resp, update repl resp and select repl/unuse way
+  val replSftReg_d1   = RegInit(VecInit(Seq.fill(readDirLatency-2) { 0.U(repl.nBits.W) }))
+  val replSftNext_d1  = Wire(Vec(readDirLatency-2, UInt(repl.nBits.W)))
   val useWayVec_d1    = WireInit(0.U(param.ways.W))
   dontTouch(useWayVec_d1)
 
-  // [D2]: Select Way and Output DIR Resp
+  // [D2]: Determine hit
   val tagResp_d2      = tagArray.io.resp.bits.data
   val metaResp_d2     = metaArray.io.resp.bits.data
   // from d1
-  val req_d2          = WireInit(0.U.asTypeOf(reqSftReg_d1.head))
+  val req_d2          = reqSftReg(D2)
   val replMes_d2      = WireInit(0.U(repl.nBits.W))
   val addrVec_d2      = WireInit(VecInit(Seq.fill(param.ways) { 0.U.asTypeOf(new DJBundle with HasAddr {
     override def addrType: String = dirType
@@ -145,23 +177,31 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   val readHit_d2      = WireInit(false.B)
   val selWayOH_d2     = WireInit(0.U(param.ways.W))
   val newReplMes_d2   = WireInit(0.U(repl.nBits.W))
+  val resp_d2         = Wire(chiselTypeOf(io.resp.bits))
+
+  // [D3] Output DIR resp and update SRAM
+  val req_d3          = reqSftReg.head
+  val readHitReg_d3   = RegEnable(readHit_d2,     shiftReg.req(D2))
+  val selWayOHReg_d3  = RegEnable(selWayOH_d2,    shiftReg.req(D2))
+  val newReplMesReg_d3= RegEnable(newReplMes_d2,  shiftReg.req(D2))
+  val respReg_d3      = RegEnable(resp_d2,        shiftReg.req(D2))
 
 
   // ---------------------------------------------------------------------------------------------------------------------- //
-  // ---------------------------------------- [D0]: Receive Req and Read/Write SRAM --------------------------------------- //
+  // --------------------------- [D0]: Receive req and read/write SRAM / [D3]: Write SRAM  -------------------------------- //
   // ---------------------------------------------------------------------------------------------------------------------- //
   // sram read/write type                                                                                 // (read, write, repl)
-  val writeHit_d0 = io.write.valid & io.write.bits.hit  & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (0,    1,     0   ) -> read  repl / write repl (wriUpdRepl_d2)
-  val wriNoHit_d0 = io.write.valid & !io.write.bits.hit & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (1,    0,     1   ) -> read  repl / write repl (updTagMeta_d2)
+  val writeHit_d0 = io.write.valid & io.write.bits.hit  & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (0,    1,     0   ) -> read  repl / write repl (wriUpdRepl_d3)
+  val wriNoHit_d0 = io.write.valid & !io.write.bits.hit & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (1,    0,     1   ) -> read  repl / write repl (updTagMeta_d3)
   val read_d0     = io.read.valid                       & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (1,    0,     0   ) -> read  repl / write repl when hit
-  val repl_d0     = shiftReg.updTagMeta_d2                                                                // (0,    1,     1   )
+  val repl_d0     = shiftReg.updTagMeta_d3                                                                // (0,    1,     1   )
 
   // common
-  val reqSet_d0 = Mux(repl_d0, reqSet_d2, Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set))
+  val reqSet_d0 = Mux(repl_d0, req_d3.Addr.set, Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set))
 
   // write message
-  val wriMask_d0    = Mux(repl_d0, selWayOH_d2, io.write.bits.wayOH)
-  val wriMetaVec_d0 = Mux(repl_d0, req_d2.metaVec, io.write.bits.metaVec)
+  val wriMask_d0    = Mux(repl_d0, selWayOHReg_d3, io.write.bits.wayOH)
+  val wriMetaVec_d0 = Mux(repl_d0, req_d3.metaVec, io.write.bits.metaVec)
 
   // metaArray
   metaArray.io.req.valid          := (writeHit_d0 | wriNoHit_d0 | read_d0 | repl_d0) & resetDoneReg
@@ -176,8 +216,8 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   tagArray.io.req.valid           := (wriNoHit_d0 | read_d0 | repl_d0) & resetDoneReg
   tagArray.io.req.bits.addr       := reqSet_d0
   tagArray.io.req.bits.write      := repl_d0
-  tagArray.io.req.bits.mask.get   := selWayOH_d2
-  tagArray.io.req.bits.data.foreach(_ := req_d2.Addr.tag)
+  tagArray.io.req.bits.mask.get   := selWayOHReg_d3
+  tagArray.io.req.bits.data.foreach(_ := req_d3.Addr.tag)
   HardwareAssertion.withEn(tagArray.io.req.ready, tagArray.io.req.valid)
   HardwareAssertion.withEn(tagArray.io.req.bits.mask.get =/= 0.U, tagArray.io.req.valid & tagArray.io.req.bits.write)
 
@@ -192,65 +232,53 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   // read/write ready
   io.read.ready   := resetDoneReg & shiftReg.tagMetaReady & !shiftReg.replWillWrite & !io.write.valid
   io.write.ready  := resetDoneReg & shiftReg.tagMetaReady & !shiftReg.replWillWrite
-  HardwareAssertion.withEn(metaArray.io.req.ready, shiftReg.updTagMeta_d2)
-  HardwareAssertion.withEn(tagArray.io.req.ready,  shiftReg.updTagMeta_d2)
+  HardwareAssertion.withEn(metaArray.io.req.ready, shiftReg.updTagMeta_d3)
+  HardwareAssertion.withEn(tagArray.io.req.ready,  shiftReg.updTagMeta_d3)
 
   // replArray
   // read
   replArray.io.rreq.valid         := (wriNoHit_d0 | wriNoHit_d0 | read_d0) & resetDoneReg
   replArray.io.rreq.bits          := Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set)
   // write
-  replArray.io.wreq.valid         := shiftReg.wriUpdRepl_d2 | shiftReg.updTagMeta_d2 | (shiftReg.outDirResp_d2 & readHit_d2)
-  replArray.io.wreq.bits.addr     := reqSet_d2
-  replArray.io.wreq.bits.data(0)  := newReplMes_d2
+  replArray.io.wreq.valid         := shiftReg.wriUpdRepl_d3 | shiftReg.updTagMeta_d3 | (shiftReg.outDirResp_d3 & readHitReg_d3)
+  replArray.io.wreq.bits.addr     := req_d3.Addr.set
+  replArray.io.wreq.bits.data(0)  := newReplMesReg_d3
   HardwareAssertion.withEn(replArray.io.rreq.ready, replArray.io.rreq.valid)
   HardwareAssertion.withEn(replArray.io.wreq.ready, replArray.io.wreq.valid)
 
 
   // ---------------------------------------------------------------------------------------------------------------------- //
-  // --------------------------------------- [D1]: Get SRAM Resp and Update repl resp ------------------------------------- //
+  // ------------------------ [D1]: Wait SRAM resp, update repl resp and select repl/unuse way ---------------------------- //
   // ---------------------------------------------------------------------------------------------------------------------- //
-  // reqSftReg_d1
-  when(io.write.fire | io.read.fire) {
-    reqSftReg_d1.last.addr      := Mux(io.write.valid, io.write.bits.addr,    io.read.bits.addr)
-    reqSftReg_d1.last.hnIdx     := Mux(io.write.valid, io.write.bits.hnIdx,   io.read.bits.hnIdx)
-    reqSftReg_d1.last.wriWayOH  := Mux(io.write.valid, io.write.bits.wayOH,   0.U)
-    reqSftReg_d1.last.metaVec   := Mux(io.write.valid, io.write.bits.metaVec, 0.U.asTypeOf(reqSftReg_d1.last.metaVec))
-  }
-  reqSftReg_d1.zipWithIndex.foreach { case(sft, i) =>
-    if (i > 0) { reqSftReg_d1(i - 1) := sft }
-  }
-
-  when(shiftReg.outDirResp_d2) {
-    HAssert(tagArray.io.resp.valid)
-    HAssert(metaArray.io.resp.valid)
-  }
-
   // Get Repl Resp and Update Repl Resp
-  replSftNext_d1.last := Mux(reqSet_d2 === reqSftReg_d1.last.Addr.set, newReplMes_d2, replArray.io.rresp.bits(0))
+  replSftNext_d1.last := Mux(req_d3.Addr.set === reqSftReg.last.Addr.set, newReplMesReg_d3, replArray.io.rresp.bits(0))
   replSftReg_d1.zipWithIndex.foreach { case(reg, i) =>
       if(i > 0) {
-        replSftNext_d1(i-1) := Mux(reqSet_d2 === reqSftReg_d1(i).Addr.set, newReplMes_d2, reg)
+        replSftNext_d1(i-1) := Mux(req_d3.Addr.set === reqSftReg(i+1).Addr.set, newReplMesReg_d3, reg)
       }
       reg := replSftNext_d1(i)
   }
+  require(dirMuticycle >= 2)
 
   // Selet Replace/Unuse Way
-  useWayVec_d1      := lockNext(reqSftReg_d1(1).hnIdx.pos.set).map(lock => Mux(lock.valid & lock.set === reqSftReg_d1(1).Addr.set, UIntToOH(lock.way), 0.U)).reduce(_ | _)
-  val replWay_d1    = repl.get_replace_way(replSftNext_d1.head)
-  val unuseWay_d1   = PriorityEncoder(~useWayVec_d1.asUInt)
-  val selIsUsing_d1 = useWayVec_d1(replWay_d1)
-  val hasUnuseWay   = PopCount(useWayVec_d1) < param.ways.U
+  useWayVec_d1        := lockTable(reqSftReg(D2+1).hnIdx.pos.set).map(lock => Mux(lock.valid & lock.set === reqSftReg(D2+1).Addr.set, UIntToOH(lock.way), 0.U)).reduce(_ | _)
+  val replWay_d1      = repl.get_replace_way(replSftNext_d1.head)
+  val unuseWay_d1     = PriorityEncoder(~useWayVec_d1.asUInt)
+  val selIsUsing_d1   = useWayVec_d1(replWay_d1)
+  val hasUnuseWay_d1  = PopCount(useWayVec_d1) < param.ways.U
 
   // ---------------------------------------------------------------------------------------------------------------------- //
-  // ---------------------------------------- [D2]: Select Way and Output DIR Resp ---------------------------------------- //
+  // ------------------------------------------------- [D2]: Determine hit ------------------------------------------------ //
   // ---------------------------------------------------------------------------------------------------------------------- //
   // Get from D1
-  req_d2      := reqSftReg_d1.head
   replMes_d2  := replSftReg_d1.head
   addrVec_d2.zip(tagResp_d2).foreach { case(addr, tag) => addr.Addr.cat(io.config.bankId, tag, reqSet_d2, io.dirBank) }
   reqTag_d2   := req_d2.Addr.tag
   reqSet_d2   := req_d2.Addr.set
+  when(shiftReg.read(D2)) {
+    HAssert(tagArray.io.resp.valid)
+    HAssert(metaArray.io.resp.valid)
+  }
 
   // Get Hit Vec
   tagHitVec_d2      := addrVec_d2.map(_.Addr.tag === reqTag_d2)
@@ -258,9 +286,9 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   val hasInvalid_d2 = metaValVec_d2.map(!_).reduce(_ | _)
   val hitVec_d2     = tagHitVec_d2.zip(metaValVec_d2).map { case(a, b) => a & b }
   val hit_d2        = hitVec_d2.reduce(_ | _)
-  readHit_d2        := shiftReg.read(0) & hit_d2
+  readHit_d2        := shiftReg.read(D2) & hit_d2
   HardwareAssertion.withEn(!hit_d2, shiftReg.updTagMeta_d2)
-  HardwareAssertion.withEn(PopCount(hitVec_d2) <= 1.U, shiftReg.read(0))
+  HardwareAssertion.withEn(PopCount(hitVec_d2) <= 1.U, shiftReg.read(D2))
 
   // Select Way
   val selIsUsingReg_d2  = RegNext(selIsUsing_d1)
@@ -281,17 +309,16 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   dontTouch(hasInvalid_d2)
   dontTouch(hitWay_d2)
   dontTouch(invWay_d2)
-  HardwareAssertion.withEn(RegNext(hasUnuseWay), !hit_d2 & shiftReg.read(0))
+  HardwareAssertion.withEn(RegNext(hasUnuseWay_d1), !hit_d2 & shiftReg.read(D2))
 
   // Output Directory Resp
-  selWayOH_d2          := UIntToOH(selWay_d2)
-  io.resp.valid        := shiftReg.outDirResp_d2
-  io.resp.bits.addr    := addrVec_d2(selWay_d2).addr
-  io.resp.bits.wayOH   := selWayOH_d2
-  io.resp.bits.hit     := hit_d2
-  io.resp.bits.metaVec := metaResp_d2(selWay_d2)
-  io.resp.bits.hnTxnID := req_d2.hnIdx.getTxnID
-  io.resp.bits.toRepl  := shiftReg.repl(0)
+  selWayOH_d2     := UIntToOH(selWay_d2)
+  resp_d2.addr    := addrVec_d2(selWay_d2).addr
+  resp_d2.wayOH   := selWayOH_d2
+  resp_d2.hit     := hit_d2
+  resp_d2.metaVec := metaResp_d2(selWay_d2)
+  resp_d2.hnTxnID := req_d2.hnIdx.getTxnID
+  resp_d2.toRepl  := shiftReg.repl(D2)
 
   // Get New replace message
   newReplMes_d2 := repl.get_next_state(replMes_d2,  OHToUInt(Mux(shiftReg.wriUpdRepl_d2, req_d2.wriWayOH, selWayOH_d2)))
@@ -310,10 +337,10 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   // Node:
   //  1. '-' indicate dont care
   //  2. 'old' and 'new' indicate 'lock' state
-  val read_d2     =  shiftReg.read(0) & !shiftReg.write(0) & !shiftReg.repl(0)
-  val write_d2    = !shiftReg.read(0) &  shiftReg.write(0) & !shiftReg.repl(0)
-  val readRepl_d2 =  shiftReg.read(0) & !shiftReg.write(0) &  shiftReg.repl(0)
-  val wriRepl_d2  = !shiftReg.read(0) &  shiftReg.write(0) &  shiftReg.repl(0)
+  val read_d2     =  shiftReg.read(D2) & !shiftReg.write(D2) & !shiftReg.repl(D2)
+  val write_d2    = !shiftReg.read(D2) &  shiftReg.write(D2) & !shiftReg.repl(D2)
+  val readRepl_d2 =  shiftReg.read(D2) & !shiftReg.write(D2) &  shiftReg.repl(D2)
+  val wriRepl_d2  = !shiftReg.read(D2) &  shiftReg.write(D2) &  shiftReg.repl(D2)
   lockTable.zipWithIndex.foreach { case(lockSet, i) =>
     lockSet.zipWithIndex.foreach { case(lock, j) =>
       // hnIdx
@@ -323,20 +350,20 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
       hnIdx.pos.way   := j.U
 
       // hit message
-      val unLockHit   = io.unlock.valid & io.unlock.bits.hnIdx.asUInt === hnIdx.asUInt
-      val reqHit      = shiftReg.req(0) & req_d2.hnIdx.asUInt === hnIdx.asUInt
+      val unLockHit   = io.unlock.valid  & io.unlock.bits.hnIdx.asUInt === hnIdx.asUInt
+      val reqHit      = shiftReg.req(D2) & req_d2.hnIdx.asUInt === hnIdx.asUInt
       val readMiss    = read_d2     & reqHit & !hit_d2
       val readHit     = read_d2     & reqHit &  hit_d2
       val write       = write_d2    & reqHit
       val readRepl    = readRepl_d2 & reqHit
       val wriRepl     = wriRepl_d2  & reqHit
 
-      reqHit.suggestName(f"reqHit_${i}_${j}")
+      reqHit.suggestName  (f"reqHit_${i}_${j}")
       readMiss.suggestName(f"write_${i}_${j}")
-      readHit.suggestName(f"readRepl_${i}_${j}")
-      write.suggestName(f"read_${i}_${j}")
+      readHit.suggestName (f"readRepl_${i}_${j}")
+      write.suggestName   (f"read_${i}_${j}")
       readRepl.suggestName(f"wriRepl_${i}_${j}")
-      wriRepl.suggestName(f"unLockHit_${i}_${j}")
+      wriRepl.suggestName (f"unLockHit_${i}_${j}")
 
       // get state
       val dontCare  = Cat(lock.valid, lock.valid)
@@ -369,9 +396,16 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     }
   }
 
-  when(shiftReg.req(0) | io.unlock.valid) {
+  when(shiftReg.req(D2) | io.unlock.valid) {
     lockTable := lockNext
   }
+
+  // ---------------------------------------------------------------------------------------------------------------------- //
+  // -------------------------------------------- [D3]: Output DIR Resp --------------------------------------------------- //
+  // ---------------------------------------------------------------------------------------------------------------------- //
+  io.resp.valid := shiftReg.outDirResp_d3
+  io.resp.bits  := respReg_d3
+
 
   /*
    * HardwareAssertion placePipe
