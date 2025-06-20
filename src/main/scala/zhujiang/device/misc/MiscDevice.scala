@@ -27,7 +27,7 @@ class HwaCollectorEntry(implicit p:Parameters) extends ZJBundle {
 
 class HardwareAssertionDevice(implicit p:Parameters) extends ZJModule {
   private val hwaP = p(HardwareAssertionKey)
-  private val axiP = new AxiLiteParams(addrBits = log2Ceil(hwaP.hwaDevDepth) + 2, idBits = 8, dataBits = 32, attr = "debug")
+  private val axiP = new AxiLiteParams(addrBits = log2Ceil(hwaP.hwaDevDepth) + 2, dataBits = 32, attr = "debug")
   val io = IO(new Bundle {
     val axi = Flipped(new AxiBundle(axiP))
     val hwa = Flipped(Decoupled(new ZJDebugBundle))
@@ -48,8 +48,6 @@ class HardwareAssertionDevice(implicit p:Parameters) extends ZJModule {
   private val rq = FastQueue(io.axi.ar)
   private val wq = FastQueue(io.hwa)
   private val wcnt = RegInit(0.U(log2Ceil(hwaP.hwaDevDepth + 1).W))
-  private val rdq0 = Module(new Queue(UInt(axiP.idBits.W), entries = 1, pipe = true))
-  private val rdq1 = Module(new Queue(UInt(axiP.idBits.W), entries = 1, pipe = true))
   private val oq = Module(new FastQueue(new RFlit(axiP), size = 2, deqDataNoX = false))
 
   ram.io.req <> arb.io.out
@@ -63,23 +61,22 @@ class HardwareAssertionDevice(implicit p:Parameters) extends ZJModule {
 
   // Read S0
   private val rp = arb.io.in.head
-  rdq0.io.enq.valid := rq.valid && rp.ready
-  rdq0.io.enq.bits := rq.bits.id
-  rp.valid := rq.valid && rdq0.io.enq.ready
+  private val rvalid = RegInit(false.B)
+  private val rpipe = oq.io.enq.ready || !rvalid
+  rp.valid := rq.valid && rpipe
   rp.bits.data := DontCare
   rp.bits.write := false.B
   rp.bits.addr := rq.bits.addr.head(log2Ceil(hwaP.hwaDevDepth))
-  rq.ready := rp.ready && rdq0.io.enq.ready
+  rq.ready := rp.ready && rpipe
   // Read S1
-  rdq1.io.enq <> rdq0.io.deq
+  when(rpipe) {
+    rvalid := rp.fire
+  }
   // Read S2
-  oq.io.enq.valid := rdq1.io.deq.valid
-  oq.io.enq.bits.id := rdq1.io.deq.bits
+  oq.io.enq.valid := rvalid
+  oq.io.enq.bits := DontCare
   oq.io.enq.bits.data := ram.io.resp.bits.data.asUInt
-  oq.io.enq.bits.last := true.B
   oq.io.enq.bits.resp := "b00".U
-  oq.io.enq.bits.user := DontCare
-  rdq1.io.deq.ready := oq.io.enq.ready
   // Read S3
   io.axi.r <> oq.io.deq
 

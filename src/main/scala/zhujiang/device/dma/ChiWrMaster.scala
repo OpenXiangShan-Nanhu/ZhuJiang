@@ -74,7 +74,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val tailPtrAdd = txBPtr =/= tailPtr & txAckPtr =/= tailPtr & txDatPtr =/= tailPtr
 
   // private val rxDatPtrAdd  = io.axiW.fire & ((rxDatBeat === 1.U) | (rxDatBeat === 0.U) & !chiEntrys(rxDatPtr.value).double)
-  private val rxDatPtrAdd  = io.axiW.fire & io.axiW.bits.last
+  private val rxDatPtrAdd  = io.axiW.fire & io.axiW.bits._last
   private val txDatPtrAdd  = io.rdDB.fire & ((txDatBeat === 1.U) | (txDatBeat === 0.U) & !chiEntries(txDatPtr.value).double)
   private val rxDatBeatAdd = (chiEntries(rxDatPtr.value).double & (rxDatBeat === 0.U) || rxDatBeat === 1.U) & io.wrDB.fire
   private val txDatBeatAdd = (chiEntries(txDatPtr.value).double & (txDatBeat === 0.U) || txDatBeat === 1.U) & io.rdDB.fire

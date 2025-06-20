@@ -14,9 +14,10 @@ package object axi {
     sizeBits: Int = 3,
     burstBits: Int = 2,
     cacheBits: Int = 4,
-    lockBits: Int = 2,
+    lockBits: Int = 1,
     qosBits: Int = 4,
-    regionBits: Int = 4
+    regionBits: Int = 4,
+    lastBits:Int = 1
   )
 
   def AxiSlvParamsCalc(in: Seq[AxiParams]): AxiParams = {
@@ -35,9 +36,9 @@ package object axi {
     )
   }
 
-  class AxiLiteParams(addrBits: Int, idBits: Int, dataBits: Int, attr: String = "") extends AxiParams(
+  class AxiLiteParams(addrBits: Int, dataBits: Int, attr: String = "") extends AxiParams(
     addrBits = addrBits,
-    idBits = idBits,
+    idBits = 0,
     userBits = 0,
     dataBits = dataBits,
     lenBits = 0,
@@ -46,7 +47,8 @@ package object axi {
     cacheBits = 0,
     lockBits = 0,
     qosBits = 0,
-    regionBits = 0
+    regionBits = 0,
+    lastBits = 0
   )
 
   class AXFlit(params: AxiParams) extends Bundle {
@@ -70,16 +72,18 @@ package object axi {
   class WFlit(params: AxiParams) extends Bundle {
     val data = UInt(params.dataBits.W)
     val strb = UInt((params.dataBits / 8).W)
-    val last = Bool()
+    val last = UInt(params.lastBits.W)
     val user = UInt(params.userBits.W)
+    def _last:Bool = if(params.lastBits > 0 ) last(0) else true.B
   }
 
   class RFlit(params: AxiParams) extends Bundle {
     val id = UInt(params.idBits.W)
     val data = UInt(params.dataBits.W)
     val resp = UInt(2.W)
-    val last = Bool()
+    val last = UInt(params.lastBits.W)
     val user = UInt(params.userBits.W)
+    def _last:Bool = if(params.lastBits > 0 ) last(0) else true.B
   }
 
   class BFlit(params: AxiParams) extends Bundle {
@@ -156,7 +160,7 @@ package object axi {
     val wready = Input(Bool())
     val wdata = Output(UInt(params.dataBits.W))
     val wstrb = Output(UInt((params.dataBits / 8).W))
-    val wlast = Output(Bool())
+    val wlast = Output(UInt(params.lastBits.W))
     val wuser = Output(UInt(params.userBits.W))
 
     val bvalid = Input(Bool())
@@ -170,7 +174,7 @@ package object axi {
     val rid = Input(UInt(params.idBits.W))
     val rdata = Input(UInt(params.dataBits.W))
     val rresp = Input(UInt(2.W))
-    val rlast = Input(Bool())
+    val rlast = Input(UInt(params.lastBits.W))
     val ruser = Input(UInt(params.userBits.W))
 
     def <>(that: AxiBundle): Unit = AxiUtils.extConn(this, that)

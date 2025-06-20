@@ -52,7 +52,7 @@ abstract class BaseAxiXbar(mstParams:Seq[AxiParams]) extends Module {
       dontTouch(wSelV)
       wQueue.io.enq.valid := recordQueue.io.deq.valid && wSelV
       wQueue.io.enq.bits := Mux1H(recordQueue.io.deq.bits, io.upstream.map(_.w.bits))
-      recordQueue.io.deq.ready := wQueue.io.enq.fire && wQueue.io.enq.bits.last
+      recordQueue.io.deq.ready := wQueue.io.enq.fire && wQueue.io.enq.bits._last
 
       for(midx <- mstParams.indices) {
         val wreq = io.upstream(midx).aw

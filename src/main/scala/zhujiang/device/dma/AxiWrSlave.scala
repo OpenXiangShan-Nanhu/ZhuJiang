@@ -75,13 +75,13 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
  */
   private val nextShiftHintCompValid = !dAwEntrys(wDataPtr.value).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
   private val nextShiftHintLastValid = !dAwEntrys(wDataPtr.value).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr.value).burst) & !dAwEntrys(wDataPtr.value).specWrap
-  private val noFullWrapWDPtrAdd     = dAwEntrys(wDataPtr.value).dontMerge || io.uAxiW.bits.last
+  private val noFullWrapWDPtrAdd     = dAwEntrys(wDataPtr.value).dontMerge || io.uAxiW.bits._last
   private val fullWrapWDPtrAdd       = nextShiftHintLastValid & !dAwEntrys(wDataPtr.value).fullWrap
-  private val fixWDataPtrAdd         = !dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits.last & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
+  private val fixWDataPtrAdd         = !dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits._last & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
 
   private val wDataPtrAdd            = (fullWrapWDPtrAdd || fixWDataPtrAdd || noFullWrapWDPtrAdd) & io.uAxiW.fire
   private val tailPtrAdd             = io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get)
-  private val sDataPtrAdd            = io.dAxiW.fire & io.dAxiW.bits.last
+  private val sDataPtrAdd            = io.dAxiW.fire & io.dAxiW.bits._last
 
   uHeadPtr   := Mux(rxAwPipe.io.deq.fire, uHeadPtr + 1.U, uHeadPtr)
   uTailPtr   := Mux(tailPtrAdd          , uTailPtr + 1.U, uTailPtr)
@@ -91,15 +91,15 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   sDataPtr   := Mux(sDataPtrAdd         , sDataPtr + 1.U, sDataPtr)
 
   //Merge Data Reg Logic
-  private val dSendLast     = io.dAxiW.bits.last & io.dAxiW.fire
-  private val dShodLast     = io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last)
+  private val dSendLast     = io.dAxiW.bits._last & io.dAxiW.fire
+  private val dShodLast     = io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits._last)
   mergeLastReg             := PriorityMux(Seq(
     (dShodLast & !dSendLast) -> (!mergeLastReg),
     (!dShodLast & dSendLast) -> (!mergeLastReg),
     true.B                   -> mergeLastReg
   ))
   private val dSendComp     = io.dAxiW.fire
-  private val dShodComp     = io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits.last)
+  private val dShodComp     = io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr.value).dontMerge | io.uAxiW.bits._last)
   private val specShodComp  = dAwEntrys(wDataPtr.value).fullWrap & dShodComp
   private val normShodComp  = !dAwEntrys(wDataPtr.value).fullWrap & dShodComp
   merComReg                := PriorityMux(Seq(

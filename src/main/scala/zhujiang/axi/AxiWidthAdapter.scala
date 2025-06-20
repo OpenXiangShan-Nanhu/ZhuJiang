@@ -70,7 +70,7 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
   io.slv.w.bits.data := Fill(seg, wq.io.deq.bits.data)
   io.slv.w.bits.strb := strb.asUInt
   wq.io.deq.ready := io.slv.w.ready && awq.io.deq.valid
-  awq.io.deq.ready := io.slv.w.ready && wq.io.deq.valid && wq.io.deq.bits.last
+  awq.io.deq.ready := io.slv.w.ready && wq.io.deq.valid && wq.io.deq.bits._last
 
   //B Channel Connection
   io.mst.b <> io.slv.b
