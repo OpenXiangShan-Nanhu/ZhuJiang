@@ -99,9 +99,12 @@ class DBIDPool(implicit p: Parameters) extends DJModule {
 // ----------------------------------------------------------------------------------------------------- //
 class DBIDCtrl(implicit p: Parameters) extends DJModule {
   val io = IO(new Bundle {
-    val req         = Flipped(Decoupled(new HnTxnID with HasDataVec))
+    val alloc       = new DJBundle {
+      val req       = Flipped(Decoupled(new HnTxnID with HasDataVec))
+      val resp      = Vec(djparam.nrBeat, Valid(UInt(dbIdBits.W)))
+    }
     val release     = Flipped(Valid(new HnTxnID with HasDataVec))
-    val getDBIDVec  = Vec(5, Flipped(new GetDBID))
+    val getDBIDVec  = Vec(4, Flipped(new GetDBID))
     val cutHnTxnID  = Flipped(Valid(new CutHnTxnID))
   })
 
@@ -111,46 +114,51 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
   val pool          = Module(new DBIDPool)
   val dbidRegVec2   = Reg(Vec(djparam.nrPoS, Vec(2, UInt(dbIdBits.W))))
   val validRegVec2  = RegInit(VecInit(Seq.fill(djparam.nrPoS) { VecInit(false.B, false.B) }))
-  val reqId         = io.req.bits.hnTxnID
+  val reqId         = io.alloc.req.bits.hnTxnID
   val relId         = io.release.bits.hnTxnID
   val newReplId     = io.cutHnTxnID.bits.next
   val oldReplId     = io.cutHnTxnID.bits.before
 
   /*
-   * Receive req
+   * Receive alloc
    */
   // Set req ready
   val hasTwo          = pool.io.deq0.valid & pool.io.deq1.valid
-  io.req.ready        := hasTwo // Waste a DB to simplify ready judgment condition
+  io.alloc.req.ready  := hasTwo // Waste a DB to simplify ready judgment condition
   // Set pool deq ready
-  pool.io.deq0.ready  := io.req.valid & io.req.bits.dataVec(0) & hasTwo
-  pool.io.deq1.ready  := io.req.valid & io.req.bits.dataVec(1) & hasTwo
+  pool.io.deq0.ready  := io.alloc.req.valid & io.alloc.req.bits.dataVec(0) & hasTwo
+  pool.io.deq1.ready  := io.alloc.req.valid & io.alloc.req.bits.dataVec(1) & hasTwo
   // Get dbid next
   val dbidNextVec2    = WireInit(dbidRegVec2)
   dbidNextVec2.zipWithIndex.foreach { case(vec2, i) =>
     val replHit = io.cutHnTxnID.fire & newReplId === i.U
-    val reqHit  = io.req.fire         & reqId === i.U
+    val reqHit  = io.alloc.req.fire  & reqId === i.U
     // Replace dbid in reg
     when(replHit) {
-      vec2(0)   := dbidRegVec2(oldReplId)(0)
-      vec2(1)   := dbidRegVec2(oldReplId)(1)
+      vec2(0)         := dbidRegVec2(oldReplId)(0)
+      vec2(1)         := dbidRegVec2(oldReplId)(1)
     // Save dbid from pool
     }.elsewhen(reqHit) {
-      vec2(0)   := pool.io.deq0.bits
-      vec2(1)   := pool.io.deq1.bits
+      vec2(0)         := pool.io.deq0.bits
+      vec2(1)         := pool.io.deq1.bits
     }
     HAssert(!(replHit & reqHit))
   }
   // Modify dbid
-  when(io.req.valid | io.cutHnTxnID.valid) {
-    dbidRegVec2 := dbidNextVec2
+  when(io.alloc.req.valid | io.cutHnTxnID.valid) {
+    dbidRegVec2       := dbidNextVec2
   }
+  // Output DBID
+  io.alloc.resp(0).valid  := pool.io.deq0.fire
+  io.alloc.resp(1).valid  := pool.io.deq1.fire
+  io.alloc.resp(0).bits   := pool.io.deq0.bits
+  io.alloc.resp(1).bits   := pool.io.deq1.bits
   // HAssert
-  HAssert.withEn(pool.io.deq0.fire, io.req.fire & io.req.bits.dataVec(0))
-  HAssert.withEn(pool.io.deq1.fire, io.req.fire & io.req.bits.dataVec(1))
-  HAssert.withEn(!validRegVec2(reqId)(0), io.req.valid & io.req.bits.dataVec(0))
-  HAssert.withEn(!validRegVec2(reqId)(1), io.req.valid & io.req.bits.dataVec(1))
-  HAssert.withEn(!io.req.bits.isZero, io.req.valid)
+  HAssert.withEn(pool.io.deq0.fire, io.alloc.req.fire & io.alloc.req.bits.dataVec(0))
+  HAssert.withEn(pool.io.deq1.fire, io.alloc.req.fire & io.alloc.req.bits.dataVec(1))
+  HAssert.withEn(!validRegVec2(reqId)(0), io.alloc.req.valid & io.alloc.req.bits.dataVec(0))
+  HAssert.withEn(!validRegVec2(reqId)(1), io.alloc.req.valid & io.alloc.req.bits.dataVec(1))
+  HAssert.withEn(!io.alloc.req.bits.isZero, io.alloc.req.valid)
 
   /*
    * Receive release
@@ -163,17 +171,17 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
   pool.io.enq1.bits   := dbidRegVec2(relId)(1)
   // Set dbid valid in reg
   validRegVec2.zipWithIndex.foreach { case(v, i) =>
-    val reqHit  = io.req.fire         & reqId === i.U
+    val reqHit  = io.alloc.req.fire         & reqId === i.U
     val relHit  = io.release.fire     & relId === i.U
     val newHit  = io.cutHnTxnID.fire & newReplId === i.U
     val oldHit  = io.cutHnTxnID.fire & oldReplId === i.U
     // set valid
     when(reqHit | newHit) {
-      v(0) := Mux(reqHit, io.req.bits.dataVec(0), validRegVec2(oldReplId)(0))
-      v(1) := Mux(reqHit, io.req.bits.dataVec(1), validRegVec2(oldReplId)(1))
+      v(0) := Mux(reqHit, io.alloc.req.bits.dataVec(0), validRegVec2(oldReplId)(0))
+      v(1) := Mux(reqHit, io.alloc.req.bits.dataVec(1), validRegVec2(oldReplId)(1))
       // HAssert
-      HAssert.withEn(!v(0), io.req.bits.dataVec(0))
-      HAssert.withEn(!v(1), io.req.bits.dataVec(1))
+      HAssert.withEn(!v(0), io.alloc.req.bits.dataVec(0))
+      HAssert.withEn(!v(1), io.alloc.req.bits.dataVec(1))
     // set invalid
     }.elsewhen(relHit | oldHit) {
       v(0) := v(0) & !io.release.bits.dataVec(0) & !oldHit

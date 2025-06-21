@@ -22,7 +22,7 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
     // Req In
     val readToCHI     = Flipped(Decoupled(new ReadDB))
     val readToDS      = Flipped(Decoupled(new ReadDB))
-    val cleanMaskVec  = Vec(djparam.nrBeat, Flipped(Valid(new DBID)))
+    val rstFlagVec    = Vec(djparam.nrBeat, Flipped(Valid(new DBID)))
     // Data In
     val respDS        = Flipped(Valid(new DsResp))
     val fromCHI       = Flipped(Decoupled(new PackDataFilt with HasDBID)) // Only use rxDat.Data/DataID/BE in DataBlock
@@ -45,8 +45,8 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
   ))
   SramPwrCtlBoring.addSink(datBuf.io.pwctl)
   // Mask and replace flag
-  val maskRegVec  = RegInit(VecInit(Seq.fill(djparam.nrDataBuf) { 0.U(djparam.BeatByte.W) }))
-  val replRegVec  = RegInit(VecInit(Seq.fill(djparam.nrDataBuf) { false.B }))
+  val maskRegVec  = Reg(Vec(djparam.nrDataBuf, UInt(djparam.BeatByte.W)))
+  val replRegVec  = Reg(Vec(djparam.nrDataBuf, Bool()))
   // Reading Reg
   val rToCHIReg   = RegNext(io.readToCHI.fire, false.B) // Reading datBuf to CHI
   val rToDSReg    = RegNext(io.readToDS.fire,  false.B) // Reading datBuf to DS
@@ -70,15 +70,15 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
 
   // Set replace flag
   replRegVec.zipWithIndex.foreach { case(r, i) =>
-    val replHit   = io.readToDS.fire & io.readToDS.bits.repl  & io.readToDS.bits.dbid === i.U
-    val cleanHit  = Cat(io.cleanMaskVec.map(c => c.valid & c.bits.dbid === i.U)).orR
+    val replHit = io.readToDS.fire & io.readToDS.bits.repl  & io.readToDS.bits.dbid === i.U
+    val rstHit  = Cat(io.rstFlagVec.map(c => c.valid & c.bits.dbid === i.U)).orR
     when(replHit) {
       r := true.B
       HAssert(!r)
-    }.elsewhen(cleanHit) {
+    }.elsewhen(replHit) {
       r := false.B
     }
-    HAssert(!(replHit & cleanHit))
+    HAssert(!(replHit & replHit))
   }
 
   /*
@@ -105,18 +105,18 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
    * TODO: optimize clock gating
    */
   maskRegVec.zipWithIndex.foreach { case(m, i) =>
-    val cleanVec  = VecInit(io.cleanMaskVec.map(c => c.valid & c.bits.dbid === i.U))
-    val cleanHit  = cleanVec.asUInt.orR
-    val dsHit     = io.respDS.fire  & io.respDS.bits.dbid  === i.U
-    val chiHit    = io.fromCHI.fire & io.fromCHI.bits.dbid === i.U
-    when(cleanHit) {
+    val rstVec  = VecInit(io.rstFlagVec.map(c => c.valid & c.bits.dbid === i.U))
+    val rstHit  = rstVec.asUInt.orR
+    val dsHit   = io.respDS.fire  & io.respDS.bits.dbid  === i.U
+    val chiHit  = io.fromCHI.fire & io.fromCHI.bits.dbid === i.U
+    when(rstHit) {
       m := 0.U
     }.elsewhen(dsHit) {
       m := FullMask
     }.elsewhen(chiHit) {
       m := m | io.fromCHI.bits.dat.BE
     }
-    HAssert(PopCount(cleanVec ++ Seq(dsHit, chiHit)) <= 1.U)
+    HAssert(PopCount(rstVec ++ Seq(dsHit, chiHit)) <= 1.U)
   }
 
   /*

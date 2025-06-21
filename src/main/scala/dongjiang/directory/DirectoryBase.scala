@@ -137,11 +137,11 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(!(metaArray.io.req.ready ^ io.write.ready), resetDoneReg & !shiftReg.replWillWrite) // Check Shift Reg logic
 
   // reqSftReg
-  val reqSftReg       = RegInit(VecInit(Seq.fill(readDirLatency) { 0.U.asTypeOf(new DJBundle with HasAddr with HasPackHnIdx {
+  val reqSftReg       = Reg(Vec(readDirLatency ,new DJBundle with HasAddr with HasPackHnIdx {
     override def addrType: String = dirType
     val metaVec       = Vec(param.nrMetas, new ChiState(dirType))
     val wriWayOH      = UInt(param.ways.W)
-  }) }))
+  }))
   when(io.write.fire | io.read.fire) {
     reqSftReg.last.addr      := Mux(io.write.valid, io.write.bits.addr,    io.read.bits.addr)
     reqSftReg.last.hnIdx     := Mux(io.write.valid, io.write.bits.hnIdx,   io.read.bits.hnIdx)
@@ -155,7 +155,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   // [D0]: Receive req and read/write SRAM
 
   // [D1]: Wait SRAM resp, update repl resp and select repl/unuse way
-  val replSftReg_d1   = RegInit(VecInit(Seq.fill(readDirLatency-2) { 0.U(repl.nBits.W) }))
+  val replSftReg_d1   = Reg(Vec(readDirLatency-2, UInt(repl.nBits.W)))
   val replSftNext_d1  = Wire(Vec(readDirLatency-2, UInt(repl.nBits.W)))
   val useWayVec_d1    = WireInit(0.U(param.ways.W))
   dontTouch(useWayVec_d1)

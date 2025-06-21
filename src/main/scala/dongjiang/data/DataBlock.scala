@@ -86,7 +86,7 @@ class DataBlock(implicit p: Parameters) extends DJModule {
   /*
    * Connect dbidCtrl
    */
-  dbidCtrl.io.req               <> dataCM.io.reqDBOut
+  dbidCtrl.io.alloc.req         <> dataCM.io.reqDBOut
   dbidCtrl.io.release           := io.cleanDB
   dbidCtrl.io.cutHnTxnID        := io.cutHnTxnID
 
@@ -99,9 +99,9 @@ class DataBlock(implicit p: Parameters) extends DJModule {
   datBuf.io.fromCHI.valid       := io.rxDat.valid
   datBuf.io.fromCHI.bits.dat    := io.rxDat.bits
   datBuf.io.toCHI.ready         := io.txDat.ready
-  datBuf.io.cleanMaskVec.zipWithIndex.foreach { case (c, i) =>
-    c.valid := io.cleanDB.valid & io.cleanDB.bits.dataVec(i) & dbidCtrl.io.getDBIDVec.last.dbidVec(i).valid
-    c.bits.dbid := dbidCtrl.io.getDBIDVec.last.dbidVec(i).bits // Set dbid
+  datBuf.io.rstFlagVec.zipWithIndex.foreach { case (c, i) =>
+    c.valid                     := dbidCtrl.io.alloc.resp(i).valid
+    c.bits.dbid                 := dbidCtrl.io.alloc.resp(i).bits
   }
 
   /*
@@ -113,10 +113,8 @@ class DataBlock(implicit p: Parameters) extends DJModule {
   dbidCtrl.io.getDBIDVec(3).hnTxnID := io.rxDat.bits.TxnID
   datBuf.io.fromCHI.bits.dbid       := dbidCtrl.io.getDBIDVec(3).dbidVec(Mux(io.rxDat.bits.DataID === "b00".U, 0.U, 1.U)).bits; require(djparam.nrBeat == 2)
   HAssert.withEn(dbidCtrl.io.getDBIDVec(3).dbidVec(Mux(io.rxDat.bits.DataID === "b00".U, 0.U, 1.U)).valid, io.rxDat.valid)
-  // remap cleanMaskVec dbid
-  dbidCtrl.io.getDBIDVec(4).hnTxnID := io.cleanDB.bits.hnTxnID
   // require
-  require(dataCM.io.getDBIDVec.size + 2 == dbidCtrl.io.getDBIDVec.size)
+  require(dataCM.io.getDBIDVec.size + 1 == dbidCtrl.io.getDBIDVec.size)
 
   /*
    * HardwareAssertion placePipe
