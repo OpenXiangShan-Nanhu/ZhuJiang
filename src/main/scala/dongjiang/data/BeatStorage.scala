@@ -55,7 +55,8 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
     hasMbist    = hasMbist,
     outputReg   = true,
     suffix      = "_llc_dat",
-    powerCtl    = true
+    powerCtl    = true,
+    moduleName  = Some("HomeDatRam")
   ))
   SramPwrCtlBoring.addSink(array.io.pwctl)
   val dcidPipe    = Module(new Pipe(UInt(dcIdBits.W), readDsLatency))
