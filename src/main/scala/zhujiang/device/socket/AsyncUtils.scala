@@ -8,15 +8,11 @@ import xijiang.Node
 import xijiang.router.base.{DeviceIcnBundle, IcnBundle}
 import xs.utils.debug.HardwareAssertionKey
 import zhujiang.chi.FlitHelper.connIcn
-import zhujiang.{ZJBundle, ZJModule}
+import zhujiang.{ZJBundle, ZJModule, ZJParametersKey}
 
-object AsyncUtils {
-  val params = AsyncQueueParams(depth = 8, sync = 3)
-}
+class AsyncSink[T <: Data](gen: T)(implicit p: Parameters) extends AsyncQueueSink(gen, p(ZJParametersKey).asyncParams)
 
-class AsyncSink[T <: Data](gen: T) extends AsyncQueueSink(gen, AsyncUtils.params)
-
-class AsyncSource[T <: Data](gen: T) extends AsyncQueueSource(gen, AsyncUtils.params)
+class AsyncSource[T <: Data](gen: T)(implicit p: Parameters) extends AsyncQueueSource(gen, p(ZJParametersKey).asyncParams)
 
 trait BaseAsyncIcnMonoBundle {
   def req: Option[AsyncBundle[UInt]]
@@ -39,57 +35,57 @@ trait BaseAsyncIcnMonoBundle {
 
 class IcnTxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseAsyncIcnMonoBundle {
   val req = if(node.ejects.contains("REQ")) {
-    Some(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params))
+    Some(new AsyncBundle(UInt(rreqFlitBits.W), asyncP))
   } else if(node.ejects.contains("ERQ")) {
-    Some(new AsyncBundle(UInt(hreqFlitBits.W), AsyncUtils.params))
+    Some(new AsyncBundle(UInt(hreqFlitBits.W), asyncP))
   } else None
 
   val hpr = if(node.ejects.contains("HPR")) {
-    Some(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params))
+    Some(new AsyncBundle(UInt(rreqFlitBits.W), asyncP))
   } else None
 
   val resp = if(node.ejects.contains("RSP")) {
-    Some(new AsyncBundle(UInt(respFlitBits.W), AsyncUtils.params))
+    Some(new AsyncBundle(UInt(respFlitBits.W), asyncP))
   } else None
 
   val data = if(node.ejects.contains("DAT")) {
-    Some(new AsyncBundle(UInt(dataFlitBits.W), AsyncUtils.params))
+    Some(new AsyncBundle(UInt(dataFlitBits.W), asyncP))
   } else None
 
   val snoop = if(node.ejects.contains("SNP")) {
-    Some(new AsyncBundle(UInt(snoopFlitBits.W), AsyncUtils.params))
+    Some(new AsyncBundle(UInt(snoopFlitBits.W), asyncP))
   } else None
 
   val debug = if(node.ejects.contains("DBG") && p(HardwareAssertionKey).enable) {
-    Some(new AsyncBundle(UInt(debugFlitBits.W), AsyncUtils.params))
+    Some(new AsyncBundle(UInt(debugFlitBits.W), asyncP))
   } else None
 }
 
 class IcnRxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with BaseAsyncIcnMonoBundle {
   val req = if(node.injects.contains("REQ")) {
-    Some(Flipped(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params)))
+    Some(Flipped(new AsyncBundle(UInt(rreqFlitBits.W), asyncP)))
   } else if(node.injects.contains("ERQ")) {
-    Some(Flipped(new AsyncBundle(UInt(hreqFlitBits.W), AsyncUtils.params)))
+    Some(Flipped(new AsyncBundle(UInt(hreqFlitBits.W), asyncP)))
   } else None
 
   val hpr = if(node.injects.contains("HPR")) {
-    Some(Flipped(new AsyncBundle(UInt(rreqFlitBits.W), AsyncUtils.params)))
+    Some(Flipped(new AsyncBundle(UInt(rreqFlitBits.W), asyncP)))
   } else None
 
   val resp = if(node.injects.contains("RSP")) {
-    Some(Flipped(new AsyncBundle(UInt(respFlitBits.W), AsyncUtils.params)))
+    Some(Flipped(new AsyncBundle(UInt(respFlitBits.W), asyncP)))
   } else None
 
   val data = if(node.injects.contains("DAT")) {
-    Some(Flipped(new AsyncBundle(UInt(dataFlitBits.W), AsyncUtils.params)))
+    Some(Flipped(new AsyncBundle(UInt(dataFlitBits.W), asyncP)))
   } else None
 
   val snoop = if(node.injects.contains("SNP")) {
-    Some(Flipped(new AsyncBundle(UInt(snoopFlitBits.W), AsyncUtils.params)))
+    Some(Flipped(new AsyncBundle(UInt(snoopFlitBits.W), asyncP)))
   } else None
 
   val debug = if(node.injects.contains("DBG") && p(HardwareAssertionKey).enable) {
-    Some(Flipped(new AsyncBundle(UInt(debugFlitBits.W), AsyncUtils.params)))
+    Some(Flipped(new AsyncBundle(UInt(debugFlitBits.W), asyncP)))
   } else None
 }
 

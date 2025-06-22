@@ -3,6 +3,7 @@ package zhujiang
 import chisel3._
 import chisel3.util.log2Ceil
 import dongjiang.DJParam
+import freechips.rocketchip.util.AsyncQueueParams
 import org.chipsalliance.cde.config.{Field, Parameters}
 import xijiang.c2c.C2cParams
 import xijiang.tfb.TrafficBoardParams
@@ -212,6 +213,7 @@ case class ZJParameters(
   tfsParams: Option[TrafficSimParams] = None,
   djParamsOpt: Option[DJParam] = None,
   hasMbist: Boolean = false,
+  asyncParams: AsyncQueueParams = AsyncQueueParams(depth = 8, sync = 3, safe = true, narrow = false)
 ) {
   lazy val cachelineBytes = 64
   lazy val requestAddrBits = 48
@@ -271,6 +273,7 @@ trait HasZJParams {
   lazy val clusterIdBits = zjParams.clusterIdBits
   lazy val cpuIdBits = clusterIdBits - ciIdBits
   lazy val hasMbist = zjParams.hasMbist
+  lazy val asyncP = zjParams.asyncParams
 
   lazy val rreqFlitBits = new RReqFlit()(p).getWidth
   lazy val hreqFlitBits = new HReqFlit()(p).getWidth
