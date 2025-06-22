@@ -265,7 +265,7 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   require(llcSets == 4, f"llcSets should be 4, but is ${llcSets}")
   require(sfSets == 8, f"sfSets should be 8, but is ${sfSets}")
   require(nrDataCM == 8, f"nrDataCM should be 8, but is ${nrDataCM}")
-  require(nrReadCM == 8, f"nrReadCM should be 8, but is ${nrReadCM}")
+  require(nrReadCM == 4, f"nrReadCM should be 8, but is ${nrReadCM}")
 
   val hnfNode = Node(nodeType = NodeType.HF)
   val rnfNode = Node(nodeType = NodeType.RF)

@@ -22,6 +22,7 @@ case class DJParam(
                   nrHprTaskBuf:       Int = 16,
                   nrSnpTaskBuf:       Int = 8,
                   nrPoS:              Int = 64, // The number of outstanding
+                  nrReadCM:           Int = 0,  // 0: nrReadCM is calculate by nrPoS, otherwise use user define value
                   // ------------------------ Memblock ----------------------- //
                   dataBufSizeInByte:  Int = 64 * 32,
                   // Data SRAM
@@ -276,7 +277,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val nrReplaceCM      = (djparam.nrPoS / 2).max(2)
   lazy val nrTaskCM         = 3 // SnoopCM + ReadCM + WriteCM // TODO: + DatalessCM
   lazy val nrSnoopCM        = (djparam.nrPoS / 4).max(2)
-  lazy val nrReadCM         = (djparam.nrPoS / 2).max(2)
+  lazy val nrReadCM         = if (djparam.nrReadCM > 0) djparam.nrReadCM else (djparam.nrPoS / 2).max(2)
   lazy val nrDatalessCM     = (djparam.nrPoS / 4).max(2)
   lazy val nrWriteCM        = (djparam.nrPoS / 4).max(2)
   lazy val nrReceiveCM      = (djparam.nrPoS / 4).max(2)
