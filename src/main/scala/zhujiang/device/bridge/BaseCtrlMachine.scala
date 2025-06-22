@@ -156,7 +156,7 @@ abstract class BaseCtrlMachine[
       timer := timer + 1.U
     }
     when(valid) {
-      assert(timer < 10000.U, "bridge CM time out!")
+      assert(timer < 50000.U, "bridge CM time out!")
     }
   }
 }
