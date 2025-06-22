@@ -50,8 +50,10 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
   val maskRegVec  = Reg(Vec(djparam.nrDataBuf, UInt(djparam.BeatByte.W)))
   val replRegVec  = Reg(Vec(djparam.nrDataBuf, Bool()))
   // Reading Reg
-  val rToCHIReg   = RegNext(io.readToCHI.fire, false.B) // Reading datBuf to CHI
-  val rToDSReg    = RegNext(io.readToDS.fire,  false.B) // Reading datBuf to DS
+  val rToCHISftReg= RegInit(0.U(2.W))
+  val rToDSSftReg = RegInit(0.U(2.W))
+  rToCHISftReg    := Cat(io.readToCHI.fire, rToCHISftReg(1)) // Reading datBuf to CHI
+  rToDSSftReg     := Cat(io.readToDS.fire,  rToDSSftReg(1))  // Reading datBuf to DS
   HAssert(!(io.readToCHI.fire & io.readToDS.fire))
   // Output Queue
   val toDSQ       = Module(new FastQueue(new DsWrite with HasBeatNum, 2, false))
@@ -61,14 +63,14 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
    * Receive read req
    */
   // Set ready ready
-  val hasFreetoCHI      = toCHIQ.io.freeNum > rToCHIReg.asUInt
-  val hasFreetoDS       = toDSQ.io.freeNum > rToDSReg.asUInt
+  val hasFreetoCHI      = toCHIQ.io.freeNum > PopCount(rToCHISftReg)
+  val hasFreetoDS       = toDSQ.io.freeNum  > PopCount(rToDSSftReg)
   io.readToCHI.ready    := hasFreetoCHI & !io.readToDS.valid // TODO: has risk here
   io.readToDS.ready     := hasFreetoDS
 
   // Set datBuf read io
-  datBuf.io.rreq.valid  := io.readToCHI.fire | io.readToDS.fire
-  datBuf.io.rreq.bits   := Mux(io.readToDS.valid, io.readToDS.bits.dbid, io.readToCHI.bits.dbid)
+  datBuf.io.rreq.valid  := RegNext(io.readToCHI.fire | io.readToDS.fire, false.B)
+  datBuf.io.rreq.bits   := RegEnable(Mux(io.readToDS.valid, io.readToDS.bits.dbid, io.readToCHI.bits.dbid), io.readToCHI.fire | io.readToDS.fire)
 
   // Set replace flag
   replRegVec.zipWithIndex.foreach { case(r, i) =>
@@ -136,9 +138,9 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
    * Output data
    */
   // toCHIQ
-  val toCHIDBID                 = RegEnable(io.readToCHI.bits.dbid, io.readToCHI.fire)
-  toCHIQ.io.enq.valid           := rToCHIReg
-  toCHIQ.io.enq.bits.dcid       := RegEnable(io.readToCHI.bits.dcid, io.readToCHI.fire)
+  val toCHIDBID                 =  RegEnable(RegEnable(io.readToCHI.bits.dbid, io.readToCHI.fire), rToCHISftReg(1))
+  toCHIQ.io.enq.valid           := rToCHISftReg(0)
+  toCHIQ.io.enq.bits.dcid       := RegEnable(RegEnable(io.readToCHI.bits.dcid, io.readToCHI.fire), rToCHISftReg(1))
   toCHIQ.io.enq.bits.dat        := DontCare
   toCHIQ.io.enq.bits.dat.BE     := maskRegVec(toCHIDBID)
   toCHIQ.io.enq.bits.dat.Data   := datBuf.io.rresp.bits.asUInt
@@ -146,9 +148,9 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
   HAssert.withEn(datBuf.io.rresp.valid, toCHIQ.io.enq.valid)
 
   // ToDSQ
-  toDSQ.io.enq.valid            := rToDSReg
-  toDSQ.io.enq.bits.ds          := RegEnable(io.readToDS.bits.ds,      io.readToDS.fire)
-  toDSQ.io.enq.bits.beatNum     := RegEnable(io.readToDS.bits.beatNum, io.readToDS.fire)
+  toDSQ.io.enq.valid            := rToDSSftReg(0)
+  toDSQ.io.enq.bits.ds          := RegEnable(RegEnable(io.readToDS.bits.ds,      io.readToDS.fire), rToDSSftReg(1))
+  toDSQ.io.enq.bits.beatNum     := RegEnable(RegEnable(io.readToDS.bits.beatNum, io.readToDS.fire), rToDSSftReg(1))
   toDSQ.io.enq.bits.beat        := datBuf.io.rresp.bits.asUInt
   HAssert.withEn(toDSQ.io.enq.ready,    toDSQ.io.enq.valid)
   HAssert.withEn(datBuf.io.rresp.valid, toDSQ.io.enq.valid)
