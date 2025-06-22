@@ -77,10 +77,10 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
     when(replHit) {
       r := true.B
       HAssert(!r)
-    }.elsewhen(replHit) {
+    }.elsewhen(rstHit) {
       r := false.B
     }
-    HAssert(!(replHit & replHit))
+    HAssert(!(replHit & rstHit))
   }
 
   /*
