@@ -162,14 +162,14 @@ trait NocIOHelper {
   def runIOAutomation(): Unit = {
     ddrIO.zip(ddrDrv).zipWithIndex.foreach({ case ((a, b), i) =>
       val attr = attrStr(b.params.attr, i, ddrIO.size)
-      a.suggestName(s"m_axi_mem$attr")
+      a.suggestName(s"m_axi$attr")
       a <> b
       dontTouch(a)
       dontTouch(b)
     })
     cfgIO.zip(cfgDrv).zipWithIndex.foreach({ case ((a, b), i) =>
       val attr = attrStr(b.params.attr, i, cfgIO.size)
-      a.suggestName(s"m_axi_cfg$attr")
+      a.suggestName(s"m_axi$attr")
       a <> b
       dontTouch(a)
       dontTouch(b)
