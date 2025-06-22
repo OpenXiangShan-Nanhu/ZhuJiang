@@ -197,9 +197,9 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   // --------------------------- [D0]: Receive req and read/write SRAM / [D4]: Write SRAM  -------------------------------- //
   // ---------------------------------------------------------------------------------------------------------------------- //
   // sram read/write type                                                                                 // (read, write, repl)
-  val writeHit_d0 = io.write.valid & io.write.bits.hit  & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (0,    1,     0   ) -> read  repl / write repl (wriUpdRepl_d4)
-  val wriNoHit_d0 = io.write.valid & !io.write.bits.hit & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (1,    0,     1   ) -> read  repl / write repl (updTagMeta_d4)
-  val read_d0     = io.read.valid                       & shiftReg.tagMetaReady & !shiftReg.replWillWrite // (1,    0,     0   ) -> read  repl / write repl when hit
+  val writeHit_d0 = io.write.fire &  io.write.bits.hit & shiftReg.tagMetaReady & !shiftReg.replWillWrite  // (0,    1,     0   ) -> read  repl / write repl (wriUpdRepl_d4)
+  val wriNoHit_d0 = io.write.fire & !io.write.bits.hit & shiftReg.tagMetaReady & !shiftReg.replWillWrite  // (1,    0,     1   ) -> read  repl / write repl (updTagMeta_d4)
+  val read_d0     = io.read.fire                       & shiftReg.tagMetaReady & !shiftReg.replWillWrite  // (1,    0,     0   ) -> read  repl / write repl when hit
   val repl_d0     = shiftReg.updTagMeta_d4                                                                // (0,    1,     1   )
 
   // common
@@ -230,7 +230,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
   // shiftReg
   // The meta is used because all actions trigger reads or writes to the meta
   shiftReg.recRead_d0(metaArray.io.req.fire & !metaArray.io.req.bits.write)
-  shiftReg.recWri_d0 (metaArray.io.req.fire & metaArray.io.req.bits.write)
+  shiftReg.recWri_d0 (metaArray.io.req.fire &  metaArray.io.req.bits.write)
   shiftReg.recRepl_d0(metaArray.io.req.fire & (wriNoHit_d0 | repl_d0))
   HardwareAssertion(!(shiftReg.read & shiftReg.write).orR)
   HardwareAssertion.withEn((shiftReg.repl & shiftReg.req).orR, shiftReg.repl.orR)
