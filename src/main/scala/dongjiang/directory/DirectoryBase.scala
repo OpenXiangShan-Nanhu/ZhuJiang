@@ -51,7 +51,7 @@ class Shift(implicit p: Parameters) extends DJBundle {
   def replWillWrite = (repl & read).orR // when it is repl read, cant receive new req
 }
 
-class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
+class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
   override val desiredName = s"Directory${dirType.toUpperCase}"
   val param = new DirParam(dirType)
   val repl  = ReplacementPolicy.fromString("plru", param.ways)
@@ -87,7 +87,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     outputReg   = true,
     suffix      = s"_${dirType}_meta",
     hasMbist    = hasMbist,
-    powerCtl    = true
+    powerCtl    = powerCtl
   ))
   SramPwrCtlBoring.addSink(metaArray.io.pwctl)
 
@@ -103,7 +103,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     suffix      = s"_${dirType}_tag",
     outputReg   = true,
     hasMbist    = hasMbist,
-    powerCtl    = true
+    powerCtl    = powerCtl
   ))
   SramPwrCtlBoring.addSink(tagArray.io.pwctl)
 
@@ -117,7 +117,7 @@ class DirectoryBase(dirType: String)(implicit p: Parameters) extends DJModule {
     suffix      = s"_${dirType}_repl",
     outputReg   = true,
     hasMbist    = hasMbist,
-    powerCtl    = true
+    powerCtl    = powerCtl
   ))
   SramPwrCtlBoring.addSink(replArray.io.pwctl)
   MbistPipeline.PlaceMbistPipeline(1, desiredName, hasMbist)

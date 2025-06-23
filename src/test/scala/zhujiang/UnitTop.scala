@@ -116,14 +116,14 @@ object HomeTop extends App {
 object DirectoryTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new Directory()(config))
+    ChiselGeneratorAnnotation(() => new Directory(powerCtl = false)(config))
   ))
 }
 
 object DataBlockTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new DataBlock()(config))
+    ChiselGeneratorAnnotation(() => new DataBlock(powerCtl = false)(config))
   ))
 }
 

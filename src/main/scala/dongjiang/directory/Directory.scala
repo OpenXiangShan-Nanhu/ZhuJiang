@@ -10,7 +10,7 @@ import dongjiang.bundle._
 import xs.utils.debug._
 import xs.utils.mbist.MbistPipeline
 
-class Directory(implicit p: Parameters) extends DJModule {
+class Directory(powerCtl: Boolean = true)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
@@ -37,8 +37,8 @@ class Directory(implicit p: Parameters) extends DJModule {
   /*
    * Module declaration
    */
-  val llcs  = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("llc")))
-  val sfs   = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("sf")))
+  val llcs  = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("llc", powerCtl)))
+  val sfs   = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("sf",  powerCtl)))
   MbistPipeline.PlaceMbistPipeline(2, "HomeDirectory", hasMbist)
 
   /*

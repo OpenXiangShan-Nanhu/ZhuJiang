@@ -16,7 +16,7 @@ import zhujiang.utils.SramPwrCtlBoring
 import zhujiang.chi.DatOpcode._
 import zhujiang.chi.RspOpcode.Comp
 
-class DataBuffer(implicit p: Parameters) extends DJModule {
+class DataBuffer(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
@@ -43,7 +43,7 @@ class DataBuffer(implicit p: Parameters) extends DJModule {
     way           = djparam.BeatByte,
     hasMbist      = hasMbist,
     suffix        = "_llc_db",
-    powerCtl      = true
+    powerCtl      = powerCtl
   ))
   SramPwrCtlBoring.addSink(datBuf.io.pwctl)
   // Mask and replace flag

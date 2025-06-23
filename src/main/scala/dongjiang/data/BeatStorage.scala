@@ -33,7 +33,7 @@ class DsWrite(implicit p: Parameters) extends DJBundle with HasDsIdx { val beat 
 
 class DsResp(implicit p: Parameters) extends DJBundle with HasDBID with HasDCID { val beat = UInt(BeatBits.W) }
 
-class BeatStorage(implicit p: Parameters) extends DJModule {
+class BeatStorage(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
@@ -55,7 +55,7 @@ class BeatStorage(implicit p: Parameters) extends DJModule {
     hasMbist    = hasMbist,
     outputReg   = true,
     suffix      = "_llc_dat",
-    powerCtl    = true,
+    powerCtl    = powerCtl,
     moduleName  = Some("HomeDatRam")
   ))
   SramPwrCtlBoring.addSink(array.io.pwctl)

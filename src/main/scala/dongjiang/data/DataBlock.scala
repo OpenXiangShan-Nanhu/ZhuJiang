@@ -10,7 +10,7 @@ import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
 
-class DataBlock(implicit p: Parameters) extends DJModule {
+class DataBlock(powerCtl: Boolean = true)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
@@ -29,10 +29,10 @@ class DataBlock(implicit p: Parameters) extends DJModule {
   /*
    * Module declaration
    */
-  val dataStorage = Seq.fill(djparam.nrDSBank) { Seq.fill(djparam.nrBeat) { Module(new BeatStorage) } }
+  val dataStorage = Seq.fill(djparam.nrDSBank) { Seq.fill(djparam.nrBeat) { Module(new BeatStorage(powerCtl)) } }
   val dataCM      = Module(new DataCM)
   val dbidCtrl    = Module(new DBIDCtrl)
-  val datBuf      = Module(new DataBuffer)
+  val datBuf      = Module(new DataBuffer(powerCtl))
 
   /*
    * Connect IO
