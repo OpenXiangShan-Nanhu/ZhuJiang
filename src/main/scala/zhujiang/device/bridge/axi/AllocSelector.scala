@@ -7,7 +7,6 @@ import xs.utils.arb.{SelNto1, VipArbiter}
 class DataBufferAllocReq(outstanding: Int) extends Bundle {
   val qos = UInt(4.W)
   val size = UInt(3.W)
-  val waitNum = UInt(log2Ceil(outstanding).W)
   val dataIdOffset = UInt(2.W)
 }
 
@@ -16,9 +15,7 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
     val in = Vec(outstanding, Flipped(Decoupled(new DataBufferAllocReq(outstanding))))
     val out = Decoupled(new AxiDataBufferAllocReq(outstanding))
   })
-  private def selFunc(self:DataBufferAllocReq, other:DataBufferAllocReq):Bool = {
-    Mux(self.waitNum < other.waitNum, true.B, Mux(self.waitNum === other.waitNum, self.qos >= other.qos, false.B))
-  }
+  private def selFunc(self:DataBufferAllocReq, other:DataBufferAllocReq):Bool = self.qos >= other.qos
   private val selector = Module(new SelNto1(new DataBufferAllocReq(outstanding), outstanding, selFunc))
   private val selReg = RegNext(selector.io.out) // Do not gate this reg
   private val selArb = Module(new VipArbiter(new AxiDataBufferAllocReq(outstanding), outstanding))
