@@ -26,7 +26,7 @@ trait HasNodeId { this: DJBundle =>
   def fromRn :Bool = fromCc  | fromRni
 
   // LAN AID
-  // AID: 0 -> CHI2TL/DMA; 1 -> L2; 2 -> TL2CHI
+  // AID: 1 -> CHI2TL/DMA; 1 -> L2; 1 -> TL2CHI
   def fromCcRnf:  Bool = fromCc  & lanAId === 1.U
   def fromCcRni:  Bool = fromCc  & lanAId === 1.U
   def fromRniDma: Bool = fromRni & lanAId === 1.U
