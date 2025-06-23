@@ -92,7 +92,7 @@ class Block(implicit p: Parameters) extends DJModule {
    * Resp to Node
    */
   // needRespReg_s1 is associated with dbid2Rn of Commit.
-  sReceiptReg_s1                    := io.chiTask_s0.bits.chi.isRead  & io.chiTask_s0.bits.chi.isEO
+  sReceiptReg_s1                    := io.chiTask_s0.bits.chi.isRead  & (io.chiTask_s0.bits.chi.isEO | io.chiTask_s0.bits.chi.isRO)
   sDBIDReg_s1                       := io.chiTask_s0.bits.chi.isWrite | io.chiTask_s0.bits.chi.isAtomic
   shouldResp_s1                     := sReceiptReg_s1 | (sDBIDReg_s1 & io.reqDB_s1.ready)
   blockByDB_s1                      := sDBIDReg_s1 & !io.reqDB_s1.ready
@@ -112,10 +112,13 @@ class Block(implicit p: Parameters) extends DJModule {
   io.fastResp_s1.bits.rsp.Opcode    := PriorityMux(Seq(
     sReceiptReg_s1                              -> ReadReceipt,
     taskReg_s1.chi.reqIs(WriteEvictOrEvict)     -> Comp,
+    (sDBIDReg_s1 & taskReg_s1.chi.isRO)         -> DBIDResp,
     (sDBIDReg_s1 & taskReg_s1.chi.isOWO)        -> DBIDResp,
     (sDBIDReg_s1 & taskReg_s1.chi.memAttr.ewa)  -> CompDBIDResp
   ))
-  HardwareAssertion.withEn(taskReg_s1.chi.isOWO | taskReg_s1.chi.memAttr.ewa, validReg_s1 && taskReg_s1.chi.isWrite)
+  HardwareAssertion.withEn(taskReg_s1.chi.isRO | taskReg_s1.chi.isOWO | taskReg_s1.chi.memAttr.ewa, validReg_s1 && taskReg_s1.chi.isWrite)
+  HardwareAssertion.withEn(taskReg_s1.chi.isRO | taskReg_s1.chi.isEO  | taskReg_s1.chi.noOrder,     validReg_s1 && taskReg_s1.chi.isRead)
+  HardwareAssertion.withEn(taskReg_s1.chi.noOrder, validReg_s1 && (taskReg_s1.chi.isDataless | taskReg_s1.chi.isCombinedWrite | taskReg_s1.chi.isAtomic))
 
   /*
    * HardwareAssertion placePipe
