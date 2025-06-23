@@ -1,7 +1,7 @@
 package zhujiang.device.socket
 
 import chisel3._
-import chisel3.util.DecoupledIO
+import chisel3.util._
 import freechips.rocketchip.util.{AsyncBundle, AsyncQueueParams, AsyncQueueSink, AsyncQueueSource}
 import org.chipsalliance.cde.config.Parameters
 import xijiang.Node
@@ -126,40 +126,66 @@ class IcnSideAsyncModule(node: Node)(implicit p: Parameters) extends BaseIcnAsyn
   val io = IO(new Bundle {
     val dev = new DeviceIcnBundle(node)
     val async = new IcnAsyncBundle(node)
+    val empty = Output(Bool())
   })
 
-  for(chn <- node.ejects) {
+  private val txqEmptyVec = Wire(Vec(node.ejects.size, Bool()))
+  for((chn, idx) <- node.ejects.zipWithIndex) {
     val rx = io.dev.rx.bundleMap(chn)
     val tx = io.async.tx.bundleMap(chn)
     val ax = toAsync(tx, rx)
+    txqEmptyVec(idx) := ax.io.empty
     ax.suggestName(s"async_src_${chn.toLowerCase}")
-
   }
 
-  for(chn <- node.injects) {
+  private val rxqEmptyVec = Wire(Vec(node.injects.size, Bool()))
+  for((chn, idx) <- node.injects.zipWithIndex) {
     val rx = io.async.rx.bundleMap(chn)
     val tx = io.dev.tx.bundleMap(chn)
     val ax = fromAsync(tx, rx)
+    rxqEmptyVec(idx) := ax.io.deq.valid
     ax.suggestName(s"async_sink_${chn.toLowerCase}")
   }
+  private val empty = txqEmptyVec.asUInt.andR && rxqEmptyVec.asUInt.andR
+  private val notEmptyCnt = Reg(UInt(8.W))
+  when(!empty) {
+    notEmptyCnt := Fill(notEmptyCnt.getWidth, true.B)
+  }.elsewhen(notEmptyCnt.orR) {
+    notEmptyCnt := Cat(false.B, notEmptyCnt(notEmptyCnt.getWidth - 1, 1))
+  }
+  io.empty := notEmptyCnt(0) && !empty
 }
 
 class DeviceSideAsyncModule(node: Node)(implicit p: Parameters) extends BaseIcnAsyncModule(node = node, icnSide = false) {
   val io = IO(new Bundle {
     val icn = new IcnBundle(node)
     val async = new DeviceIcnAsyncBundle(node)
+    val empty = Output(Bool())
   })
-  for(chn <- node.ejects) {
+  private val rxqEmptyVec = Wire(Vec(node.ejects.size, Bool()))
+  for((chn, idx) <- node.ejects.zipWithIndex) {
     val rx = io.async.rx.bundleMap(chn)
     val tx = io.icn.tx.bundleMap(chn)
     val ax = fromAsync(tx, rx)
+    rxqEmptyVec(idx) := ax.io.deq.valid
     ax.suggestName(s"async_sink_${chn.toLowerCase}")
   }
 
-  for(chn <- node.injects) {
+  private val txqEmptyVec = Wire(Vec(node.injects.size, Bool()))
+  for((chn, idx) <- node.injects.zipWithIndex) {
     val rx = io.icn.rx.bundleMap(chn)
     val tx = io.async.tx.bundleMap(chn)
     val ax = toAsync(tx, rx)
+    txqEmptyVec(idx) := ax.io.empty
     ax.suggestName(s"async_src_${chn.toLowerCase}")
   }
+
+  private val empty = txqEmptyVec.asUInt.andR && rxqEmptyVec.asUInt.andR
+  private val notEmptyCnt = Reg(UInt(8.W))
+  when(!empty) {
+    notEmptyCnt := Fill(notEmptyCnt.getWidth, true.B)
+  }.elsewhen(notEmptyCnt.orR) {
+    notEmptyCnt := Cat(false.B, notEmptyCnt(notEmptyCnt.getWidth - 1, 1))
+  }
+  io.empty := notEmptyCnt(0) && !empty
 }
