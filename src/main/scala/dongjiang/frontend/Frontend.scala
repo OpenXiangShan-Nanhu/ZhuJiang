@@ -67,12 +67,12 @@ class Frontend(implicit p: Parameters) extends DJModule {
   val posTable    = Module(new PosTable())
   val block       = Module(new Block())
   // S2: Wait Directory Response
-  val pipe_s2     = Module(new Pipe(chiselTypeOf(block.io.task_s1.bits), readDirLatency-1))
+  val pipe        = Module(new Pipe(chiselTypeOf(block.io.task_s1.bits), readDirLatency-1))
   // S3: Receive DirResp and Decode
   val decode      = Module(new Decode())
   // Queue
   val fastRespQ   = Module(new FastQueue(new FastResp, size = djparam.nrDirBank.max(2), deqDataNoX = false))
-  val respTypeQ   = Module(new FastQueue(new RecRespType, size = readDirLatency, deqDataNoX = false))
+  val respTypeQ   = if(djparam.nrDirBank >= 2) Some(Module(new FastQueue(new RecRespType, size = readDirLatency.min(djparam.nrDirBank), deqDataNoX = false))) else None
   val cleanDBQ    = Module(new FastQueue(new HnTxnID with HasDataVec, size = readDirLatency, deqDataNoX = false))
 
   /*
@@ -93,32 +93,40 @@ class Frontend(implicit p: Parameters) extends DJModule {
   io.reqDB_s3               <> decode.io.reqDB_s3
   io.readDir                <> block.io.readDir_s1
   io.fastResp               <> fastRespQ.io.deq
-  io.recRespType            <> respTypeQ.io.deq
   io.fastData               <> decode.io.fastData_s3
   io.cleanDB                <> cleanDBQ.io.deq
   io.cmtTask                := decode.io.cmtTask_s3
   io.alrUsePoS              := posTable.io.alrUsePoS
   io.working                := hprTaskBuf.io.working | reqTaskBuf.io.working | snpTaskBuf.map(_.io.working).getOrElse(false.B) | posTable.io.working
+  if(djparam.nrDirBank >= 2) {
+    io.recRespType          <> respTypeQ.get.io.deq
+  } else {
+    io.recRespType.valid    := decode.io.recRespType_s3.valid
+    io.recRespType.bits     := decode.io.recRespType_s3.bits
+    HAssert.withEn(io.recRespType.ready, io.recRespType.valid)
+  }
 
   // io.fastResp <--- [Queue] --- block.io.fastResp_s1
   //                        ^
   //                        |
-  // block fastResp enq when it cant deq (deq.valid & !deq.ready)
+  //         block fastResp when it cant enq
   //                        |
   // io.recRespType <------ [Queue] -------- decode.io.recRespType_s3
   // io.cleanDB     <------ [Queue] -------- decode.io.cleanDB_s3
   // fastRespQ
-  val blockFastResp         = respTypeQ.io.deq.valid & (!respTypeQ.io.deq.ready | !cleanDBQ.io.enq.ready)
-  fastRespQ.io.enq.valid    := block.io.fastResp_s1.valid & !blockFastResp
-  fastRespQ.io.enq.bits     := block.io.fastResp_s1.bits
-  block.io.fastResp_s1.ready:= fastRespQ.io.enq.ready & !blockFastResp
+  val blockFastResp             = !respTypeQ.map(_.io.enq.ready).getOrElse(true.B) | !cleanDBQ.io.enq.ready
+  fastRespQ.io.enq.valid        := block.io.fastResp_s1.valid & !blockFastResp
+  fastRespQ.io.enq.bits         := block.io.fastResp_s1.bits
+  block.io.fastResp_s1.ready    := fastRespQ.io.enq.ready & !blockFastResp
   // respTypeQ
-  respTypeQ.io.enq.valid    := decode.io.recRespType_s3.valid
-  respTypeQ.io.enq.bits     := decode.io.recRespType_s3.bits
-  HAssert.withEn(respTypeQ.io.enq.ready, respTypeQ.io.enq.valid)
+  if(djparam.nrDirBank >= 2) {
+    respTypeQ.get.io.enq.valid  := decode.io.recRespType_s3.valid
+    respTypeQ.get.io.enq.bits   := decode.io.recRespType_s3.bits
+    HAssert.withEn(respTypeQ.get.io.enq.ready, respTypeQ.get.io.enq.valid)
+  }
   // cleanDBQ
-  cleanDBQ.io.enq.valid     := decode.io.cleanDB_s3.valid
-  cleanDBQ.io.enq.bits      := decode.io.cleanDB_s3.bits
+  cleanDBQ.io.enq.valid         := decode.io.cleanDB_s3.valid
+  cleanDBQ.io.enq.bits          := decode.io.cleanDB_s3.bits
   HAssert.withEn(cleanDBQ.io.enq.ready, cleanDBQ.io.enq.valid)
 
   // hpr2Task
@@ -171,12 +179,12 @@ class Frontend(implicit p: Parameters) extends DJModule {
   block.io.hnIdx_s1         := posTable.io.hnIdx_s1
 
   // buffer [S2]
-  pipe_s2.io.enq.valid      := block.io.task_s1.valid
-  pipe_s2.io.enq.bits       := block.io.task_s1.bits
+  pipe.io.enq.valid         := block.io.task_s1.valid
+  pipe.io.enq.bits          := block.io.task_s1.bits
 
   // decode [S3]
-  decode.io.task_s2.valid   := pipe_s2.io.deq.valid
-  decode.io.task_s2.bits    := pipe_s2.io.deq.bits
+  decode.io.task_s2.valid   := pipe.io.deq.valid
+  decode.io.task_s2.bits    := pipe.io.deq.bits
   decode.io.respDir_s3      := io.respDir
 
   /*
