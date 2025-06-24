@@ -40,16 +40,16 @@ object Write_LAN {
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp)))),
     // I I SC -> I I I
-    (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(SC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I I UC -> I I I
-    (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UC))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I I UD -> I I I
-    (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UD))  -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("read", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (waitRecDone | snpOth(SnpUnique) | retToSrc | needDB, Seq(
-      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
-      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I))    -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
-      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false))  // I I I
+      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I_PD)) -> second(tdop("send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
+      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I))    -> second(tdop("send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
+      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false))              // I I I
     ))
   ))
 
@@ -58,16 +58,16 @@ object Write_LAN {
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (waitRecDone, Seq(hasGotNCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp)))),
     // I I SC -> I I UD
-    (sfMiss | llcIs(SC))  -> first(waitRecDone, hasGotNCBWrData, cdop("read", "save") | cmtRsp(Comp) | wriLLC(UD)),
+    (sfMiss | llcIs(SC))  -> first(waitRecDone, hasGotNCBWrData, cdop("read", "save", "fullSize") | cmtRsp(Comp) | wriLLC(UD)),
     // I I UC -> I I UD
-    (sfMiss | llcIs(UC))  -> first(waitRecDone, hasGotNCBWrData, cdop("read", "save") | cmtRsp(Comp) | wriLLC(UD)),
+    (sfMiss | llcIs(UC))  -> first(waitRecDone, hasGotNCBWrData, cdop("read", "save", "fullSize") | cmtRsp(Comp) | wriLLC(UD)),
     // I I UD -> I I UD
-    (sfMiss | llcIs(UD))  -> first(waitRecDone, hasGotNCBWrData, cdop("read", "save") | cmtRsp(Comp) | wriLLC(UD)),
+    (sfMiss | llcIs(UD))  -> first(waitRecDone, hasGotNCBWrData, cdop("read", "save", "fullSize") | cmtRsp(Comp) | wriLLC(UD)),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (waitRecDone | snpOth(SnpUnique) | retToSrc | needDB, Seq(
-      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I_PD)) -> second(cdop("save") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)),          // I I UD
-      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I))    -> second(cdop("save") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)),          // I I UD
-      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send") | write(WriteNoSnpPtl),  cmtRsp(Comp) | wriSNP(false)) // I I I
+      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I_PD)) -> second(cdop("save", "fullSize") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
+      (hasGotNCBWrData | datIs(SnpRespData) | respIs(I))    -> second(cdop("save", "fullSize") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
+      (hasGotNCBWrData | rspIs(SnpResp)     | respIs(I))    -> second(tdop("send") | write(WriteNoSnpPtl),  cmtRsp(Comp) | wriSNP(false))    // I I I
     ))
   ))
 

@@ -79,7 +79,6 @@ class Block(implicit p: Parameters) extends DJModule {
   io.task_s1.bits.hnIdx           := io.hnIdx_s1
   io.task_s1.bits.alr.reqDB       := io.reqDB_s1.fire
   io.task_s1.bits.alr.sData       := false.B
-  io.task_s1.bits.alr.getSnpData  := false.B
 
   /*
    * Read Directory

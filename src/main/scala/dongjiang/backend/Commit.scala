@@ -177,7 +177,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   // other bits
   io.dataTask.bits.ds             := taskReg.ds
   io.dataTask.bits.hnTxnID        := io.hnTxnID
-  io.dataTask.bits.dataVec        := Mux(taskReg.cmt.dataOp.save & taskReg.alr.getSnpData, DataVec.Full, taskReg.chi.dataVec)
+  io.dataTask.bits.dataVec        := Mux(taskReg.cmt.fullSize, DataVec.Full, taskReg.chi.dataVec)
 
   /*
    * Send write directory task to ReplaceCM
@@ -212,7 +212,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   // chi
   cmTask.chi                      := taskReg.chi
   cmTask.chi.channel              := Mux(taskReg.task.snoop, ChiChannel.SNP, ChiChannel.REQ)
-  cmTask.chi.dataVec              := Mux(taskReg.task.snoop | taskReg.alr.getSnpData, DataVec.Full, taskReg.chi.dataVec)
+  cmTask.chi.dataVec              := Mux(taskReg.task.snoop | taskReg.task.fullSize, DataVec.Full, taskReg.chi.dataVec)
   cmTask.chi.opcode               := taskReg.task.opcode
   cmTask.chi.expCompAck           := taskReg.task.expCompAck
   cmTask.chi.retToSrc             := taskReg.task.retToSrc
@@ -382,13 +382,6 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   when(io.reqDB.fire) {
     taskNext.alr.reqDB := true.B
     HAssert(!taskReg.alr.reqDB)
-  }
-  // getSnpData
-  when(cmRespHit) {
-    val opcode  = io.cmResp.bits.taskInst.opcode
-    val channel = io.cmResp.bits.taskInst.channel
-    taskNext.alr.getSnpData := (opcode === SnpRespData | opcode === SnpRespDataFwded) & channel === ChiChannel.DAT
-    HAssert.withEn(!taskReg.alr.getSnpData, taskNext.alr.getSnpData)
   }
 
   /*

@@ -207,7 +207,6 @@ trait HasAlready { this: DJBundle =>
   val alr           = new DJBundle {
     val reqDB       = Bool() // Already request DataCM and DataBuf. If set it, commit will clean when done all
     val sData       = Bool() // Already send DataTask to read DS to CHI in S3(Decode) and Commit need wait DataResp
-    val getSnpData  = Bool() // Already get data from SnpRespDataX
   }
 }
 

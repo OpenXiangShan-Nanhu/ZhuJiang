@@ -49,15 +49,15 @@ object Read_LAN_DCT_DMT {
     (sfMiss | llcIs(UD))  -> first(cdop("read", "send") | cmtDat(CompData) | resp(I)),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (snpOne(SnpOnceFwd) | needDB, Seq(
-      (rspIs(SnpRespFwded)      | respIs(UC)    | fwdIs(I))   -> second(noCmt),                                       // I UC  I
-      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(I))   -> second(noCmt),                                       // I SC  I
-      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(wriSNP(false)),                               // I SC  I
-      (rspIs(SnpRespFwded)      | respIs(UD)    | fwdIs(I))   -> second(noCmt),                                       // I UD  I
-      (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(I))   -> second(tdop("send") | write(WriteNoSnpFull), noCmt), // I SC  I
-      (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(I))   -> second(cdop("save") | wriSNP(false) | wriLLC(UD)),   // I  I UD
-      (rspIs(SnpResp)           | respIs(SC))                 -> second(read(ReadNoSnp) | doDMT, noCmt),              // I SC  I
-      (rspIs(SnpResp)           | respIs(I))                  -> second(read(ReadNoSnp) | doDMT, wriSNP(false)),      // I  I  I
-      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(wriSNP(false)),                               // I  I  I
+      (rspIs(SnpRespFwded)      | respIs(UC)    | fwdIs(I))   -> second(noCmt),                                                   // I UC  I
+      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(I))   -> second(noCmt),                                                   // I SC  I
+      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(wriSNP(false)),                                           // I SC  I
+      (rspIs(SnpRespFwded)      | respIs(UD)    | fwdIs(I))   -> second(noCmt),                                                   // I UD  I
+      (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(I))   -> second(tdop("send", "fullSize")| write(WriteNoSnpFull), noCmt),  // I SC  I
+      (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(I))   -> second(cdop("save") | wriSNP(false) | wriLLC(UD)),               // I  I UD
+      (rspIs(SnpResp)           | respIs(SC))                 -> second(read(ReadNoSnp) | doDMT, noCmt),                          // I SC  I
+      (rspIs(SnpResp)           | respIs(I))                  -> second(read(ReadNoSnp) | doDMT, wriSNP(false)),                  // I  I  I
+      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(I))   -> second(wriSNP(false)),                                           // I  I  I
     )),
   ))
 

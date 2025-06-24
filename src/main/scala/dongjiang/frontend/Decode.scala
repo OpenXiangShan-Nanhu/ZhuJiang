@@ -87,7 +87,6 @@ class Decode(implicit p: Parameters) extends DJModule {
   io.cmtTask_s3.bits.dir              := respDir_s3
   io.cmtTask_s3.bits.alr.reqDB        := io.reqDB_s3.fire | taskReg_s3.alr.reqDB
   io.cmtTask_s3.bits.alr.sData        := io.fastData_s3.fire
-  io.cmtTask_s3.bits.alr.getSnpData   := false.B
   io.cmtTask_s3.bits.decList          := decList_s3
   io.cmtTask_s3.bits.task             := taskCode_s3
   io.cmtTask_s3.bits.cmt              := Mux(taskCode_s3.isValid, 0.U.asTypeOf(new CommitCode), cmtCode_s3)
@@ -135,7 +134,7 @@ class Decode(implicit p: Parameters) extends DJModule {
   /*
    * Clean unues DataBuffer
    */
-  val cleanUnuseDB_s3               = validReg_s3 & taskReg_s3.alr.reqDB & !taskReg_s3.chi.isFullSize & !taskCode_s3.snoop
+  val cleanUnuseDB_s3               = validReg_s3 & taskReg_s3.alr.reqDB & !taskReg_s3.chi.isFullSize & !(respDir_s3.sf.hit | respDir_s3.llc.hit)
   io.cleanDB_s3.valid               := cleanUnuseDB_s3
   io.cleanDB_s3.bits.hnTxnID        := taskReg_s3.hnIdx.getTxnID
   io.cleanDB_s3.bits.dataVec        := VecInit(taskReg_s3.chi.dataVec.map(!_))

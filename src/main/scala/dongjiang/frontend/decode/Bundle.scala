@@ -147,6 +147,9 @@ trait HasTaskCode { this: Bundle with HasOperations with HasPackDataOp =>
   def snpIsOne    = snpTgt === SnpTgt.ONE
   def snpIsOth    = snpTgt === SnpTgt.OTH
 
+  // DataBlock
+  val fullSize    = Bool() // Force the Size of this DataBlock operation to Full
+
   def isValid: Bool = opsIsValid | waitRecDone
 }
 
@@ -176,6 +179,9 @@ trait HasCommitCode { this: Bundle with HasWriDirCode with HasPackDataOp =>
   val opcode      = UInt(RspOpcode.width.max(DatOpcode.width).W)
   val resp        = UInt(ChiResp.width.W)
   val fwdResp     = UInt(ChiResp.width.W)
+
+  // DataBlock
+  val fullSize    = Bool() // Force the Size of this DataBlock operation to Full
 
   def isValid     = sendResp | isWriDir | dataOp.isValid
 }
@@ -278,10 +284,10 @@ object Code {
   def write   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.write    := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
 
   // Task Code Need DataBuffer
-  def needDB            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.needDB := true.B; temp.asUInt }
+  def needDB            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.needDB       := true.B; temp.asUInt }
 
   // Task Code DataOp
-  def tdop(x: String*)  : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
+  def tdop(x: String*)  : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); x.foreach(name => if(name == "fullSize") temp.fullSize := true.B else temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // Task Code Other
   def waitRecDone       : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.waitRecDone  := true.B; temp.asUInt | needDB }
@@ -308,10 +314,10 @@ object Code {
 
   // Commit Code DataOp
   // If need write llc and llc no hit, the save operation will be handed over to ReplaceCM for execution.
-  def cdop(x: String*): UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); x.foreach(name => temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
+  def cdop(x: String*)  : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); x.foreach(name => if(name == "fullSize") temp.fullSize := true.B else temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // CommitCode NoCMT or ERROR
-  def noCmt : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.asUInt }
+  def noCmt             : UInt = { val temp = WireInit(0.U.asTypeOf(new CommitCode())); temp.asUInt }
 
   // Use In Decode Table
   def first(commitCode: UInt): (UInt, Seq[(UInt, (UInt, Seq[(UInt, UInt)]))]) = (noTask, Seq(Inst.emptyResp -> (noTask, Seq(Inst.emptyResp -> commitCode))))
