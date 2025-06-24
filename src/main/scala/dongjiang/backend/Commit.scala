@@ -132,9 +132,20 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   val instNext    = WireInit(instReg)
   // other
   val cmTask      = WireInit(0.U.asTypeOf(new CMTask))
-  val rspAckHit   = valid & io.rxRsp.valid & io.rxRsp.bits.TxnID === io.hnTxnID & io.rxRsp.bits.Opcode === CompAck
-  val datAckHit   = valid & io.rxDat.valid & io.rxDat.bits.TxnID === io.hnTxnID & io.rxDat.bits.Opcode === NCBWrDataCompAck
+  val alrGetAckReg= RegInit(false.B) // Already get compAck, used to avoid Commit Task arrived after CompAck
+
+  /*
+   * Get CompAckHitReg
+   */
+  val rspAckHit   = io.rxRsp.valid & io.rxRsp.bits.TxnID === io.hnTxnID & io.rxRsp.bits.Opcode === CompAck
+  val datAckHit   = io.rxDat.valid & io.rxDat.bits.TxnID === io.hnTxnID & io.rxDat.bits.Opcode === NCBWrDataCompAck
   val compAckHit  = rspAckHit | datAckHit
+  when(io.cleanPoS.fire) {
+    alrGetAckReg  := false.B
+  }.otherwise {
+    alrGetAckReg  := compAckHit | alrGetAckReg
+    HAssert.withEn(!alrGetAckReg, rspAckHit)
+  }
 
   /*
    * Request DataBuffer
@@ -308,7 +319,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     // task flag chi send
     flagNext.chi.s_resp       := cmt.sendResp & cmt.channel === ChiChannel.RSP
     // task flag chi wait
-    flagNext.chi.w_ack        := needWaitAck & !compAckHit
+    flagNext.chi.w_ack        := needWaitAck & !(compAckHit | alrGetAckReg)
     // HAssert
     HAssert(allocHit ^ io.decListIn.valid)
     HAssert.withEn(!(task.isValid & cmt.isValid), allocHit)
@@ -326,8 +337,8 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     when(io.replResp.fire & io.replResp.bits.hnTxnID === io.hnTxnID)  { flagNext.intl.w.replResp := false.B; HAssert(flagReg.intl.w.replResp & valid)       }
     when(io.dataResp.fire & io.dataResp.bits.hnTxnID === io.hnTxnID)  { flagNext.intl.w.dataResp := false.B; HAssert.withEn(flagReg.intl.w.dataResp | flagReg.intl.w.replResp | flagReg.intl.w.cmResp, valid) }
     // task flag chi send
-    when(io.txRsp.fire) { flagNext.chi.s_resp := false.B; HAssert(flagReg.chi.s_resp) }
-    when(compAckHit)    { flagNext.chi.w_ack  := false.B; HAssert.withEn(flagReg.chi.w_ack | taskReg.chi.reqIs(WriteEvictOrEvict) & valid, rspAckHit)  }
+    when(io.txRsp.fire)             { flagNext.chi.s_resp := false.B; HAssert(flagReg.chi.s_resp) }
+    when(compAckHit | alrGetAckReg) { flagNext.chi.w_ack  := false.B }
   }
 
   // state
