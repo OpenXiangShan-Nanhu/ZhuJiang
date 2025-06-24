@@ -36,7 +36,7 @@ class IcnTxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
     if(split) Some(Decoupled(new HReqFlit)) else Some(Decoupled(UInt(hreqFlitBits.W)))
   } else None
 
-  val hpr = if(node.ejects.contains("HPR")) {
+  val hpr = if(node.ejects.contains("HPR") && hasHprRing) {
     if(split) Some(Decoupled(new RReqFlit)) else Some(Decoupled(UInt(rreqFlitBits.W)))
   } else None
 
@@ -84,7 +84,7 @@ class IcnRxBundle(node: Node)(implicit p: Parameters) extends ZJBundle with Base
     if(split) Some(Flipped(Decoupled(new HReqFlit))) else Some(Flipped(Decoupled(UInt(hreqFlitBits.W))))
   } else None
 
-  val hpr = if(node.injects.contains("HPR")) {
+  val hpr = if(node.injects.contains("HPR") && hasHprRing) {
     if(split) Some(Flipped(Decoupled(new RReqFlit))) else Some(Flipped(Decoupled(UInt(rreqFlitBits.W))))
   } else None
 

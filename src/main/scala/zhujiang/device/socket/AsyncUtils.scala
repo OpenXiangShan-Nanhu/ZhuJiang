@@ -40,7 +40,7 @@ class IcnTxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with
     Some(new AsyncBundle(UInt(hreqFlitBits.W), asyncP))
   } else None
 
-  val hpr = if(node.ejects.contains("HPR")) {
+  val hpr = if(node.ejects.contains("HPR") && hasHprRing) {
     Some(new AsyncBundle(UInt(rreqFlitBits.W), asyncP))
   } else None
 
@@ -68,7 +68,7 @@ class IcnRxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with
     Some(Flipped(new AsyncBundle(UInt(hreqFlitBits.W), asyncP)))
   } else None
 
-  val hpr = if(node.injects.contains("HPR")) {
+  val hpr = if(node.injects.contains("HPR") && hasHprRing) {
     Some(Flipped(new AsyncBundle(UInt(rreqFlitBits.W), asyncP)))
   } else None
 

@@ -89,7 +89,7 @@ class ChiPdcTxBundle(node: Node)(implicit p: Parameters) extends PdcBundle {
     None
   }
 
-  val hpr = Option.when(node.ejects.contains("HPR"))(new PowerDomainCrossingBundle(UInt(rreqFlitBits.W)))
+  val hpr = Option.when(node.ejects.contains("HPR") && hasHprRing)(new PowerDomainCrossingBundle(UInt(rreqFlitBits.W)))
   val rsp = Option.when(node.ejects.contains("RSP"))(new PowerDomainCrossingBundle(UInt(respFlitBits.W)))
   val dat = Option.when(node.ejects.contains("DAT"))(new PowerDomainCrossingBundle(UInt(dataFlitBits.W)))
   val snp = Option.when(node.ejects.contains("SNP"))(new PowerDomainCrossingBundle(UInt(snoopFlitBits.W)))
@@ -105,7 +105,7 @@ class ChiPdcRxBundle(node: Node)(implicit p: Parameters) extends PdcBundle {
     None
   }
 
-  val hpr = Option.when(node.injects.contains("HPR"))(Flipped(new PowerDomainCrossingBundle(UInt(rreqFlitBits.W))))
+  val hpr = Option.when(node.injects.contains("HPR") && hasHprRing)(Flipped(new PowerDomainCrossingBundle(UInt(rreqFlitBits.W))))
   val rsp = Option.when(node.injects.contains("RSP"))(Flipped(new PowerDomainCrossingBundle(UInt(respFlitBits.W))))
   val dat = Option.when(node.injects.contains("DAT"))(Flipped(new PowerDomainCrossingBundle(UInt(dataFlitBits.W))))
   val snp = Option.when(node.injects.contains("SNP"))(Flipped(new PowerDomainCrossingBundle(UInt(snoopFlitBits.W))))

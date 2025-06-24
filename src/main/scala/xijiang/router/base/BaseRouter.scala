@@ -32,7 +32,7 @@ class ChannelBundle[T <: RingFlit](gen: T)(implicit p: Parameters) extends ZJBun
 }
 
 class RingSide(implicit p: Parameters) extends ZJBundle {
-  val hpr = new ChannelBundle(new RingFlit(rreqFlitBits))
+  val hpr = Option.when(hasHprRing)(new ChannelBundle(new RingFlit(rreqFlitBits)))
   val req = new ChannelBundle(new RingFlit(rreqFlitBits))
   val rsp = new ChannelBundle(new RingFlit(respFlitBits))
   val dat = new ChannelBundle(new RingFlit(dataFlitBits))
@@ -46,7 +46,7 @@ class RingSide(implicit p: Parameters) extends ZJBundle {
       case "DAT" => dat
       case "HRQ" => hrq
       case "DBG" => dbg.get
-      case "HPR" => hpr
+      case "HPR" => hpr.get
     }
   }
 }
@@ -69,7 +69,7 @@ object RouterHelper {
       case "RSP" => injects.contains("RSP")
       case "DAT" => injects.contains("DAT")
       case "HRQ" => injects.contains("SNP") || injects.contains("ERQ")
-      case "HPR" => injects.contains("HPR")
+      case "HPR" => p(ZJParametersKey).hasHprRing && injects.contains("HPR")
       case "DBG" => injects.contains("DBG")
     }
   }
@@ -81,7 +81,7 @@ object RouterHelper {
       case "RSP" => ejects.contains("RSP")
       case "DAT" => ejects.contains("DAT")
       case "HRQ" => ejects.contains("SNP") || ejects.contains("ERQ")
-      case "HPR" => ejects.contains("HPR") || ejects.contains("REQ")
+      case "HPR" => p(ZJParametersKey).hasHprRing && (ejects.contains("HPR") || ejects.contains("REQ"))
       case "DBG" => ejects.contains("DBG")
     }
   }
@@ -136,7 +136,8 @@ trait BaseRouterUtils {
     "DBG" -> 3,
     "HPR" -> p(ZJParametersKey).reqEjectBufDepth,
   )
-  private val ringSeq = if(p(HardwareAssertionKey).enable) RingEncodings.allRingSeq else RingEncodings.allRingSeq.filterNot(_ == "DBG")
+  private val hasHwa = p(HardwareAssertionKey).enable
+  private val ringSeq = RingEncodings.allRingSeq.filterNot(_ == "HPR" && !hasHprRing).filterNot(_ == "DBG" && !hasHwa)
   val ringInjectsMap = ringSeq.flatMap(r => Option.when(RouterHelper.testRingRx(node, r))(r -> Wire(Decoupled(flitMap(r))))).toMap
   val ringEjectsMap = ringSeq.flatMap(r => Option.when(RouterHelper.testRingTx(node, r))(r -> Wire(Decoupled(flitMap(r))))).toMap
   ringInjectsMap.foreach(_._2 := DontCare)
@@ -163,7 +164,7 @@ trait BaseRouterUtils {
   }
 
   for((r, tx) <- ringEjectsMap) if(icn.tx.getRingBundle(r).isDefined) connIcn(icn.tx.getRingBundle(r).get, tx, checkWidth = false)
-  if(node.ejects.contains("REQ") && !node.ejects.contains("HPR")) {
+  if(node.ejects.contains("REQ") && !node.ejects.contains("HPR") && hasHprRing) {
     val txReqArb = Module(new Arbiter(flitMap("REQ"), 2))
     connIcn(txReqArb.io.in(0), ringEjectsMap("HPR"))
     connIcn(txReqArb.io.in(1), ringEjectsMap("REQ"))

@@ -232,6 +232,7 @@ case class ZJParameters(
   private lazy val cacheSizeInMiB = cacheSizeInB / 1024 / 1024
   lazy val ciName: String = s"ZCI${nrX}X${nrC}C${nrP}P${nrD}D${nrM}M${nrG}G$cacheSizeInMiB$ciSuffix"
   lazy val ringName: String = s"ZRING${nrX}X${nrC}C${nrP}P${nrD}D${nrM}M${nrG}G$cacheSizeInMiB$ciSuffix"
+  lazy val hasHprRing: Boolean = island.count(_.nodeType == NodeType.RH) > 0
 
   lazy val island: Seq[Node] = ZhujiangGlobal.getIsland(nodeNidBits, nodeAidBits, nodeParams, cpuSpaceBits, requestAddrBits - ciIdBits, ciName)
   lazy val mnid = island.filter(_.nodeType == NodeType.M).head.nodeId
@@ -274,6 +275,7 @@ trait HasZJParams {
   lazy val cpuIdBits = clusterIdBits - ciIdBits
   lazy val hasMbist = zjParams.hasMbist
   lazy val asyncP = zjParams.asyncParams
+  lazy val hasHprRing = zjParams.hasHprRing
 
   lazy val rreqFlitBits = new RReqFlit()(p).getWidth
   lazy val hreqFlitBits = new HReqFlit()(p).getWidth
