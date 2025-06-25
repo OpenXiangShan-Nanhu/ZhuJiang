@@ -105,13 +105,15 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   sendDBVec      := validVec.asBools.zip(zeroNid).map{case(i, j) => i & j}
   selIdx         := StepRREncoder(sendDBVec, rdDBQueue.io.enq.ready)
 
+  private val selIdxPipe = Pipe(rdDBQueue.io.enq.fire, selIdx)
+
 /* 
  * CHI Entrys Assign Logic
  */
   for(i <- chiEntries.indices) {
     when(headPtr.value === i.U && io.axiAr.fire){
       chiEntries(i).ARMesInit(io.axiAr.bits)   // true
-      chiEntries(i).nid := PopCount(blockVec) - (rdDBQueue.io.enq.fire & (rdDBQueue.io.enq.bits.arID === io.axiAr.bits.user)).asUInt
+      chiEntries(i).nid := PopCount(blockVec)
     }.elsewhen(validVec(i)) {
       chiEntries(i) := chiEntriesNext(i)
     }
@@ -126,7 +128,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
       when(rdDBQueue.io.enq.fire & (selIdx === i.U) & !(headPtr.value === i.U && io.axiAr.fire)){
         en.sendComp := true.B
       }
-      when(rdDBQueue.io.enq.fire & (rdDBQueue.io.enq.bits.arID === e.arId) & (e.nid =/= 0.U) & !(headPtr.value === i.U && io.axiAr.fire)){
+      when(selIdxPipe.valid & (chiEntries(selIdxPipe.bits).arId === en.arId) & (e.nid =/= 0.U) & !(headPtr.value === i.U && io.axiAr.fire)){
         en.nid := e.nid - 1.U
       }
       when(dataTxnid === i.U & io.chiDat.fire){

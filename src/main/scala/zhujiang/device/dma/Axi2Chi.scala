@@ -44,9 +44,11 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val arbRspOut   = Wire(chiWrMaster.io.chiTxRsp.cloneType)
   private val rxArQueue   = Module(new Queue(gen = new AxiBundle(axiParams).ar.bits, entries = 2, pipe = false, flow = false))
   private val rxAwQueue   = Module(new Queue(gen = new AxiBundle(axiParams).aw.bits, entries = 2, pipe = false, flow = false))
+  private val rxRspQueue  = Module(new Queue(gen = icn.rx.resp.get.bits.cloneType, entries = 2, pipe = false, flow = false))
 
   axi.ar               <> rxArQueue.io.enq
   axi.aw               <> rxAwQueue.io.enq
+  icn.rx.resp.get      <> rxRspQueue.io.enq
 
   axiRdSlave.io.dAxiAr <> chiRdMaster.io.axiAr
   axiRdSlave.io.dAxiR  <> rdDB.io.axiR
@@ -84,7 +86,7 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   connIcn(icn.tx.resp.get        , arbRspOut      )
   connIcn(icn.tx.data.get        , wrDB.io.dData  )
   connIcn(chiRdMaster.io.chiDat  , icn.rx.data.get)
-  connIcn(chiRdMaster.io.chiRxRsp, icn.rx.resp.get)
-  connIcn(chiWrMaster.io.chiRxRsp, icn.rx.resp.get)
+  connIcn(chiRdMaster.io.chiRxRsp, rxRspQueue.io.deq)
+  connIcn(chiWrMaster.io.chiRxRsp, rxRspQueue.io.deq)
   MbistPipeline.PlaceMbistPipeline(1, "MbistPipelineRni", hasMbist)
 }
