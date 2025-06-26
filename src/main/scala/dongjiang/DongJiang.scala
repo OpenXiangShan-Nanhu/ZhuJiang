@@ -113,9 +113,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  sfWays: ${djparam.sfWays}
        |  sfMetas: ${nrSfMetas}
        |  openDCT: ${djparam.openDCT}
-       |  nrReqBuf: ${djparam.nrReqTaskBuf}
-       |  nrHprBuf: ${djparam.nrHprTaskBuf}
-       |  nrSnpBuf: ${if(hasBBN) djparam.nrSnpTaskBuf else 0}
+       |  nrReqBuf: ${nrReqTaskBuf * djparam.nrDirBank}
+       |  nrHprBuf: ${nrHprTaskBuf * djparam.nrDirBank}
+       |  nrSnpBuf: ${nrSnpTaskBuf * djparam.nrDirBank}
        |  nrPoS: ${djparam.nrPoS} = dirBank[${djparam.nrDirBank}] x posSets[${posSets}] x posWays[${posWays}]
        |  dataBufSize: ${djparam.dataBufSizeInByte} B
        |  dataSetup: ${djparam.dataRamSetup}

@@ -251,9 +251,9 @@ trait HasDJParam extends HasParseZJParam {
   require(MaskBits == zjParams.beBits)
 
   // Frontend(Per dirBank) and Directory Parameters
-  lazy val nrHprTaskBuf     = djparam.nrHprTaskBuf / djparam.nrDirBank
-  lazy val nrReqTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
-  lazy val nrSnpTaskBuf     = if(hasBBN) djparam.nrReqTaskBuf / djparam.nrDirBank else 0
+  lazy val nrHprTaskBuf     = (djparam.nrHprTaskBuf / djparam.nrDirBank).max(2)
+  lazy val nrReqTaskBuf     = (djparam.nrReqTaskBuf / djparam.nrDirBank).max(2)
+  lazy val nrSnpTaskBuf     = if(hasBBN) (djparam.nrReqTaskBuf / djparam.nrDirBank).max(2) else 0
   lazy val nrPoS            = djparam.nrPoS / djparam.nrDirBank
   lazy val nrCommit         = djparam.nrCommit / djparam.nrDirBank
   lazy val posWays          = djparam.posWays
@@ -261,9 +261,6 @@ trait HasDJParam extends HasParseZJParam {
   lazy val dirMuticycle     = djparam.dirRamLatency.max(if(djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup)
   lazy val readDirLatency   = (if(djparam.dirRamSetup > 1 || djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup) + djparam.dirRamLatency + 1
   lazy val llcWayBits       = log2Ceil(djparam.llcWays)
-  require(nrHprTaskBuf >= 2)
-  require(nrReqTaskBuf >= 2)
-  require(nrSnpTaskBuf >= 2 | !hasBBN)
 
   // DataBlock Parameters
   // dc/db
