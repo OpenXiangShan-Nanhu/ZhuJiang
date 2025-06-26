@@ -41,8 +41,8 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
    */
   val io = IO(new Bundle {
     // task
-    val chiTaskIn   = Flipped(Decoupled(new PackChi with HasAddr))
-    val chiTask_s0  = Decoupled(new PackChi with HasAddr)
+    val chiTaskIn   = Flipped(Decoupled(new PackChi with HasAddr with HasQoS))
+    val chiTask_s0  = Decoupled(new PackChi with HasAddr with HasQoS)
     // ctrl
     val retry_s1    = Input(Bool()) // Reject Task by Block or PoS Full
     val sleep_s1    = Input(Bool()) // Reject Task by PoS Match
@@ -61,7 +61,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   /*
    * Reg and Wire declaration
    */
-  val taskReg = RegInit((new TaskState with HasPackChi with HasAddr).Lit(_.state -> FREE))
+  val taskReg = RegInit((new TaskState with HasPackChi with HasAddr with HasQoS).Lit(_.state -> FREE))
   val nidReg  = if(sort) Some(Reg(UInt(nidBits.W))) else None
 
   /*
@@ -70,6 +70,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   when(io.chiTaskIn.fire) {
     taskReg.chi  := io.chiTaskIn.bits.chi
     taskReg.addr := io.chiTaskIn.bits.addr
+    taskReg.qos  := io.chiTaskIn.bits.qos
   }
   io.chiTaskIn.ready  := taskReg.isFree
 
@@ -144,8 +145,8 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
    */
   val io = IO(new Bundle {
     // task
-    val chiTaskIn   = Flipped(Decoupled(new PackChi with HasAddr))
-    val chiTask_s0  = Valid(new PackChi with HasAddr)
+    val chiTaskIn   = Flipped(Decoupled(new PackChi with HasAddr with HasQoS))
+    val chiTask_s0  = Valid(new PackChi with HasAddr with HasQoS)
     val allocPos_s0 = Valid(new Addr with HasChiChannel)
     // ctrl
     val retry_s1    = Input(Bool()) // Reject Task by Block or PoS Full

@@ -88,6 +88,12 @@ class ReceiveEntry(implicit p: Parameters) extends DJModule {
   val next  = WireInit(reg)
 
   /*
+   * Set QoS
+   */
+  io.txRsp.bits.QoS := reg.rsp.QoS
+  io.resp.bits.qos  := reg.rsp.QoS
+
+  /*
    * Output entry state
    */
   io.state.valid        := reg.isValid
@@ -235,8 +241,8 @@ class ReceiveCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect IO <- CM
    */
-  io.txRsp  <> fastRRArb(entries.map(_.io.txRsp))
-  io.resp   <> fastRRArb(entries.map(_.io.resp))
+  io.txRsp  <> fastQosRRArb(entries.map(_.io.txRsp))
+  io.resp   <> fastQosRRArb(entries.map(_.io.resp))
 
   /*
    * HardwareAssertion placePipe

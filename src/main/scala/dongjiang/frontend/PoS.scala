@@ -27,9 +27,9 @@ class PosState(implicit p: Parameters) extends DJBundle with HasAddr {
   def valid: Bool = req | snp
 }
 
-class PosCanNest(implicit p: Parameters) extends DJBundle with HasPackHnIdx  { val nest = Bool() }
+class PosCanNest(implicit p: Parameters) extends DJBundle with HasPackHnIdx with HasQoS { val nest = Bool() }
 
-class PosClean(implicit p: Parameters) extends DJBundle with HasPackHnIdx with HasChiChannel
+class PosClean(implicit p: Parameters) extends DJBundle with HasPackHnIdx with HasChiChannel with HasQoS
 
 // ----------------------------------------------------------------------------------------------------- //
 // --------------------------------------------- PoS Entry --------------------------------------------- //

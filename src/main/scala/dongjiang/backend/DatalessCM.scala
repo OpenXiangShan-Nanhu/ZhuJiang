@@ -28,7 +28,7 @@ class DatalessCM(implicit p: Parameters) extends DJModule {
     val txRsp         = Decoupled(new RespFlit())
     val rxRsp         = Flipped(Valid(new RespFlit()))
     // Update PoS
-    val updPosNest    = Decoupled(new PosCanNest)
+    val updPosNest    = Decoupled(new PosCanNest with HasQoS)
   })
   HardwareAssertion(!io.alloc.valid)
   io <> DontCare

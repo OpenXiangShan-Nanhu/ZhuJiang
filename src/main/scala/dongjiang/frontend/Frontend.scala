@@ -130,10 +130,10 @@ class Frontend(implicit p: Parameters) extends DJModule {
   HAssert.withEn(cleanDBQ.io.enq.ready, cleanDBQ.io.enq.valid)
 
   // hpr2Task
-  hpr2Task.io.rxReq         <> io.rxHpr
+  hpr2Task.io.rxReq         <> FastQueue(io.rxHpr)
 
   // req2Task
-  req2Task.io.rxReq         <> io.rxReq
+  req2Task.io.rxReq         <> FastQueue(io.rxReq)
 
   // hprTaskBuf [S0]
   hprTaskBuf.io.chiTaskIn   <> hpr2Task.io.chiTask
@@ -151,7 +151,7 @@ class Frontend(implicit p: Parameters) extends DJModule {
   if(hasBBN) {
     // snp2Task
     snp2Task.get.io.config      := io.config
-    snp2Task.get.io.rxSnp       <> io.rxSnp
+    snp2Task.get.io.rxSnp       <> FastQueue(io.rxSnp)
     // snpTaskBuf [S0]
     snpTaskBuf.get.io.chiTaskIn <> snp2Task.get.io.chiTask
     snpTaskBuf.get.io.retry_s1  := block.io.retry_s1

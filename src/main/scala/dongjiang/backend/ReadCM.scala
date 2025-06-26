@@ -81,6 +81,16 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   val next  = WireInit(reg)
 
   /*
+   * Set QoS
+   */
+  io.txReq.bits.QoS       := reg.task.qos
+  io.resp.bits.qos        := reg.task.qos
+  io.updPosNest.bits.qos  := reg.task.qos
+  if (hasBBN) {
+    io.txRsp.get.bits.QoS := reg.task.qos
+  }
+
+  /*
    * Output for debug
    */
   io.dbg.valid        := reg.isValid
@@ -259,11 +269,11 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect IO <- CM
    */
-  io.txReq        <> fastRRArb(entries.map(_.io.txReq)) // TODO: split to LAN and BBN
-  io.resp         <> fastRRArb(entries.map(_.io.resp))
-  io.updPosNest   <> fastRRArb(entries.map(_.io.updPosNest))
+  io.txReq        <> fastQosRRArb(entries.map(_.io.txReq)) // TODO: split to LAN and BBN
+  io.resp         <> fastQosRRArb(entries.map(_.io.resp))
+  io.updPosNest   <> fastQosRRArb(entries.map(_.io.updPosNest))
   if(hasBBN) {
-    io.txRsp.get  <> fastRRArb(entries.map(_.io.txRsp.get))
+    io.txRsp.get  <> fastQosRRArb(entries.map(_.io.txRsp.get))
   }
 
   /*

@@ -17,7 +17,6 @@ object NocType {
   def txIs (flit: Flit, t: Int) : Bool = flit.src === t.U
 }
 
-
 /*
  * Addr:
  * HasAddr -> Addr
@@ -151,13 +150,12 @@ trait HasDataVec extends DJBundle { this: DJBundle =>
   }
 }
 
-
 /*
  * Chi:
  * HasChi -> Chi -> HasPackChi -> PackChi
  */
 trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
-  with HasChiOrderAndExpCompAck with HasChiSnpField with HasQoS with HasDataVec =>
+  with HasChiOrderAndExpCompAck with HasChiSnpField with HasDataVec =>
   // REQ
   val txnID         = UInt(ChiTxnIdBits.W)
   val memAttr       = new MemAttr()
@@ -186,7 +184,7 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
 }
 
 class Chi(implicit p: Parameters) extends DJBundle with HasNodeId with HasChiChannel
-  with HasChiOp with HasChiOrderAndExpCompAck with HasChiSnpField with HasQoS with HasDataVec with HasChi
+  with HasChiOp with HasChiOrderAndExpCompAck with HasChiSnpField with HasDataVec with HasChi
 
 trait HasPackChi { this: DJBundle => val chi = new Chi() }
 

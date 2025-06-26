@@ -2,126 +2,107 @@ package dongjiang.utils
 
 import chisel3._
 import chisel3.util._
-import xs.utils.ResetRRArbiter
 
-class ArbiterWithReset[T <: Data](gen:T, size:Int, rr:Boolean) extends Module {
-  val io = IO(new Bundle {
-    val in = Vec(size, Flipped(Decoupled(gen)))
+trait HasQoS { this: Bundle => val qos = UInt(4.W) }
+
+class ArbiterGenerator[T <: Bundle](gen:T, size:Int, rr:Boolean, qos: Boolean) extends Module {
+  val io    = IO(new Bundle {
+    val in  = Vec(size, Flipped(Decoupled(gen)))
     val out = Decoupled(gen)
   })
-
+  val qosName = if(gen.elements.contains("qos")) "qos" else "QoS"
+  val rrName  = if(rr)  "RR"  else ""
+  override val desiredName = "Hn" + qosName.toUpperCase + rrName + "Arbiter"
+  if(qos) require(gen.elements.contains(qosName))
+  // define ids
+  val selId   = Wire(UInt(log2Ceil(size).W))
+  val lowId   = Wire(UInt(log2Ceil(size).W))
+  val highId  = WireInit(0.U(log2Ceil(size).W))
+  val lowVec  = VecInit(io.in.map(in => in.valid))
+  val highVec = WireInit(VecInit(Seq.fill(size) { false.B }))
+  // low
   if(rr) {
-    val selId = StepRREncoder(Cat(io.in.map(_.valid).reverse), io.out.fire)
-    io.out.valid  := io.in.map(_.valid).reduce(_ | _)
-    io.out.bits   := io.in(selId).bits
-    io.in.zipWithIndex.foreach { case(in, i) => in.ready := io.out.ready & selId === i.U }
+    lowId     := StepRREncoder(lowVec,  io.out.fire & !highVec.asUInt.orR)
   } else {
-    val arb = Module(new Arbiter(gen, size))
-    arb.io.in.zip(io.in).foreach { case (a, b) => a <> b }
-    io.out <> arb.io.out
+    lowId     := PriorityEncoder(lowVec)
   }
-
-  if(size == 1){
-    io.out.bits := Mux(io.out.valid, io.in.head.bits, 0.U.asTypeOf(io.out.bits))
-  }
-}
-
-
-object fastRRArb {
-  def apply[T <: Data](in: Seq[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in(0).bits), in.size, true))
-    arb.io.in.zip(in).foreach { case(a, b) => a <> b }
-    out <> arb.io.out
-  }
-
-  def apply[T <: Data](in: Seq[DecoupledIO[T]]): DecoupledIO[T] = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in(0).bits), in.size, true))
-    arb.io.in.zip(in).foreach { case (a, b) => a <> b }
-    arb.io.out
-  }
-
-  def apply[T <: Data](in: Seq[ValidIO[T]]): ValidIO[T] = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, true))
-    val out = WireInit(0.U.asTypeOf(in.head))
-    arb.io.in.zip(in).foreach {
-      case (a, b) =>
-        a.valid := b.valid
-        a.bits := b.bits
+  // QoS
+  if(qos) {
+    // high
+    highVec   := VecInit(io.in.map(in => in.valid & in.bits.elements(qosName) === 0xF.U))
+    if (rr) {
+      highId  := StepRREncoder(highVec, io.out.fire)
+    } else {
+      highId  := PriorityEncoder(highId)
     }
-    out.valid := arb.io.out.valid
-    out.bits := arb.io.out.bits
-    arb.io.out.ready := true.B
-    out
+    selId     := Mux(highVec.asUInt.orR, highId, lowId)
+  // no QoS
+  } else {
+    selId     := lowId
   }
-
-  def apply[T <: Data](in: Seq[DecoupledIO[T]], out: ValidIO[T]): Unit = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, true))
-    arb.io.in.zip(in).foreach { case (a, b) => a <> b }
-    arb.io.out.ready := true.B
-    out.valid := arb.io.out.valid
-    out.bits := arb.io.out.bits
-  }
-
-  def validOut[T <: Data](in: Seq[DecoupledIO[T]]): ValidIO[T] = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, true))
-    val out = Wire(Valid(chiselTypeOf(in.head.bits)))
-    arb.io.in.zip(in).foreach { case (a, b) => a <> b }
-    arb.io.out.ready := true.B
-    out.valid := arb.io.out.valid
-    out.bits := arb.io.out.bits
-    out
-  }
-
-  def onlyBits[T <: Data](in: Seq[DecoupledIO[T]]): T = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, true))
-    arb.io.in.zip(in).foreach { case (a, b) => a <> b }
-    arb.io.out.ready := true.B
-    arb.io.out.bits
-  }
+  // Output
+  io.in.zipWithIndex.foreach { case (in, i) => in.ready := io.out.ready & selId === i.U }
+  io.out.valid  := io.in.map(_.valid).reduce(_ | _)
+  io.out.bits   := io.in(selId).bits
 }
 
-object fastArb {
-  def apply[T <: Data](in: Seq[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
-    arb.io.in.zip(in).foreach { case(a, b) => a <> b }
-    out <> arb.io.out
-  }
-
-  def apply[T <: Data](in: Seq[DecoupledIO[T]]): DecoupledIO[T] = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
-    arb.io.in.zip(in).foreach { case (a, b) => a <> b }
-    arb.io.out
-  }
-
-  def apply[T <: Data](in: Seq[ValidIO[T]]): ValidIO[T] = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
-    val out = WireInit(0.U.asTypeOf(in.head))
-    arb.io.in.zip(in).foreach {
-      case (a, b) =>
-        a.valid := b.valid
-        a.bits  := b.bits
-    }
+class FastArbFactory(rr: Boolean, qos: Boolean) {
+  def apply[T <: Bundle](in: Seq[DecoupledIO[T]]): DecoupledIO[T] = {
+    val arb = Module(new ArbiterGenerator(chiselTypeOf(in.head.bits), in.size, rr, qos))
+    val out = Wire(Decoupled(chiselTypeOf(in.head.bits)))
+    arb.io.in.zip(in).foreach { case (a, b) => a.valid := b.valid; a.bits := b.bits; b.ready := a.ready }
+    arb.io.out.ready := out.ready
     out.valid := arb.io.out.valid
-    out.bits  := arb.io.out.bits
-    arb.io.out.ready := true.B
+    out.bits := arb.io.out.bits
     out
   }
 
-  def apply[T <: Data](in: Seq[DecoupledIO[T]], out: ValidIO[T]): Unit = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
-    arb.io.in.zip(in).foreach { case (a, b) => a <> b }
-    arb.io.out.ready := true.B
-    out.valid := arb.io.out.valid
-    out.bits := arb.io.out.bits
+  def apply[T <: Bundle](in: Seq[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
+    val arbOut = apply(in)
+    arbOut.ready := out.ready
+    out.valid := arbOut.valid
+    out.bits := arbOut.bits
   }
 
-  def validOut[T <: Data](in: Seq[DecoupledIO[T]]): ValidIO[T] = {
-    val arb = Module(new ArbiterWithReset(chiselTypeOf(in.head.bits), in.size, false))
+  def apply[T <: Bundle](in: Seq[ValidIO[T]]): ValidIO[T] = {
+    val arb = Module(new ArbiterGenerator(chiselTypeOf(in.head.bits), in.size, rr, qos))
     val out = Wire(Valid(chiselTypeOf(in.head.bits)))
-    arb.io.in.zip(in).foreach { case (a, b) => a <> b }
+    arb.io.in.zip(in).foreach { case (a, b) => a.valid := b.valid; a.bits := b.bits }
     arb.io.out.ready := true.B
     out.valid := arb.io.out.valid
     out.bits := arb.io.out.bits
     out
   }
+
+  def apply[T <: Bundle](in: Seq[ValidIO[T]], out: ValidIO[T]): Unit = {
+    val arbOut = apply(in)
+    out.valid := arbOut.valid
+    out.bits := arbOut.bits
+  }
+
+
+  def validOut[T <: Bundle](in: Seq[DecoupledIO[T]]): ValidIO[T] = {
+    val arb = Module(new ArbiterGenerator(chiselTypeOf(in.head.bits), in.size, rr, qos))
+    val out = Wire(Valid(chiselTypeOf(in.head.bits)))
+    arb.io.in.zip(in).foreach { case (a, b) => a.valid := b.valid; a.bits := b.bits; b.ready := a.ready }
+    arb.io.out.ready := true.B
+    out.valid := arb.io.out.valid
+    out.bits := arb.io.out.bits
+    out
+  }
+
+  def validOut[T <: Bundle](in: Seq[DecoupledIO[T]], out: ValidIO[T]): Unit = {
+    val arbOut = validOut(in)
+    out.valid := arbOut.valid
+    out.bits := arbOut.bits
+  }
+
 }
+
+object fastRRArb extends FastArbFactory(true, false)
+
+object fastArb extends FastArbFactory(false, false)
+
+object fastQosRRArb extends FastArbFactory(true, true)
+
+object fastQosArb extends FastArbFactory(false, true)

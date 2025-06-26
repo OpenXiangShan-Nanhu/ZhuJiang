@@ -67,19 +67,25 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   // Get icnVec
   def setRx(flit: Flit, t: Int): Flit = { val temp = WireInit(flit); temp.tgt := t.U; temp }
   val icnVec = Wire(MixedVec(hnNodeSeq.map(n => new DeviceIcnBundle(n))))
+  // LAN
   icnVec.head <> io.lan
   icnVec.foreach(_.tx.debug.foreach(_ := DontCare))
-  icnVec.head.rx.req.get.bits   := setRx(io.lan.rx.req.get.bits.asTypeOf(new ReqFlit(false)), LAN)
-  icnVec.head.rx.hpr.get.bits   := setRx(io.lan.rx.hpr.get.bits.asTypeOf(new ReqFlit(false)), LAN)
-  icnVec.head.rx.resp.get.bits  := setRx(io.lan.rx.resp.get.bits.asTypeOf(new RespFlit()), LAN)
-  icnVec.head.rx.data.get.bits  := setRx(io.lan.rx.data.get.bits.asTypeOf(new DataFlit()), LAN)
+  icnVec.head.rx.req.get.bits     := setRx(io.lan.rx.req.get.bits.asTypeOf(new ReqFlit(false)), LAN)
+  icnVec.head.rx.resp.get.bits    := setRx(io.lan.rx.resp.get.bits.asTypeOf(new RespFlit()), LAN)
+  icnVec.head.rx.data.get.bits    := setRx(io.lan.rx.data.get.bits.asTypeOf(new DataFlit()), LAN)
+  if(hasHPR) {
+    icnVec.head.rx.hpr.get.bits   := setRx(io.lan.rx.hpr.get.bits.asTypeOf(new ReqFlit(false)), LAN)
+  }
+  // BBN
   if(hasBBN) {
     icnVec.last <> io.bbnOpt.get
     icnVec.last.rx.req.get.bits   := setRx(io.bbnOpt.get.rx.req.get.bits.asTypeOf(new ReqFlit(false)), BBN)
-    icnVec.last.rx.hpr.get.bits   := setRx(io.bbnOpt.get.rx.hpr.get.bits.asTypeOf(new ReqFlit(false)), BBN)
     icnVec.last.rx.snoop.get.bits := setRx(io.bbnOpt.get.rx.snoop.get.bits.asTypeOf(new SnoopFlit()), BBN)
     icnVec.last.rx.resp.get.bits  := setRx(io.bbnOpt.get.rx.resp.get.bits.asTypeOf(new RespFlit()), BBN)
     icnVec.last.rx.data.get.bits  := setRx(io.bbnOpt.get.rx.data.get.bits.asTypeOf(new DataFlit()), BBN)
+    if(hasHPR) {
+      icnVec.last.rx.hpr.get.bits := setRx(io.bbnOpt.get.rx.hpr.get.bits.asTypeOf(new ReqFlit(false)), BBN)
+    }
   }
 
   /*
@@ -107,6 +113,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
        |  sfWays: ${djparam.sfWays}
        |  sfMetas: ${nrSfMetas}
        |  openDCT: ${djparam.openDCT}
+       |  nrReqBuf: ${djparam.nrReqTaskBuf}
+       |  nrHprBuf: ${djparam.nrHprTaskBuf}
+       |  nrSnpBuf: ${if(hasBBN) djparam.nrSnpTaskBuf else 0}
        |  nrPoS: ${djparam.nrPoS} = dirBank[${djparam.nrDirBank}] x posSets[${posSets}] x posWays[${posWays}]
        |  dataBufSize: ${djparam.dataBufSizeInByte} B
        |  dataSetup: ${djparam.dataRamSetup}
@@ -159,12 +168,14 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    * Connect IO CHI
    */
   // [frontends].rxReq <-> [ChiXbar] <-> io.chi.rxReq
-  chiXbar.io.rxReq.inVec.zip(icnVec.map(_.rx.req.get)).foreach { case(a, b) => connIcn(a, b) }
+  chiXbar.io.rxReq.inVec.zip(icnVec.map(_.rx.req.get)).foreach   { case(a, b) => connIcn(a, b) }
   chiXbar.io.rxReq.outVec.zip(frontends.map(_.io.rxReq)).foreach { case(a, b) => a <> b }
 
   // [frontends].rxHpr <-> [ChiXbar] <-> io.chi.rxHpr
-  chiXbar.io.rxHpr.inVec.zip(icnVec.map(_.rx.hpr.get)).foreach { case(a, b) => connIcn(a, b) }
-  chiXbar.io.rxHpr.outVec.zip(frontends.map(_.io.rxHpr)).foreach { case(a, b) => a <> b }
+  if(hasHPR) {
+    chiXbar.io.rxHpr.inVec.get.zip(icnVec.map(_.rx.hpr.get)).foreach { case (a, b) => connIcn(a, b) }
+  }
+  chiXbar.io.rxHpr.outVec.zip(frontends.map(_.io.rxHpr)).foreach { case (a, b) => a <> b }
 
   // [frontends].rxSnp <-> [ChiXbar] <-> io.chi.rxSnp
   if(hasBBN) {
@@ -175,14 +186,17 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   chiXbar.io.rxSnp.outVec.zip(frontends.map(_.io.rxSnp)).foreach { case(a, b) => a <> b }
 
   // [backend].rxRsp <-> io.chi.rxRsp
-  connIcn(backend.io.rxRsp, fastArb(icnVec.map(_.rx.resp.get)))
+  val rxRspArb = Module(new Arbiter(new RespFlit, nrIcn))
+  rxRspArb.io.in.zip(icnVec.map(_.rx.resp)).foreach { case(a, b) => a <> b.get }
+  connIcn(backend.io.rxRsp, rxRspArb.io.out)
 
   // [dataBlock].rxDat <-> io.chi.rxDat
   // [backend].rxDat  <-- io.chi.rxDat
-  val rxDat = fastArb(icnVec.map(_.rx.data.get))
-  connIcn(dataBlock.io.rxDat, rxDat)
-  backend.io.rxDat.valid := rxDat.fire
-  backend.io.rxDat.bits  := rxDat.bits.asTypeOf(backend.io.rxDat.bits)
+  val rxDatArb = Module(new Arbiter(new DataFlit, nrIcn))
+  rxDatArb.io.in.zip(icnVec.map(_.rx.data)).foreach { case (a, b) => a <> b.get }
+  connIcn(dataBlock.io.rxDat, rxDatArb.io.out)
+  backend.io.rxDat.valid := rxDatArb.io.out.fire
+  backend.io.rxDat.bits  := rxDatArb.io.out.bits
 
   // [backend].txReq <-> [ChiXbar] <-> io.chi.txReq
   chiXbar.io.txReq.in <> backend.io.txReq

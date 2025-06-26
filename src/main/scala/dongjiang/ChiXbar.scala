@@ -6,6 +6,7 @@ import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang.bundle._
 import dongjiang.utils._
+import xs.utils.debug.HAssert
 
 // TODO: modify it
 class ChiXbar(implicit p: Parameters) extends DJModule {
@@ -20,7 +21,7 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     }
     // rxReq
     val rxHpr = new Bundle {
-      val inVec   = Vec(nrIcn, Flipped(Decoupled(new ReqFlit(false))))
+      val inVec   = if(hasHPR) Some(Vec(nrIcn, Flipped(Decoupled(new ReqFlit(false))))) else None
       val outVec  = Vec(djparam.nrDirBank, Decoupled(new ReqFlit(false)))
     }
     // rxSnp
@@ -58,18 +59,16 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
   /*
    * Connect rxReq and rxSnp
    */
-  /*
-   * Redirect network:
-   *
-   * in_0 ------> redirect_0_0 ------> | \
-   *      \                            | | ------> out_0
-   *       \  --> redirect_1_0 ------> | /
-   *        \/
-   *        /\
-   *       /  --> redirect_0_1 ------> | \
-   *      /                            | | ------> out_1
-   * in_1 ------> redirect_1_1 ------> | /
-   */
+  // Redirect network:
+  //
+  // in_0 ------> redirect_0_0 ------> | \
+  //      \                            |r| ------> out_0
+  //       \  --> redirect_1_0 ------> | /
+  //        \/
+  //        /\
+  //       /  --> redirect_0_1 ------> | \
+  //      /                            |r| ------> out_1
+  // in_1 ------> redirect_1_1 ------> | /
   def rxRedir[T <: Bundle](inVec: Seq[DecoupledIO[T]], outVec: Seq[DecoupledIO[T]], inDirIdVec: Seq[UInt]): Unit = {
     val redirects = Seq.fill(inVec.size) { Seq.fill(outVec.size) { WireInit(0.U.asTypeOf(inVec(0))) } }
     // redirect
@@ -92,13 +91,50 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
   }
 
   // rxReq
-  rxRedir(io.rxReq.inVec, io.rxReq.outVec, io.rxReq.inVec.map(in => getDirBank(in.bits.Addr)))
+  val reqRedirVec = Wire(chiselTypeOf(io.rxReq.outVec))
+  rxRedir(io.rxReq.inVec, reqRedirVec, io.rxReq.inVec.map(in => getDirBank(in.bits.Addr)))
 
   // rxHpr
-  rxRedir(io.rxHpr.inVec, io.rxHpr.outVec, io.rxHpr.inVec.map(in => getDirBank(in.bits.Addr)))
+  val hprRedirVec = WireInit(0.U.asTypeOf(io.rxHpr.outVec))
+  if(hasHPR) { rxRedir(io.rxHpr.inVec.get, hprRedirVec, io.rxHpr.inVec.get.map(in => getDirBank(in.bits.Addr))) }
 
   // rxSnp
   rxRedir(Seq(io.rxSnp.in), io.rxSnp.outVec, Seq(getDirBank(Cat(io.rxSnp.in.bits.Addr, 0.U(3.W)))))
+
+  // Select high QoS network:
+  //
+  // reqReDir ---(QoS != 0xF)---> req.out
+  //          \
+  //     (QoS == 0xF)
+  //            \
+  //             ---> | \
+  //                  | | ------> hpr.out
+  // hprReDir ------> |*/
+  io.rxReq.outVec.zip(io.rxHpr.outVec).zipWithIndex.foreach { case((req, hpr), i) =>
+    // Req.QoS == 0xF
+    when(reqRedirVec(i).bits.QoS === 0xF.U) {
+      req.valid := false.B
+      req.bits  := DontCare
+      if(hasHPR) {
+        hpr <> fastArb(Seq(hprRedirVec(i), reqRedirVec(i)))
+      } else {
+        hpr <> reqRedirVec(i)
+      }
+    // Req.QoS != 0xF
+    }.otherwise {
+      req <> reqRedirVec(i)
+      if(hasHPR) {
+        hpr <> hprRedirVec(i)
+      } else {
+        hpr.valid := false.B
+        hpr.bits  := DontCare
+      }
+    }
+    // HAssert
+    HAssert.withEn(hpr.bits.QoS === 0xF.U, hpr.valid)
+  }
+
+
 
   /*
    * Connect txReq, txSnp, txRsp and txDat

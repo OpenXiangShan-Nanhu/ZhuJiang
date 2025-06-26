@@ -26,7 +26,7 @@ class Decode(implicit p: Parameters) extends DJModule {
     // Configuration
     val config          = new DJConfigIO()
     // From Block
-    val task_s2         = Flipped(Valid(new PackChi with HasAddr with HasPackHnIdx with HasAlready)) // TODO: no need addr
+    val task_s2         = Flipped(Valid(new PackChi with HasAddr with HasPackHnIdx with HasAlready with HasQoS)) // TODO: no need addr
     // From Directory
     val respDir_s3      = Flipped(Valid(new DirMsg))
     // To Backend
@@ -82,6 +82,7 @@ class Decode(implicit p: Parameters) extends DJModule {
    */
   io.cmtTask_s3.valid                 := validReg_s3
   io.cmtTask_s3.bits.hnTxnID          := taskReg_s3.hnIdx.getTxnID
+  io.cmtTask_s3.bits.qos              := taskReg_s3.qos
   io.cmtTask_s3.bits.chi              := taskReg_s3.chi
   io.cmtTask_s3.bits.chi.dataVec      := taskReg_s3.chi.dataVec
   io.cmtTask_s3.bits.dir              := respDir_s3

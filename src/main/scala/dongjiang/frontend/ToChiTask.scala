@@ -21,7 +21,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
     // CHI REQ IN
     val rxReq   = Flipped(Decoupled(new ReqFlit(false)))
     // CHI TASK OUT
-    val chiTask = Decoupled(new PackChi with HasAddr)
+    val chiTask = Decoupled(new PackChi with HasAddr with HasQoS)
   })
 
   // Connect Valid Ready
@@ -33,6 +33,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
   val req             = io.rxReq.bits
   val task            = io.chiTask.bits
   task.addr           := req.Addr
+  task.qos            := req.QoS
   task.chi.toLAN      := task.Addr.isToLAN(io.config.ci)
   task.chi.fromLAN    := NocType.rxIs(req, LAN)
   task.chi.nodeId     := req.SrcID
@@ -45,7 +46,6 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
   task.chi.snoopMe    := req.SnoopMe
   task.chi.memAttr    := req.MemAttr.asTypeOf(task.chi.memAttr)
   task.chi.expCompAck := req.ExpCompAck
-  task.chi.qos        := req.QoS
   // Use in snoop
   task.chi.fwdNID     := DontCare
   task.chi.fwdTxnID   := DontCare
@@ -81,7 +81,7 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
     // CHI REQ IN
     val rxSnp   = Flipped(Decoupled(new SnoopFlit()))
     // CHI TASK OUT
-    val chiTask = Decoupled(new PackChi with HasAddr)
+    val chiTask = Decoupled(new PackChi with HasAddr with HasQoS)
   })
 
   HardwareAssertion(!io.rxSnp.valid)
@@ -95,6 +95,7 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
   val snp             = io.rxSnp.bits
   val task            = io.chiTask.bits
   task.addr           := Cat(snp.Addr, 0.U(3.W))
+  task.qos            := snp.QoS
   task.chi.toLAN      := true.B
   task.chi.fromLAN    := false.B
   task.chi.nodeId     := snp.SrcID
@@ -111,7 +112,6 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
   task.chi.fwdNID     := snp.FwdNID
   task.chi.fwdTxnID   := snp.FwdTxnID
   task.chi.retToSrc   := snp.RetToSrc
-  task.chi.qos        := DontCare // TODO: snp.QoS
   // Use Data Vec
   task.chi.dataVec(1) := true.B
   task.chi.dataVec(0) := true.B

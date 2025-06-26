@@ -18,10 +18,10 @@ case class DJParam(
                   sfSizeInB:          Int = 2 * 1024 * 1024,
                   openDCT:            Boolean = true,
                   // ------------------------ Frontend -------------------------- //
-                  nrReqTaskBuf:       Int = 16,
-                  nrHprTaskBuf:       Int = 16,
-                  nrSnpTaskBuf:       Int = 8,
-                  nrPoS:              Int = 64, // The number of outstanding
+                  nrReqTaskBuf:       Int = 8,
+                  nrHprTaskBuf:       Int = 4,
+                  nrSnpTaskBuf:       Int = 4,  // unuse in BBN is false
+                  nrPoS:              Int = 32, // The number of outstanding
                   nrReadCM:           Int = 0,  // 0: nrReadCM is calculate by nrPoS, otherwise use user define value
                   // ------------------------ Memblock ----------------------- //
                   dataBufSizeInByte:  Int = 64 * 32,
@@ -64,8 +64,6 @@ case class DJParam(
   require(sfSets  >  nrDirBank, s"illegal sf sets : sfSets($sfSets)   = sfSizeInB($sfSizeInB)   / CacheLine($CacheLine) / llcWays($llcWays) > nrDirBank = $nrDirBank")
   require(dsSets  >  nrDSBank,  s"illegal ds sets : dsSets($dsSets)   = llcSets($llcSets) * llcWays($llcWays) > nrDirBank = $nrDirBank")
   require(posWays >= 4)
-  require(nrReqTaskBuf > 0)
-  require(nrSnpTaskBuf >= 0)
   require(isPow2(dataBufSizeInByte))
   require(isPow2(nrDSBank))
   require(isPow2(nrDirBank))
@@ -77,6 +75,9 @@ case class DJParam(
 
 
 trait HasParseZJParam extends HasZJParams {
+  // Has HPR
+  lazy val hasHPR           = zjParams.hasHprRing
+
   // Get LAN Nodes
   lazy val lanCcNodes       = zjParams.island.filter(_.nodeType == NodeType.CC)
   lazy val lanRniNodes      = zjParams.island.filter(n => n.nodeType == NodeType.RI || n.nodeType == NodeType.RH)
@@ -252,7 +253,7 @@ trait HasDJParam extends HasParseZJParam {
   // Frontend(Per dirBank) and Directory Parameters
   lazy val nrHprTaskBuf     = djparam.nrHprTaskBuf / djparam.nrDirBank
   lazy val nrReqTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
-  lazy val nrSnpTaskBuf     = djparam.nrReqTaskBuf / djparam.nrDirBank
+  lazy val nrSnpTaskBuf     = if(hasBBN) djparam.nrReqTaskBuf / djparam.nrDirBank else 0
   lazy val nrPoS            = djparam.nrPoS / djparam.nrDirBank
   lazy val nrCommit         = djparam.nrCommit / djparam.nrDirBank
   lazy val posWays          = djparam.posWays
@@ -260,6 +261,9 @@ trait HasDJParam extends HasParseZJParam {
   lazy val dirMuticycle     = djparam.dirRamLatency.max(if(djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup)
   lazy val readDirLatency   = (if(djparam.dirRamSetup > 1 || djparam.dirRamExtraHold) djparam.dirRamSetup + 1 else djparam.dirRamSetup) + djparam.dirRamLatency + 1
   lazy val llcWayBits       = log2Ceil(djparam.llcWays)
+  require(nrHprTaskBuf >= 2)
+  require(nrReqTaskBuf >= 2)
+  require(nrSnpTaskBuf >= 2 | !hasBBN)
 
   // DataBlock Parameters
   // dc/db

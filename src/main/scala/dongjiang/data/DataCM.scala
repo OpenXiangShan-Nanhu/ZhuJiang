@@ -97,6 +97,13 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   require(djparam.nrBeat == 2)
 
   /*
+   * Set QoS
+   */
+  io.readToDB.bits.qos  := reg.task.qos
+  io.readToDS.bits.qos  := reg.task.qos
+  io.readToCHI.bits.qos := reg.task.qos
+
+  /*
     * Connect io
    */
   io.txDatBits          := reg.task.txDat
@@ -378,7 +385,7 @@ class DataCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect ReadToX
    */
-  def connectReadToX[T <: Data with HasCritical](inVec: Vec[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
+  def connectReadToX[T <: Bundle with HasCritical](inVec: Vec[DecoupledIO[T]], out: DecoupledIO[T]): Unit = {
     val criticalVec   = VecInit(inVec.map(e => e.valid & e.bits.critical))
     val hasCritical   = criticalVec.asUInt.orR
     val criticalId    = PriorityEncoder(criticalVec)
@@ -386,7 +393,7 @@ class DataCM(implicit p: Parameters) extends DJModule {
       inVec.foreach(_.ready := false.B) // init
       out <> inVec(criticalId)
     }.otherwise {
-      out <> fastRRArb(inVec)
+      out <> fastQosRRArb(inVec)
     }
     HAssert(PopCount(criticalVec) <= 1.U)
   }

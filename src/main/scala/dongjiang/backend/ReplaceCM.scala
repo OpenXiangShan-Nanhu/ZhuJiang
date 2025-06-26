@@ -119,7 +119,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
       val sf            = Flipped(Valid(new DirEntry("sf")  with HasHnTxnID))
     }
     // Send Task To Data
-    val reqDB           = Decoupled(new HnTxnID with HasDataVec)
+    val reqDB           = Decoupled(new HnTxnID with HasDataVec with HasQoS)
     val cutHnTxnID      = Decoupled(new CutHnTxnID)
     val dataTask        = Decoupled(new DataTask)
     val dataResp        = Flipped(Valid(new HnTxnID)) // broadcast signal
@@ -139,6 +139,15 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   val next  = WireInit(reg)
 
   /*
+   * Set QoS
+   */
+  io.reqPoS.req.bits.qos  := reg.qos
+  io.reqDB.bits.qos       := reg.qos
+  io.cleanPoS.bits.qos    := reg.qos
+  io.dataTask.bits.qos    := reg.qos
+  io.cmTaskVec.foreach(_.bits.qos := reg.qos)
+
+  /*
    * Ouput debug message
    */
   io.dbg.valid              := reg.isValid
@@ -152,7 +161,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   /*
    * Receive Replace Task
    */
-  io.alloc.ready            := reg.isFree
+  io.alloc.ready        := reg.isFree
   when(io.alloc.fire) {
     alloc.dir           := io.alloc.bits.dir
     alloc.wriSF         := io.alloc.bits.wriSF
@@ -532,16 +541,16 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect IO <- Replace
    */
-  io.reqDB        <> fastRRArb(entries.map(_.io.reqDB))
+  fastQosRRArb(entries.map(_.io.reqDB), io.reqDB)
   io.resp         := fastRRArb.validOut(entries.map(_.io.resp))
   io.cutHnTxnID   := fastRRArb.validOut(entries.map(_.io.cutHnTxnID))
-  io.updPosTag    := fastRRArb(entries.map(_.io.updPosTag))
-  io.cleanPoS     <> fastRRArb(entries.map(_.io.cleanPoS))
-  io.dataTask     <> fastRRArb(entries.map(_.io.dataTask))
-  io.writeDir     <> fastRRArb(entries.map(_.io.writeDir))
+  io.updPosTag    := fastArb(entries.map(_.io.updPosTag))
+  io.cleanPoS     <> fastQosRRArb(entries.map(_.io.cleanPoS))
+  io.dataTask     <> fastQosRRArb(entries.map(_.io.dataTask))
+  io.writeDir     <> fastRRArb(entries.map(_.io.writeDir)) // TODO: use fastQosRRArb
   HAssert(PopCount(entries.map(_.io.updPosTag.valid)) <= 1.U)
   // Send cmTask
-  io.cmTaskVec.zip(entries.map(_.io.cmTaskVec).transpose).foreach { case(a, b) => a <> fastRRArb(b) }
+  io.cmTaskVec.zip(entries.map(_.io.cmTaskVec).transpose).foreach { case(a, b) => a <> fastQosRRArb(b) }
 
 
   /*

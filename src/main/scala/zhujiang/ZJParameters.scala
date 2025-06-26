@@ -253,6 +253,8 @@ case class ZJParameters(
     nrDirBank = hnxDirSRAMBank,
     nrPoS = hnxOutstanding / bank,
     dataBufSizeInByte = 32 * hnxOutstanding / bank,
+    nrReqTaskBuf = (hnxOutstanding / 4 / bank).max(2),
+    nrHprTaskBuf = (hnxOutstanding / 8 / bank).max(2),
   ))
 }
 

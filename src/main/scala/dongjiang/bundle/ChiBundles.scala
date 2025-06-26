@@ -150,13 +150,3 @@ trait HasChiSnpField { this: Bundle =>
   def cantSnp = !snpAttr
   def illegalSnpField = snoopMe & !snpAttr
 }
-
-/*
- * Chi QoS
- */
-trait HasQoS { this: Bundle =>
-  val qos       = UInt(4.W)
-
-  def isHighQoS = qos(3)
-  def isLowQoS  = !isHighQoS
-}

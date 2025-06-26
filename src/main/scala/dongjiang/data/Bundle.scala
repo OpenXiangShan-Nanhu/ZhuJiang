@@ -9,6 +9,7 @@ import dongjiang.bundle._
 import dongjiang.frontend.decode._
 import zhujiang.chi.DataFlit
 import dongjiang.data.CTRLSTATE._
+import dongjiang.utils.HasQoS
 import xs.utils.debug._
 
 /*
@@ -57,7 +58,7 @@ class PackDsIdx(implicit p: Parameters) extends DJBundle with HasDsIdx
  * DataTask -> DataTaskBundle
  */
 class DataTask(implicit p: Parameters) extends DJBundle with HasHnTxnID
-  with HasPackDataOp with HasDsIdx with HasDataVec {
+  with HasPackDataOp with HasDsIdx with HasDataVec with HasQoS {
   val txDat = new DataFlit
 }
 
@@ -100,8 +101,8 @@ class Critical(implicit p: Parameters) extends DJBundle with HasDCID
 /*
  * ReadDB / ReadDS
  */
-class ReadDB(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasCritical { val repl = Bool() }
-class ReadDS(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasCritical
+class ReadDB(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasQoS with HasCritical { val repl = Bool() }
+class ReadDS(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasQoS with HasCritical
 
 /*
  * GetDBID

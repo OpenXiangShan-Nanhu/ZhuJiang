@@ -79,6 +79,12 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   val datNodeId   =  WireInit(0.U.asTypeOf(new NodeId()))
 
   /*
+   * Set QoS
+   */
+  io.txSnp.bits.QoS := reg.task.qos
+  io.resp.bits.qos  := reg.task.qos
+
+  /*
    * Output for debug
    */
   io.dbg.valid        := reg.isValid
@@ -281,8 +287,8 @@ class SnoopCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect IO <- CM
    */
-  io.txSnp    <> fastRRArb(entries.map(_.io.txSnp)) // TODO: split to LAN and BBN
-  io.resp     <> fastRRArb(entries.map(_.io.resp))
+  io.txSnp    <> fastQosRRArb(entries.map(_.io.txSnp)) // TODO: split to LAN and BBN
+  io.resp     <> fastQosRRArb(entries.map(_.io.resp))
 
   /*
    * HardwareAssertion placePipe

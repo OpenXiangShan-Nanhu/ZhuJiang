@@ -21,8 +21,8 @@ class Block(implicit p: Parameters) extends DJModule {
   val io = IO(new Bundle {
     val config        = new DJConfigIO()
     // Task
-    val chiTask_s0    = Flipped(Valid(new PackChi with HasAddr))
-    val task_s1       = Valid(new PackChi with HasAddr with HasPackHnIdx with HasAlready)
+    val chiTask_s0    = Flipped(Valid(new PackChi with HasAddr with HasQoS))
+    val task_s1       = Valid(new PackChi with HasAddr with HasPackHnIdx with HasAlready with HasQoS)
     // Read Directory
     val readDir_s1    = Decoupled(new Addr with HasPackHnIdx)
     // Message from PoS
@@ -41,7 +41,7 @@ class Block(implicit p: Parameters) extends DJModule {
    * Reg and Wire declaration
    */
   val validReg_s1         = RegInit(false.B)
-  val taskReg_s1          = Reg(new PackChi with HasAddr)
+  val taskReg_s1          = Reg(new PackChi with HasAddr with HasQoS)
   val sReceiptReg_s1      = RegInit(false.B)  // need send ReadReceipt in s1
   val sDBIDReg_s1         = RegInit(false.B)  // need send XDBIDResp in s1
   val shouldResp_s1       = Wire(Bool())      // shouled send fast resp to Backend
@@ -76,6 +76,7 @@ class Block(implicit p: Parameters) extends DJModule {
   io.task_s1.valid                := validReg_s1 & !block_s1.all
   io.task_s1.bits.chi             := taskReg_s1.chi
   io.task_s1.bits.addr            := taskReg_s1.addr
+  io.task_s1.bits.qos             := taskReg_s1.qos
   io.task_s1.bits.hnIdx           := io.hnIdx_s1
   io.task_s1.bits.alr.reqDB       := io.reqDB_s1.fire
   io.task_s1.bits.alr.sData       := false.B

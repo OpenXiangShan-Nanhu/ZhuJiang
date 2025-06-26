@@ -101,7 +101,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     val replTask    = Decoupled(new ReplTask)
     val replResp    = Flipped(Valid(new HnTxnID)) // broadcast signal
     // Send Task To Data
-    val reqDB       = Decoupled(new HnTxnID with HasDataVec)
+    val reqDB       = Decoupled(new HnTxnID with HasDataVec with HasQoS)
     val dataTask    = Decoupled(new DataTask)
     val dataResp    = Flipped(Valid(new HnTxnID)) // broadcast signal
     // Update PoS Message
@@ -133,6 +133,17 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   // other
   val cmTask      = WireInit(0.U.asTypeOf(new CMTask))
   val alrGetAckReg= RegInit(false.B) // Already get compAck, used to avoid Commit Task arrived after CompAck
+
+  /*
+   * Set QoS
+   */
+  io.reqDB.bits.qos     := taskReg.qos
+  io.txRsp.bits.QoS     := taskReg.qos
+  io.replTask.bits.qos  := taskReg.qos
+  io.dataTask.bits.qos  := taskReg.qos
+  io.cleanPoS.bits.qos  := taskReg.qos
+  io.cmTaskVec.foreach(_.bits.qos := taskReg.qos)
+
 
   /*
    * Get CompAckHitReg
@@ -513,12 +524,12 @@ class Commit(implicit p: Parameters) extends DJModule {
   /*
    * Connect IO <- Commit
    */
-  io.reqDB    <> fastRRArb(entries.map(_.io.reqDB))
-  io.txRsp    <> fastRRArb(entries.map(_.io.txRsp))
-  io.replTask <> fastRRArb(entries.map(_.io.replTask))
-  io.dataTask <> fastRRArb(entries.map(_.io.dataTask))
-  io.cleanPoS <> fastRRArb(entries.map(_.io.cleanPoS))
-  io.cmTaskVec.zip(entries.map(_.io.cmTaskVec).transpose).foreach { case(a, b) => a <> fastRRArb(b) }
+  fastQosRRArb(entries.map(_.io.reqDB), io.reqDB)
+  io.txRsp    <> fastQosRRArb(entries.map(_.io.txRsp))
+  io.replTask <> fastQosRRArb(entries.map(_.io.replTask))
+  io.dataTask <> fastQosRRArb(entries.map(_.io.dataTask))
+  io.cleanPoS <> fastQosRRArb(entries.map(_.io.cleanPoS))
+  io.cmTaskVec.zip(entries.map(_.io.cmTaskVec).transpose).foreach { case(a, b) => a <> fastQosRRArb(b) }
 
   /*
    * HAssert placePipe
