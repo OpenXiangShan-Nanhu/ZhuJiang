@@ -79,17 +79,17 @@ object Read_LAN_DCT_DMT {
       (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(SC)) -> second(wriSRC(true) | wriSNP(false)),                                                      // SC I  I
       (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(SC)) -> second(tdop("send") | write(WriteNoSnpFull), waitSecDone | wriSRC(true)),                  // SC SC I
       (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(SC)) -> second(tdop("send") | write(WriteNoSnpFull), waitSecDone | wriSRC(true) | wriSNP(false)),  // SC I  I
-      (rspIs(SnpResp)           | respIs(I))                 -> second(read(ReadNoSnp) | doDMT, wriSRC(true) | wriSNP(false))                              // UC I  I // No Fwd
+      (rspIs(SnpResp)           | respIs(I))                 -> second(read(ReadNoSnp), datIs(CompData) | respIs(UC), waitSecDone | cdop("send") | cmtDat(CompData) | resp(SC) | wriSRC(true) | wriSNP(false)) // SC ? I // No Fwd
     )),
     // V I I -> UC I I
     (srcHit | othMiss | llcIs(I))  -> first(read(ReadNoSnp) | doDMT, noCmt),
     // V V I
     (srcHit | othHit | llcIs(I))  -> (snpOne(SnpNotSharedDirtyFwd) | needDB, Seq(
-      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(SC)) -> second(noCmt),                                  // SC SC I
-      (datIs(SnpRespDataFwded)  | respIs(SC)    | fwdIs(SC)) -> second(noCmt),                                  // SC SC I
-      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(SC)) -> second(wriSNP(false)),                          // SC I  I
-      (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(SC)) -> second(wriSNP(false)),                          // SC I  I
-      (rspIs(SnpResp)           | respIs(I))                 -> second(read(ReadNoSnp) | doDMT, wriSNP(false))  // UC I  I // No Fwd
+      (rspIs(SnpRespFwded)      | respIs(SC)    | fwdIs(SC)) -> second(noCmt),          // SC SC I
+      (datIs(SnpRespDataFwded)  | respIs(SC)    | fwdIs(SC)) -> second(noCmt),          // SC SC I
+      (rspIs(SnpRespFwded)      | respIs(I)     | fwdIs(SC)) -> second(wriSNP(false)),  // SC I  I
+      (datIs(SnpRespDataFwded)  | respIs(I)     | fwdIs(SC)) -> second(wriSNP(false)),  // SC I  I
+      (rspIs(SnpResp)           | respIs(I))                 -> second(read(ReadNoSnp), datIs(CompData) | respIs(UC), waitSecDone | cdop("send") | cmtDat(CompData) | resp(SC) | wriSNP(false))  // SC ? I // No Fwd
     )),
   ))
 
