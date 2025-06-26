@@ -129,6 +129,7 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
   readDataPipe.io.enq.bits.HomeNID := nodeId
   readDataPipe.io.enq.bits.TgtID := ctrlSel.srcId
   readDataPipe.io.enq.bits.Resp := "b010".U
+  readDataPipe.io.enq.bits.RespErr := axi.r.bits.resp
   readDataPipe.io.enq.bits.QoS := ctrlSel.qos
   readDataPipe.io.enq.bits.BE := MaskGen(ctrlSel.addr, ctrlSel.size, bew)
 

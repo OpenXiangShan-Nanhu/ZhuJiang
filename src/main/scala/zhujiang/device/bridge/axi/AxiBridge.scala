@@ -140,6 +140,7 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule {
   readDataPipe.io.enq.bits.HomeNID := ctrlSel.srcId
   readDataPipe.io.enq.bits.DBID := ctrlSel.txnId
   readDataPipe.io.enq.bits.Resp := "b010".U
+  readDataPipe.io.enq.bits.RespErr := axi.r.bits.resp
   readDataPipe.io.enq.bits.QoS := ctrlSel.qos
   readDataPipe.io.enq.bits.BE := Mux(ctrlSel.size === 6.U, Fill(bew, true.B), MaskGen(ctrlSel.addr, ctrlSel.size, bew))
 
