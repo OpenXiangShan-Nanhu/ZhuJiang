@@ -70,7 +70,7 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
   hnx.io.ramPwrCtl.ret := false.B
   hnx.io.ramPwrCtl.stop := false.B
 
-  for(chn <- nodes.head.ejects.filterNot(_ == "DBG")) {
+  for(chn <- nodes.head.ejects.filterNot(_ == "DBG").filterNot(n => n == "HPR" && !hasHprRing)) {
     val rxSeq = hnxLans.map(_.tx.bundleMap(chn))
     if(rxSeq.size == 1) {
       hnx.io.lan.rx.bundleMap(chn) <> rxSeq.head
@@ -83,7 +83,7 @@ class HomeWrapper(nodes: Seq[Node], nrFriends: Int)(implicit p: Parameters) exte
   private val erqTgt = Wire(UInt(niw.W))
   dontTouch(erqTgt)
   private val mems = zjParams.island.filter(n => n.nodeType == NodeType.S)
-  for(chn <- nodes.head.injects.filterNot(_ == "DBG")) {
+  for(chn <- nodes.head.injects.filterNot(_ == "DBG").filterNot(n => n == "HPR" && !hasHprRing)) {
     val txBdSeq = hnxLans.map(_.rx.bundleMap(chn))
     val txBd = hnx.io.lan.tx.bundleMap(chn)
     val tgt = if(chn == "ERQ" && mems.nonEmpty) {
