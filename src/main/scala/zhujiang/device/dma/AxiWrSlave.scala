@@ -188,7 +188,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   mergeReg.io.dataIn.bits.strb     := io.uAxiW.bits.strb
   mergeReg.io.dataIn.bits.beat     := dAwEntrys(wDataPtr.value).shift(rni.offset - 1)
   mergeReg.io.dataIn.bits.data     := io.uAxiW.bits.data
-  mergeReg.io.dataOut.ready        := merComReg =/= 0.U
+  mergeReg.io.dataOut.ready        := merComReg =/= 0.U & io.dAxiW.ready
 
   bIdQueue.io.deq.ready   := io.uAxiB.ready
   bIdQueue.io.enq.valid   := dAwEntrys(dTailPtr.value).last & io.dAxiB.fire
