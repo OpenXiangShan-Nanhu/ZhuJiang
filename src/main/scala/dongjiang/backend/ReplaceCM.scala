@@ -27,7 +27,7 @@ object REPLSTATE {
   val REQPOS    = 0x1.U
   val WRIDIR    = 0x2.U
   val WAITDIR   = 0x3.U
-  val CUTID     = 0x4.U // Cut HnTxnID in DataBlock
+  val UPDATEID  = 0x4.U // Update HnTxnID in DataBlock
   val RESPCMT   = 0x5.U // Send Resp to Commit
   val REQDB     = 0x6.U // Request DataBuffer
   val WRITE     = 0x7.U // Send CM Task to WriteCM
@@ -43,7 +43,7 @@ object REPLSTATE {
 
 trait HasReplMes { this: DJBundle =>
   // 0. Replace LLC Directory:
-  //  State: Free -> ReqPoS -> WriDir -> WaitDir ---> CutHnTxnID -> ReplLLC -> WaitWri -> (RespCmt/CleanPosT) -> CleanPosR -> Free
+  //  State: Free -> ReqPoS -> WriDir -> WaitDir ---> UpdHnTxnID -> ReplLLC -> WaitWri -> (RespCmt/CleanPosT) -> CleanPosR -> Free
   //                    ^                         |                                               ^
   //                    |                         |--(replWayIsInvalid)--> SaveData --> WaitResp -|
   //                    |
@@ -72,7 +72,7 @@ trait HasReplMes { this: DJBundle =>
   def isReqPoS      = state === REQPOS
   def isWriDir      = state === WRIDIR
   def isWaitDir     = state === WAITDIR
-  def isCutHnTxnID  = state === CUTID
+  def isUpdHnTxnID  = state === UPDATEID
   def isRespCmt     = state === RESPCMT
   def isReqDB       = state === REQDB
   def isWrite       = state === WRITE
@@ -120,7 +120,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     }
     // Send Task To Data
     val reqDB           = Decoupled(new HnTxnID with HasDataVec with HasQoS)
-    val cutHnTxnID      = Decoupled(new CutHnTxnID)
+    val updHnTxnID      = Decoupled(new UpdHnTxnID)
     val dataTask        = Decoupled(new DataTask)
     val dataResp        = Flipped(Valid(new HnTxnID)) // broadcast signal
     // for debug
@@ -311,9 +311,9 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   /*
    * Replace HnTxnID in DataBlock
    */
-  io.cutHnTxnID.valid           := reg.isCutHnTxnID
-  io.cutHnTxnID.bits.before     := reg.hnTxnID
-  io.cutHnTxnID.bits.next       := reg.repl.hnTxnID
+  io.updHnTxnID.valid           := reg.isUpdHnTxnID
+  io.updHnTxnID.bits.before     := reg.hnTxnID
+  io.updHnTxnID.bits.next       := reg.repl.hnTxnID
 
   /*
    * Send Task to DataBlock
@@ -359,11 +359,11 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     }
     // Wait Directory write response
     is(WAITDIR) {
-      when(dirRespHit)                  { next.state := Mux(sfRespHit, RESPCMT, Mux(needReplLLC, CUTID, SAVEDATA)) }
+      when(dirRespHit)                  { next.state := Mux(sfRespHit, RESPCMT, Mux(needReplLLC, UPDATEID, SAVEDATA)) }
     }
-    // Cut HnTxnID in DataBlock
-    is(CUTID) {
-      when(io.cutHnTxnID.fire)          { next.state := WRITE }
+    // Update HnTxnID in DataBlock
+    is(UPDATEID) {
+      when(io.updHnTxnID.fire)          { next.state := WRITE }
     }
     // Send resp to Commit
     is(RESPCMT) {
@@ -419,7 +419,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   HAssert.withEn(reg.isReqPoS,      reg.isValid & io.reqPoS.req.fire)
   HAssert.withEn(reg.isWriDir,      reg.isValid & io.writeDir.fire)
   HAssert.withEn(reg.isWaitDir,     reg.isValid & dirRespHit)
-  HAssert.withEn(reg.isCutHnTxnID,  reg.isValid & io.cutHnTxnID.fire)
+  HAssert.withEn(reg.isUpdHnTxnID,  reg.isValid & io.updHnTxnID.fire)
   HAssert.withEn(reg.isReqDB,       reg.isValid & io.reqDB.fire)
   HAssert.withEn(reg.isReplSF,      reg.isValid & io.cmTaskVec(CMID.SNP).fire)
   HAssert.withEn(reg.isReplLLC,     reg.isValid & io.cmTaskVec(CMID.WRI).fire)
@@ -494,7 +494,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     }
     // Send Task To Data
     val reqDB           = Decoupled(new HnTxnID with HasDataVec)
-    val cutHnTxnID      = Valid(new CutHnTxnID)
+    val updHnTxnID      = Valid(new UpdHnTxnID)
     val dataTask        = Decoupled(new DataTask)
     val dataResp        = Flipped(Valid(new HnTxnID)) // broadcast signal
   })
@@ -543,7 +543,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
    */
   fastQosRRArb(entries.map(_.io.reqDB), io.reqDB)
   io.resp         := fastRRArb.validOut(entries.map(_.io.resp))
-  io.cutHnTxnID   := fastRRArb.validOut(entries.map(_.io.cutHnTxnID))
+  io.updHnTxnID   := fastRRArb.validOut(entries.map(_.io.updHnTxnID))
   io.updPosTag    := fastArb(entries.map(_.io.updPosTag))
   io.cleanPoS     <> fastQosRRArb(entries.map(_.io.cleanPoS))
   io.dataTask     <> fastQosRRArb(entries.map(_.io.dataTask))

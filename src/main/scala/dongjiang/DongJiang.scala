@@ -209,7 +209,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   /*
    * Connect dataBlock
    */
-  dataBlock.io.cutHnTxnID   := backend.io.cutHnTxnID
+  dataBlock.io.updHnTxnID   := backend.io.updHnTxnID
   dataBlock.io.cleanDB      <> fastArb.validOut(Seq(backend.io.cleanDB, fastRRArb(frontends.map(_.io.cleanDB))))
   dataBlock.io.reqDB        <> fastArb(Seq(backend.io.reqDB, fastRRArb(frontends.map(_.io.reqDB_s3)), fastRRArb(frontends.map(_.io.reqDB_s1))))
   dataBlock.io.task         := fastArb.validOut(Seq(backend.io.dataTask, fastRRArb(frontends.map(_.io.fastData))))

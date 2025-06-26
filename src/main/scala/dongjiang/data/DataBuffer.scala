@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.CutHnTxnID
+import dongjiang.backend.UpdHnTxnID
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._

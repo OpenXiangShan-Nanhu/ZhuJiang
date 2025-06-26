@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.CutHnTxnID
+import dongjiang.backend.UpdHnTxnID
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
@@ -68,7 +68,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   val io = IO(new Bundle {
     val dcid        = Input(UInt(dcIdBits.W))
     // From/To Frontend/Backend
-    val cutHnTxnID  = Flipped(Valid(new CutHnTxnID))
+    val updHnTxnID  = Flipped(Valid(new UpdHnTxnID))
     val alloc       = Flipped(Decoupled(new HnTxnID with HasDataVec))
     val task        = Flipped(Valid(new DataTask)) // broadcast signal
     val resp        = Decoupled(new HnTxnID)
@@ -216,11 +216,11 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   HAssert.withEn(reg.opBeat === 0.U, taskHit)
 
   // Get next hnTxnID
-  val cutIdHit = reg.isValid & io.cutHnTxnID.valid & io.cutHnTxnID.bits.before === reg.task.hnTxnID
+  val cutIdHit = reg.isValid & io.updHnTxnID.valid & io.updHnTxnID.bits.before === reg.task.hnTxnID
   when(io.alloc.fire) {
     next.task.hnTxnID := io.alloc.bits.hnTxnID
   }.elsewhen(cutIdHit) {
-    next.task.hnTxnID := io.cutHnTxnID.bits.next
+    next.task.hnTxnID := io.updHnTxnID.bits.next
     HAssert(reg.isAlloc)
   }
 
@@ -305,7 +305,7 @@ class DataCM(implicit p: Parameters) extends DJModule {
    */
   val io = IO(new Bundle {
     // From Backend
-    val cutHnTxnID    = Flipped(Valid(new CutHnTxnID))
+    val updHnTxnID    = Flipped(Valid(new UpdHnTxnID))
     val reqDBIn       = Flipped(Decoupled(new HnTxnID with HasDataVec))
     val task          = Flipped(Valid(new DataTask)) // broadcast signal
     val resp          = Valid(new HnTxnID)
@@ -370,11 +370,11 @@ class DataCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect CM <- IO
    */
-  entries.foreach(_.io.cutHnTxnID   := io.cutHnTxnID)
+  entries.foreach(_.io.updHnTxnID   := io.updHnTxnID)
   entries.foreach(_.io.clean        := io.clean)
   entries.foreach(_.io.dsWriDB      := io.dsWriDB)
   entries.foreach(_.io.txDatFire    := io.txDatFire)
-  HAssert.withEn(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === io.cutHnTxnID.bits.before).reduce(_ | _), io.cutHnTxnID.valid)
+  HAssert.withEn(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === io.updHnTxnID.bits.before).reduce(_ | _), io.updHnTxnID.valid)
 
   /*
    * Connect IO <- CM
