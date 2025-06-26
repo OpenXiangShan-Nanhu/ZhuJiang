@@ -20,6 +20,7 @@ class NodeRegister(implicit val p: Parameters) extends BlackBox with HasBlackBox
        |  input  [${NodeType.width}:0] \t\tnodeType
        |);
        |`ifndef NO_TRAFFIC_BOARD
+       |`ifndef SYNTHESIS
        |  import "DPI-C" function void tfb_register_node (
        |    input  shortint \t\tnode_id,
        |    input  shortint \t\tnode_type
@@ -33,6 +34,7 @@ class NodeRegister(implicit val p: Parameters) extends BlackBox with HasBlackBox
        |`else
        |  initial #1 tfb_register_node(nid, nt);
        |`endif // VERILATOR
+       |`endif // SYNTHESIS
        |`endif // NO_TRAFFIC_BOARD
        |endmodule""".stripMargin)
 }
