@@ -35,7 +35,7 @@ class FlitMonitor()(implicit val p: Parameters) extends BlackBox with HasBlackBo
        |  input  [${maxFlitBits - 1}:0] \tflit,
        |  output reg\t\t\tfault
        |);
-       |`ifndef SYNTHESIS
+       |`ifndef NO_TRAFFIC_BOARD
        |  import "DPI-C" function void tfb_flit_monitor (
        |    input  shortint \t\tnode_id,
        |    input  shortint \t\tnode_type,
@@ -52,8 +52,10 @@ class FlitMonitor()(implicit val p: Parameters) extends BlackBox with HasBlackBo
        |  always @(posedge clock) begin
        |    if(valid) tfb_flit_monitor(nid, nt, inject, flitType, flit, fault);
        |  end
-       |`else
-       |  assign fault = 0;
-       |`endif
+       |`else // NO_TRAFFIC_BOARD
+       |  always @(*) begin
+       |    fault <= 1'b0;
+       |  end
+       |`endif // NO_TRAFFIC_BOARD
        |endmodule""".stripMargin)
 }
