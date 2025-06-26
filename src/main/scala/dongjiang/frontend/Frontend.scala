@@ -14,7 +14,8 @@ import dongjiang.directory.{DirEntry, DirMsg, PackDirMsg}
 import dongjiang.frontend.decode.{CommitCode, Operations}
 import xs.utils.queue.FastQueue
 
-class Frontend(implicit p: Parameters) extends DJModule {
+class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
+  override def isTopModule: Boolean = isTop
   /*
    * IO declaration
    */

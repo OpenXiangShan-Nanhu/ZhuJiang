@@ -116,28 +116,28 @@ object HomeTop extends App {
 object DirectoryTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new Directory(powerCtl = false)(config))
+    ChiselGeneratorAnnotation(() => new Directory(isTop = true)(config))
   ))
 }
 
 object DataBlockTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new DataBlock(powerCtl = false)(config))
+    ChiselGeneratorAnnotation(() => new DataBlock(isTop = true)(config))
   ))
 }
 
 object BackendTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new Backend()(config))
+    ChiselGeneratorAnnotation(() => new Backend(isTop = true)(config))
   ))
 }
 
 object FrontendTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new Frontend()(config))
+    ChiselGeneratorAnnotation(() => new Frontend(isTop = true)(config))
   ))
 }
 

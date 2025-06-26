@@ -16,7 +16,8 @@ import dongjiang.frontend.decode._
 import dongjiang.data._
 import dongjiang.directory._
 
-class Backend(implicit p: Parameters) extends DJModule {
+class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
+  override def isTopModule: Boolean = isTop
   /*
    * IO declaration
    */

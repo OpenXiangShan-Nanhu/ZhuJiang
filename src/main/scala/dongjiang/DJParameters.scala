@@ -2,12 +2,11 @@ package dongjiang
 
 import chisel3._
 import chisel3.util._
-import dongjiang.data.DsIdx
 import org.chipsalliance.cde.config._
-
 import scala.math.{log, max, min}
 import zhujiang.{HasZJParams, ZJParametersKey}
 import xijiang.NodeType
+import dongjiang.frontend.decode.Decode._
 import xs.utils.debug._
 
 
@@ -300,6 +299,59 @@ trait HasDJParam extends HasParseZJParam {
 
 abstract class DJModule(implicit val p: Parameters) extends Module with HasDJParam {
   override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
+  def isTopModule = false
+  /*
+   * Print message
+   */
+  if(isTopModule) {
+    // full addr
+    val sUseAddr1 = if (hnxBankOff != 6) s"[useAddr1(${useAddr_hi}:${bankId_hi + 1})] + " else s"[useAddr(${useAddr_hi}:${bankId_hi + 1})] + "
+    val sUseAddr0 = if (hnxBankOff != 6) s"[useAddr0(${bankId_lo - 1}:${useAddr_lo})] + " else s""
+    val sBankId = if (nrBank != 0) s"[bankId(${bankId_hi}:${bankId_lo})] + " else s""
+    val sFullAddr = s"[fullAddr(${djparam.addressBits - 1}:0)] = " + sUseAddr1 + sBankId + sUseAddr0 + s"[offset(${offset_hi}:${offset_lo})]"
+    // dir bank id
+    val sDirBankId = if (djparam.nrDirBank > 1) s"+ [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]" else s""
+    // pos set
+    val sPosSet = if (posSets > 1) s"+ [posSet(${posSet_hn_hi}:${posSet_hn_lo})]" else s""
+    //
+    print(
+      s"""
+         |DongJiang Info: {
+         |  Support Protocol: CHI-G
+         |  lanPortNum: ${nrLanIcn}
+         |  bbnPortNum: ${nrBbnIcn}
+         |  llcSize: ${djparam.llcSizeInB} B
+         |  sfSize: ${djparam.sfSizeInB} B
+         |  llcWays: ${djparam.llcWays}
+         |  sfWays: ${djparam.sfWays}
+         |  sfMetas: ${nrSfMetas}
+         |  openDCT: ${djparam.openDCT}
+         |  nrReqBuf: ${nrReqTaskBuf * djparam.nrDirBank}
+         |  nrHprBuf: ${nrHprTaskBuf * djparam.nrDirBank}
+         |  nrSnpBuf: ${nrSnpTaskBuf * djparam.nrDirBank}
+         |  nrPoS: ${djparam.nrPoS} = dirBank[${djparam.nrDirBank}] x posSets[${posSets}] x posWays[${posWays}]
+         |  dataBufSize: ${djparam.dataBufSizeInByte} B
+         |  dataSetup: ${djparam.dataRamSetup}
+         |  dataLatency: ${djparam.dataRamSetup}
+         |  dataExtraHold: ${djparam.dataRamExtraHold}
+         |  dirSetup: ${djparam.dirRamSetup}
+         |  dirLatency: ${djparam.dirRamLatency}
+         |  dirExtraHold: ${djparam.dirRamExtraHold}
+         |  ccNodeIdSeq: $ccNodeIdSeq
+         |  rniNodeIdSeq: $rniNodeIdSeq
+         |  snNodeIdSeq: $snNodeIdSeq
+         |  address slice:
+         |    $sFullAddr
+         |                     = [ci(${ci_hi}:${ci_lo})]
+         |    [useAddr(${useAddrBits - 1}:0)]  = [llcTag(${llcTag_ua_hi}:${llcTag_ua_lo})] + [llcSet(${llcSet_ua_hi}:${llcSet_ua_lo})] $sDirBankId
+         |                     = [sfTag (${sfTag_ua_hi}:${sfTag_ua_lo})] + [sfSet (${sfSet_ua_hi}:${sfSet_ua_lo})] $sDirBankId
+         |                     = [posTag(${posTag_ua_hi}:${posTag_ua_lo})] $sPosSet $sDirBankId
+         |  hnTxnID slice:
+         |    [hnTxnID(${hnTxnIDBits - 1}:0)]   = [dirBank(${dirBank_hn_hi}:${dirBank_hn_lo})] $sPosSet + [posWay(${posWay_hn_hi}:${posWay_hn_lo})]
+         |  decodeTableSize: ${l_ci * l_si * l_ti} = ChiInst($l_ci) x StateInst($l_si) x TaskInst($l_ti) x SecTaskInst($l_sti)
+         |}
+         |""".stripMargin)
+  }
 }
 
 abstract class DJBundle(implicit val p: Parameters) extends Bundle with HasDJParam

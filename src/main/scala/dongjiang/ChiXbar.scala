@@ -86,7 +86,7 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     // arbiter
     outVec.zip(redirects.transpose).foreach {
       case(out, redirs) =>
-        out <> fastRRArb(redirs)
+        out <> fastQosRRArb(redirs)
     }
   }
 
