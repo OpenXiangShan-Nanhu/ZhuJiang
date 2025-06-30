@@ -47,9 +47,6 @@ class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 4) exten
     // reset
     when(io.enable) {
       cntReg    := 0.U
-    // lock
-    }.elsewhen(cntReg === lockCnt.U) {
-      cntReg    := cntReg
     // inc
     }.elsewhen(io.inVec(indexReg) & !io.enable) {
       cntReg    := cntReg + 1.U

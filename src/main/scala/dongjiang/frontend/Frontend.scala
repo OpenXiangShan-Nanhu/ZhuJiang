@@ -65,6 +65,7 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   val reqTaskBuf  = Module(new TaskBuffer(nrReqTaskBuf, sort = true))
   val snpTaskBuf  = if(hasBBN) Some(Module(new TaskBuffer(nrSnpTaskBuf, sort = false))) else None
   // S1
+  val posAlloc_s0 = Wire(Valid(new Addr with HasChiChannel))
   val posTable    = Module(new PosTable())
   val block       = Module(new Block())
   // S2: Wait Directory Response
@@ -164,8 +165,10 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   }
 
   // posTable [S1]
-  val posReqVec_s0          = if(hasBBN) Seq(snpTaskBuf.get.io.allocPos_s0, hprTaskBuf.io.allocPos_s0 , reqTaskBuf.io.allocPos_s0) else Seq(hprTaskBuf.io.allocPos_s0, reqTaskBuf.io.allocPos_s0)
-  posTable.io.alloc_s0      := fastArb(posReqVec_s0)
+  posAlloc_s0.valid         := block.io.chiTask_s0.valid
+  posAlloc_s0.bits.addr     := block.io.chiTask_s0.bits.addr
+  posAlloc_s0.bits.channel  := block.io.chiTask_s0.bits.chi.channel
+  posTable.io.alloc_s0      := posAlloc_s0
   posTable.io.retry_s1      := block.io.retry_s1
   posTable.io.updNest       := io.updPosNest
   posTable.io.clean         := io.cleanPos
@@ -175,9 +178,10 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
 
   // block [S1]
   val taskVec_s0            = if(hasBBN) Seq(snpTaskBuf.get.io.chiTask_s0, hprTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0) else Seq(hprTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0)
-  block.io.chiTask_s0       := fastArb(taskVec_s0)
+  block.io.chiTask_s0       := fastArb.validOut(taskVec_s0)
   block.io.posBlock_s1      := posTable.io.block_s1
   block.io.hnIdx_s1         := posTable.io.hnIdx_s1
+  HAssert(PopCount(taskVec_s0.map(_.fire)) <= 1.U)
 
   // buffer [S2]
   pipe.io.enq.valid         := block.io.task_s1.valid

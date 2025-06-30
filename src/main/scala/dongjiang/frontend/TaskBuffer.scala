@@ -146,8 +146,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   val io = IO(new Bundle {
     // task
     val chiTaskIn   = Flipped(Decoupled(new PackChi with HasAddr with HasQoS))
-    val chiTask_s0  = Valid(new PackChi with HasAddr with HasQoS)
-    val allocPos_s0 = Valid(new Addr with HasChiChannel)
+    val chiTask_s0  = Decoupled(new PackChi with HasAddr with HasQoS)
     // ctrl
     val retry_s1    = Input(Bool()) // Reject Task by Block or PoS Full
     val sleep_s1    = Input(Bool()) // Reject Task by PoS Match
@@ -179,12 +178,10 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   selRREncoder.io.inVec       := VecInit(taskVec_s0.map(_.valid))
   selRREncoder.io.enable      := cancelVec(selRREncoder.io.vipIdx)
   val selId_s0                = selRREncoder.io.outIdx
-  taskVec_s0.zipWithIndex.foreach { case(t, i) => t.ready := selId_s0 === i.U }
+  taskVec_s0.zipWithIndex.foreach { case(t, i) => t.ready := io.chiTask_s0.ready & selId_s0 === i.U }
   // connect
-  io.chiTask_s0               := taskVec_s0(selId_s0)
-  io.allocPos_s0.valid        := io.chiTask_s0.valid
-  io.allocPos_s0.bits.addr    := io.chiTask_s0.bits.addr
-  io.allocPos_s0.bits.channel := io.chiTask_s0.bits.chi.channel
+  io.chiTask_s0.valid         := taskVec_s0(selId_s0).valid
+  io.chiTask_s0.bits          := taskVec_s0(selId_s0).bits
 
   /*
    * Connect Ctrl Signals

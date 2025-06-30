@@ -43,20 +43,20 @@ class Decode(implicit p: Parameters) extends DJModule {
   /*
    * Module Reg and Wire declaration
    */
-  val getDecRes           = Module(new GetDecRes)
-  val validReg_s3         = RegNext(io.task_s2.valid)
-  val taskReg_s3          = RegEnable(io.task_s2.bits, io.task_s2.valid)
-  val stateInst_s3        = Wire(new StateInst())
+  val getDecRes         = Module(new GetDecRes)
+  val validReg_s3       = RegNext(io.task_s2.valid)
+  val taskReg_s3        = RegEnable(io.task_s2.bits, io.task_s2.valid)
+  val stateInst_s3      = Wire(new StateInst())
 
   /*
    * Get ChiInst and StateInst
    */
-  val chiInst_s2      = WireInit(io.task_s2.bits.chi.getChiInst)
-  val respDir_s3      = Mux(io.respDir_s3.valid, io.respDir_s3.bits, 0.U.asTypeOf(new DirMsg()))
-  stateInst_s3        := Mux(io.respDir_s3.valid, io.respDir_s3.bits.getStateInst(taskReg_s3.chi.metaIdOH), (new StateInst).Lit(_.valid -> true.B))
+  val chiInst_s2        = WireInit(io.task_s2.bits.chi.getChiInst)
+  val respDir_s3        = Mux(io.respDir_s3.valid, io.respDir_s3.bits, 0.U.asTypeOf(new DirMsg()))
+  stateInst_s3          := Mux(io.respDir_s3.valid, io.respDir_s3.bits.getStateInst(taskReg_s3.chi.metaIdOH), (new StateInst).Lit(_.valid -> true.B))
   // valid
-  chiInst_s2.valid    := io.task_s2.valid
-  stateInst_s3.valid  := validReg_s3
+  chiInst_s2.valid      := io.task_s2.valid
+  stateInst_s3.valid    := validReg_s3
   // dontTouch
   dontTouch(chiInst_s2)
   dontTouch(stateInst_s3)
@@ -80,17 +80,17 @@ class Decode(implicit p: Parameters) extends DJModule {
   /*
    * Output Commit Task
    */
-  io.cmtTask_s3.valid                 := validReg_s3
-  io.cmtTask_s3.bits.hnTxnID          := taskReg_s3.hnIdx.getTxnID
-  io.cmtTask_s3.bits.qos              := taskReg_s3.qos
-  io.cmtTask_s3.bits.chi              := taskReg_s3.chi
-  io.cmtTask_s3.bits.chi.dataVec      := taskReg_s3.chi.dataVec
-  io.cmtTask_s3.bits.dir              := respDir_s3
-  io.cmtTask_s3.bits.alr.reqDB        := io.reqDB_s3.fire | taskReg_s3.alr.reqDB
-  io.cmtTask_s3.bits.alr.sData        := io.fastData_s3.fire
-  io.cmtTask_s3.bits.decList          := decList_s3
-  io.cmtTask_s3.bits.task             := taskCode_s3
-  io.cmtTask_s3.bits.cmt              := Mux(taskCode_s3.isValid, 0.U.asTypeOf(new CommitCode), cmtCode_s3)
+  io.cmtTask_s3.valid               := validReg_s3
+  io.cmtTask_s3.bits.hnTxnID        := taskReg_s3.hnIdx.getTxnID
+  io.cmtTask_s3.bits.qos            := taskReg_s3.qos
+  io.cmtTask_s3.bits.chi            := taskReg_s3.chi
+  io.cmtTask_s3.bits.chi.dataVec    := taskReg_s3.chi.dataVec
+  io.cmtTask_s3.bits.dir            := respDir_s3
+  io.cmtTask_s3.bits.alr.reqDB      := io.reqDB_s3.fire | taskReg_s3.alr.reqDB
+  io.cmtTask_s3.bits.alr.sData      := io.fastData_s3.fire
+  io.cmtTask_s3.bits.decList        := decList_s3
+  io.cmtTask_s3.bits.task           := taskCode_s3
+  io.cmtTask_s3.bits.cmt            := Mux(taskCode_s3.isValid, 0.U.asTypeOf(new CommitCode), cmtCode_s3)
   io.cmtTask_s3.bits.ds.set(taskReg_s3.addr, respDir_s3.llc.way)
   HardwareAssertion.withEn(taskCode_s3.isValid | cmtCode_s3.isValid, validReg_s3)
   HardwareAssertion.withEn(respDir_s3.sf.metaIsVal, validReg_s3 & taskCode_s3.snoop)
