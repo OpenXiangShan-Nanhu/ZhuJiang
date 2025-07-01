@@ -51,51 +51,47 @@ class GetDecRes(implicit val p: Parameters) extends Module {
 class Decode(times: String)(implicit p: Parameters) extends DJModule {
   override val desiredName = s"Decode${times.toUpperCase}"
   val io = IO(new Bundle {
-    // Decode List
-    val listIn      = Input(MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W)))
-    val listOut     = Output(MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W)))
-    // Task Inst
-    val inst0       = Input(new TaskInst)
-    val inst1       = Input(new TaskInst)
-    // Task/Commit Code
-    val taskCode    = Output(new TaskCode)
-    val cmtCode     = Output(new CommitCode)
-    // HnTxnID
-    val hnTxnIdIn   = Input(UInt(hnTxnIDBits.W))
-    val hnTxnIdOut  = Output(UInt(hnTxnIDBits.W))
-    // Ouput
-    val valid       = Output(Bool())
+    // Message In
+    val decMesIn      = Flipped(Valid(new DJBundle with HasPackTaskInst with HasDecList with HasHnTxnID))
+    // Result Out
+    val hnTxnIdOut    = Valid(UInt(hnTxnIDBits.W))
+    val decListOut    = Output(MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W)))
+    val taskCodeOut   = Output(new TaskCode)
+    val cmtCodeOut    = Output(new CommitCode)
   })
   dontTouch(io)
   require(times == "Third" | times == "Fourth")
 
   /*
-   * Merge
-   */
-  val mergeVal    = io.inst0.valid & io.inst1.valid
-  val mergeInst   = WireInit((io.inst0.asUInt | io.inst1.asUInt).asTypeOf(new TaskInst))
-  mergeInst.valid := mergeVal
-
-  /*
    * Decode
    */
-  val decList     = if(times == "Third") Decode.thirdDec(io.listIn, mergeInst, io.hnTxnIdIn) else Decode.fourthDec(io.listIn, mergeInst, io.hnTxnIdIn)
+  val decMes      = io.decMesIn.bits
+  val taskInst    = WireInit(decMes.taskInst)
+  taskInst.valid  := io.decMesIn.valid & decMes.taskInst.valid
+  HAssert.withEn(decMes.taskInst.valid, io.decMesIn.valid)
+  // decode
+  val decList     = if(times == "Third") {
+    Decode.thirdDec(decMes.decList, taskInst, decMes.hnTxnID)
+  } else {
+    Decode.fourthDec(decMes.decList, taskInst, decMes.hnTxnID)
+  }
+
 
   /*
    * GetResult
    */
-  val getRes      = Module(new GetDecRes())
-  val taskCode    = if(times == "Third") getRes.io.secTaskCode else 0.U.asTypeOf(new TaskCode)
-  val cmtCode     = getRes.io.commitCode
-  getRes.io.list.valid  := mergeVal
+  val getRes            = Module(new GetDecRes())
+  val taskCode          = if(times == "Third") getRes.io.secTaskCode else 0.U.asTypeOf(new TaskCode)
+  val cmtCode           = getRes.io.commitCode
+  getRes.io.list.valid  := io.decMesIn.valid
   getRes.io.list.bits   := decList
 
   /*
    * Output
    */
-  io.valid      := RegNext(mergeVal)
-  io.listOut    := RegEnable(decList,       mergeVal)
-  io.taskCode   := RegEnable(taskCode,      mergeVal)
-  io.cmtCode    := RegEnable(cmtCode,       mergeVal)
-  io.hnTxnIdOut := RegEnable(io.hnTxnIdIn,  mergeVal)
+  io.hnTxnIdOut.valid   := RegNext(io.decMesIn.valid)
+  io.hnTxnIdOut.bits    := RegEnable(decMes.hnTxnID,  io.decMesIn.valid)
+  io.decListOut         := RegEnable(decList,         io.decMesIn.valid)
+  io.taskCodeOut        := RegEnable(taskCode,        io.decMesIn.valid)
+  io.cmtCodeOut         := RegEnable(cmtCode,         io.decMesIn.valid)
 }

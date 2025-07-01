@@ -142,7 +142,6 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   io.resp.valid         := reg.isRespCmt
   // bits
   io.resp.bits.hnTxnID  := reg.task.hnTxnID
-  io.resp.bits.fromRec  := false.B
   io.resp.bits.toRepl   := false.B
   when(!reg.task.doDMT) {
     io.resp.bits.taskInst           := 0.U.asTypeOf(new TaskInst)

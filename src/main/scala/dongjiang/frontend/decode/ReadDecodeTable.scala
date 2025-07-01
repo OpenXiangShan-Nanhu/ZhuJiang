@@ -119,6 +119,6 @@ object Read_LAN_DCT_DMT {
     )),
   ))
 
-  // readNoSnp ++ readOnce ++ readNotSharedDirty ++ readUnique
+  // readNoSnp ++ readOnce ++ readNotSharedDirty ++ readUnique -> 6
   def table: Seq[DecodeType] = Seq(readNoSnp_noExpCompAck_RO, readNoSnp_noExpCompAck_EO, readNoSnp_expCompAck_EO, readOnce, readNotSharedDirty, readUnique)
 }

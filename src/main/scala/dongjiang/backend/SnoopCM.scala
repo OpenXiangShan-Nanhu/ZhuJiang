@@ -37,7 +37,7 @@ class SnpMes(implicit p: Parameters) extends DJBundle {
   val state       = UInt(SNPSTARE.width.W)
   val alrSendVec  = Vec(nrSfMetas, Bool())
   val getRespVec  = Vec(nrSfMetas, Bool())
-  val getDataVec  = Vec(2, Bool())
+  val getDataVec  = Vec(djparam.nrBeat, Bool())
   def getDataOne  = getDataVec.reduce(_ ^ _)
   def getDataAll  = getDataVec.reduce(_ & _)
 
@@ -147,7 +147,6 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   // bits
   io.resp.bits.hnTxnID  := reg.task.hnTxnID
   io.resp.bits.taskInst := reg.taskInst
-  io.resp.bits.fromRec  := false.B
   io.resp.bits.toRepl   := reg.task.fromRepl
 
   /*

@@ -32,7 +32,6 @@ class CMTask(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPa
 trait HasPackCMTask { this: DJBundle => val task = new CMTask }
 
 class CMResp(implicit p: Parameters) extends DJBundle with HasHnTxnID with HasPackTaskInst with HasQoS {
-  val fromRec = Bool() // from ReceiveCM
   val toRepl  = Bool() // to ReplaceCM
 }
 

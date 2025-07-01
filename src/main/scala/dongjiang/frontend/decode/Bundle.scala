@@ -88,10 +88,9 @@ class TaskInst extends Bundle {
   val resp        = UInt(ChiResp.width.W)
   val fwdResp     = UInt(ChiResp.width.W)
 
-  // from ReceiveCM
-  val wrRespIsDat = Bool() // Has been got write resp(XCBWrData)
-  val cbRespIsAck = Bool() // CopyBack Resp is CompAck
-  val cbResp      = UInt(ChiResp.width.W)
+  // from rxDat
+  val getXCBResp  = Bool() // Has been got write resp(XCBWrData)
+  val xCBResp     = UInt(ChiResp.width.W)
 
   override def toPrintable: Printable = {
     var pa = cf""
@@ -133,8 +132,8 @@ trait HasTaskCode { this: Bundle with HasOperations with HasPackDataOp =>
   val opcode      = UInt(ReqOpcode.width.max(SnpOpcode.width).W)
   val needDB      = Bool()
 
-  // Wait ReceiveCM Done
-  val waitRecDone = Bool() // -> Return Valid   TaskInst
+  // Return DBIDResp / CompDBIDResp(CopyBack)
+  val returnDBID  = Bool()
 
   // Req
   val expCompAck  = Bool()
@@ -150,7 +149,7 @@ trait HasTaskCode { this: Bundle with HasOperations with HasPackDataOp =>
   // DataBlock
   val fullSize    = Bool() // Force the Size of this DataBlock operation to Full
 
-  def isValid: Bool = opsIsValid | waitRecDone
+  def isValid: Bool = opsIsValid | returnDBID
 }
 
 class TaskCode extends Bundle with HasOperations with HasPackDataOp with HasTaskCode
@@ -257,19 +256,21 @@ object Inst {
   def llcIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new StateInst())); temp.llcState    := toState(x);  require(x.getWidth == DecodeCHI.width); temp.asUInt | stateValid }
 
   // Task Inst
-  def taskValid         : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.valid        := true.B;    temp.asUInt }
-  def fwdValid          : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.fwdValid     := true.B;    temp.asUInt }
-  def isRsp             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.channel      := RSP;       temp.asUInt | taskValid }
-  def isDat             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.channel      := DAT;       temp.asUInt | taskValid }
-  def rspIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.opcode       := x;         require(x.getWidth == RspOpcode.width); temp.asUInt | isRsp }
-  def datIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.opcode       := x;         require(x.getWidth == DatOpcode.width); temp.asUInt | isDat }
-  def respIs  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.resp         := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt }
-  def fwdIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.fwdResp      := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | fwdValid }
-  def xCBWrDataValid    : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.wrRespIsDat  := true.B;    temp.asUInt | taskValid }
-  def cbRespIsCompAck   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbRespIsAck  := true.B;    temp.asUInt | taskValid }
-  def cbRespIs(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(x); require(x.getWidth == DecodeCHI.width); temp.asUInt | xCBWrDataValid  }
-  def hasGotNCBWrData   : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.cbResp       := toResp(I); temp.asUInt | taskValid | xCBWrDataValid }
-  def emptyResp         : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst()));                                 temp.asUInt | taskValid }
+  def taskValid         : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.valid        := true.B;      temp.asUInt }
+  // TaskCM Resp
+  def fwdValid          : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.fwdValid     := true.B;      temp.asUInt }
+  def isRsp             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.channel      := RSP;         temp.asUInt | taskValid }
+  def isDat             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.channel      := DAT;         temp.asUInt | taskValid }
+  def rspIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.opcode       := x;           require(x.getWidth == RspOpcode.width); temp.asUInt | isRsp }
+  def datIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.opcode       := x;           require(x.getWidth == DatOpcode.width); temp.asUInt | isDat }
+  def respIs  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.resp         := toResp(x);   require(x.getWidth == DecodeCHI.width); temp.asUInt }
+  def fwdIs   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.fwdResp      := toResp(x);   require(x.getWidth == DecodeCHI.width); temp.asUInt | fwdValid }
+  // XCBWrData
+  def getXCBWrData      : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.getXCBResp   := true.B;      temp.asUInt | taskValid }
+  def CBRespIs(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst())); temp.xCBResp      := toResp(x);   require(x.getWidth == DecodeCHI.width); temp.asUInt | getXCBWrData}
+  def NCBWrData         : UInt = CBRespIs(DecodeCHI.I)
+  // Empty Resp
+  def emptyResp         : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskInst()));                                   temp.asUInt | taskValid }
 }
 
 
@@ -284,13 +285,13 @@ object Code {
   def write   (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.opcode := x; temp.write    := true.B; require(x.getWidth == ReqOpcode.width); temp.asUInt }
 
   // Task Code Need DataBuffer
-  def needDB            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.needDB       := true.B; temp.asUInt }
+  def needDB            : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.needDB := true.B; temp.asUInt }
 
   // Task Code DataOp
   def tdop(x: String*)  : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); x.foreach(name => if(name == "fullSize") temp.fullSize := true.B else temp.dataOp.elements(name) := true.B); assert(!temp.dataOp.repl); temp.asUInt }
 
   // Task Code Other
-  def waitRecDone       : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.waitRecDone  := true.B; temp.asUInt | needDB }
+  def returnDBID        : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.returnDBID   := true.B; temp.asUInt | needDB }
   def taskECA           : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.expCompAck   := true.B; temp.asUInt }
   def doDMT             : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.doDMT        := true.B; temp.asUInt }
   def retToSrc          : UInt = { val temp = WireInit(0.U.asTypeOf(new TaskCode())); temp.retToSrc     := true.B; temp.asUInt }

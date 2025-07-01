@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.{CMTask, CommitTask, FastResp, RecRespType, ReqPoS}
+import dongjiang.backend.{CMTask, CommitTask, ReqPoS}
 import dongjiang.utils._
 import dongjiang.bundle._
 import dongjiang.data.DataTask
@@ -43,10 +43,9 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
     val reqPoS          = Flipped(new ReqPoS)
     val updPosTag       = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     val updPosNest      = Flipped(Valid(new PosCanNest))
-    val cleanPos        = Flipped(Valid(new PosClean))
-    // Resp to Node(RN/SN): ReadReceipt, DBIDResp, CompDBIDResp
-    val fastResp        = Decoupled(new FastResp)
-    val recRespType     = Decoupled(new RecRespType)
+    val cleanPos        = Flipped(Valid(new PosClean)) // Dont care QoS
+    // Resp to Node(RN/SN): ReadReceipt, DBIDResp
+    val fastResp        = Decoupled(new RespFlit)
     // PoS Busy Signal
     val alrUsePoS       = Output(UInt(log2Ceil(nrPoS + 1).W))
     //  system is working
@@ -73,9 +72,7 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   // S3: Receive DirResp and Decode
   val decode      = Module(new Decode())
   // Queue
-  val fastRespQ   = Module(new FastQueue(new FastResp, size = djparam.nrDirBank.max(2), deqDataNoX = false))
-  val respTypeQ   = if(djparam.nrDirBank >= 2) Some(Module(new FastQueue(new RecRespType, size = readDirLatency.min(djparam.nrDirBank), deqDataNoX = false))) else None
-  val cleanDBQ    = Module(new FastQueue(new HnTxnID with HasDataVec, size = readDirLatency, deqDataNoX = false))
+  val cleanDBQ    = Module(new FastQueue(new HnTxnID with HasDataVec, size = djparam.nrDirBank, deqDataNoX = false))
 
   /*
    * Connect
@@ -94,41 +91,16 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   io.reqDB_s1               <> block.io.reqDB_s1
   io.reqDB_s3               <> decode.io.reqDB_s3
   io.readDir                <> block.io.readDir_s1
-  io.fastResp               <> fastRespQ.io.deq
+  io.fastResp               <> FastQueue(block.io.fastResp_s1)
   io.fastData               <> decode.io.fastData_s3
   io.cleanDB                <> cleanDBQ.io.deq
   io.cmtTask                := decode.io.cmtTask_s3
   io.alrUsePoS              := posTable.io.alrUsePoS
   io.working                := hprTaskBuf.io.working | reqTaskBuf.io.working | snpTaskBuf.map(_.io.working).getOrElse(false.B) | posTable.io.working
-  if(djparam.nrDirBank >= 2) {
-    io.recRespType          <> respTypeQ.get.io.deq
-  } else {
-    io.recRespType.valid    := decode.io.recRespType_s3.valid
-    io.recRespType.bits     := decode.io.recRespType_s3.bits
-    HAssert.withEn(io.recRespType.ready, io.recRespType.valid)
-  }
 
-  // io.fastResp <--- [Queue] --- block.io.fastResp_s1
-  //                        ^
-  //                        |
-  //         block fastResp when it cant enq
-  //                        |
-  // io.recRespType <------ [Queue] -------- decode.io.recRespType_s3
-  // io.cleanDB     <------ [Queue] -------- decode.io.cleanDB_s3
-  // fastRespQ
-  val blockFastResp             = !respTypeQ.map(_.io.enq.ready).getOrElse(true.B) | !cleanDBQ.io.enq.ready
-  fastRespQ.io.enq.valid        := block.io.fastResp_s1.valid & !blockFastResp
-  fastRespQ.io.enq.bits         := block.io.fastResp_s1.bits
-  block.io.fastResp_s1.ready    := fastRespQ.io.enq.ready & !blockFastResp
-  // respTypeQ
-  if(djparam.nrDirBank >= 2) {
-    respTypeQ.get.io.enq.valid  := decode.io.recRespType_s3.valid
-    respTypeQ.get.io.enq.bits   := decode.io.recRespType_s3.bits
-    HAssert.withEn(respTypeQ.get.io.enq.ready, respTypeQ.get.io.enq.valid)
-  }
   // cleanDBQ
-  cleanDBQ.io.enq.valid         := decode.io.cleanDB_s3.valid
-  cleanDBQ.io.enq.bits          := decode.io.cleanDB_s3.bits
+  cleanDBQ.io.enq.valid     := decode.io.cleanDB_s3.valid
+  cleanDBQ.io.enq.bits      := decode.io.cleanDB_s3.bits
   HAssert.withEn(cleanDBQ.io.enq.ready, cleanDBQ.io.enq.valid)
 
   // hpr2Task

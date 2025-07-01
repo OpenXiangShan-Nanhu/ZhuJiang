@@ -8,7 +8,7 @@ import zhujiang.chi._
 import zhujiang.chi.ReqOpcode._
 import zhujiang.chi.DatOpcode._
 import dongjiang._
-import dongjiang.backend.{CMTask, CommitTask, RecRespType}
+import dongjiang.backend.{CMTask, CommitTask}
 import dongjiang.utils._
 import dongjiang.bundle._
 import dongjiang.directory._
@@ -31,7 +31,6 @@ class Decode(implicit p: Parameters) extends DJModule {
     val respDir_s3      = Flipped(Valid(new DirMsg))
     // To Backend
     val cmtTask_s3      = Valid(new CommitTask with HasHnTxnID)
-    val recRespType_s3  = Valid(new RecRespType)
     // To DataBlock
     val reqDB_s3        = Decoupled(new HnTxnID with HasDataVec)
     val fastData_s3     = Decoupled(new DataTask)
@@ -88,19 +87,13 @@ class Decode(implicit p: Parameters) extends DJModule {
   io.cmtTask_s3.bits.dir            := respDir_s3
   io.cmtTask_s3.bits.alr.reqDB      := io.reqDB_s3.fire | taskReg_s3.alr.reqDB
   io.cmtTask_s3.bits.alr.sData      := io.fastData_s3.fire
+  io.cmtTask_s3.bits.alr.sDBID      := taskReg_s3.alr.reqDB
   io.cmtTask_s3.bits.decList        := decList_s3
   io.cmtTask_s3.bits.task           := taskCode_s3
   io.cmtTask_s3.bits.cmt            := Mux(taskCode_s3.isValid, 0.U.asTypeOf(new CommitCode), cmtCode_s3)
   io.cmtTask_s3.bits.ds.set(taskReg_s3.addr, respDir_s3.llc.way)
   HardwareAssertion.withEn(taskCode_s3.isValid | cmtCode_s3.isValid, validReg_s3)
   HardwareAssertion.withEn(respDir_s3.sf.metaIsVal, validReg_s3 & taskCode_s3.snoop)
-
-  /*
-   * Send RespType to ReceiveCM for WriteEvictOrEvict
-   */
-  io.recRespType_s3.valid           := validReg_s3 & taskReg_s3.chi.reqIs(WriteEvictOrEvict)
-  io.recRespType_s3.bits.hnTxnID    := taskReg_s3.hnIdx.getTxnID
-  io.recRespType_s3.bits.dbid       := stateInst_s3.srcHit & !stateInst_s3.othHit & stateInst_s3.llcState === ChiState.I
 
   /*
    * Request DataBuffer & Fast send CompData to CHI

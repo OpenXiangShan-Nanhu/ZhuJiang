@@ -136,6 +136,6 @@ object Dataless_LAN {
     )),
   ))
   
-  // makeUnique ++ evict ++ cleanShared ++ cleanInvalid ++ makeInvalid
+  // makeUnique ++ evict ++ cleanShared ++ cleanInvalid ++ makeInvalid -> 5
   def table: Seq[DecodeType] = Seq(makeUnique, evict, cleanShared, cleanInvalid, makeInvalid)
 }

@@ -199,7 +199,6 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    */
   backend.io.respDir        := directory.io.wResp
   backend.io.fastResp       <> fastRRArb(frontends.map(_.io.fastResp))
-  backend.io.recRespType    <> fastRRArb(frontends.map(_.io.recRespType))
   backend.io.dataResp       := dataBlock.io.resp
   backend.io.cmtTaskVec.zip(frontends.map(_.io.cmtTask)).foreach { case(a, b) => a <> b }
   backend.io.getAddrVec.zip(frontends.map(_.io.getAddrVec).transpose).foreach { case(a, b) =>
@@ -210,7 +209,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    * Connect dataBlock
    */
   dataBlock.io.updHnTxnID   := backend.io.updHnTxnID
-  dataBlock.io.cleanDB      <> fastArb.validOut(Seq(backend.io.cleanDB, fastRRArb(frontends.map(_.io.cleanDB))))
+  dataBlock.io.cleanDB      <> fastArb.validOut(Seq(fastRRArb(frontends.map(_.io.cleanDB)), backend.io.cleanDB)) // TODO: has risk of cleanDBQ
   dataBlock.io.reqDB        <> fastArb(Seq(backend.io.reqDB, fastRRArb(frontends.map(_.io.reqDB_s3)), fastRRArb(frontends.map(_.io.reqDB_s1))))
   dataBlock.io.task         := fastArb.validOut(Seq(backend.io.dataTask, fastRRArb(frontends.map(_.io.fastData))))
 

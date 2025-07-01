@@ -51,9 +51,8 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
     val cleanPos        = Valid(new PosClean)
     // Clean Signal to Directory
     val unlock          = Valid(new PackHnIdx)
-    // Frontend <> ReceiveCM
-    val fastResp        = Flipped(Decoupled(new FastResp))
-    val recRespType     = Flipped(Decoupled(new RecRespType))
+    // Frontend <> io.txRsp
+    val fastResp        = Flipped(Decoupled(new RespFlit))
     // Send Task To DB
     val updHnTxnID      = Valid(new UpdHnTxnID)
     val reqDB           = Decoupled(new HnTxnID with HasDataVec)
@@ -73,8 +72,6 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   val writeCM     = Module(new WriteCM())
   val readCM      = Module(new ReadCM())
   // val datalessCM  = Module(new DatalessCM()) // TODO
-  val receiveCM   = Module(new ReceiveCM())
-  val respQueue   = Module(new FastQueue(new RespFlit, fastRespQSzie.max(2), false))
   val txReqArb    = Module(new ArbiterGenerator(new ReqFlit(true), 2, true, true))
 
   /*
@@ -85,12 +82,11 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   snoopCM.io.config         := io.config
   readCM.io.config          := io.config
   writeCM.io.config         := io.config
-  receiveCM.io.config       := io.config
 
   /*
    * Connect To CHI IO
    */
-  val txRspVec              = if(hasBBN) Seq(commit.io.txRsp, readCM.io.txRsp.get, receiveCM.io.txRsp, respQueue.io.deq) else Seq(commit.io.txRsp, receiveCM.io.txRsp, respQueue.io.deq)
+  val txRspVec              = if(hasBBN) Seq(commit.io.txRsp, readCM.io.txRsp.get, FastQueue(io.fastResp)) else Seq(commit.io.txRsp, FastQueue(io.fastResp))
   txReqArb.io.in(0)         <> readCM.io.txReq
   txReqArb.io.in(1)         <> writeCM.io.txReq
   io.txReq                  <> txReqArb.io.out
@@ -108,13 +104,15 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   /*
    * Release PoS / LockTable / DataBuffer
    */
-  io.cleanPos               := Pipe(fastQosRRArb.validOut(Seq(commit.io.cleanPoS, replCM.io.cleanPoS)))
-  io.unlock.valid           := io.cleanPos.valid
-  io.unlock.bits.hnIdx      := io.cleanPos.bits.hnIdx
-  io.cleanDB.valid          := io.cleanPos.valid
-  io.cleanDB.bits.hnTxnID   := io.cleanPos.bits.hnIdx.getTxnID
+  val cleanPos              = FastQueue(fastQosRRArb(Seq(commit.io.cleanPoS, replCM.io.cleanPoS)))
+  cleanPos.ready            := io.cleanDB.ready
+  io.cleanPos.valid         := cleanPos.fire
+  io.cleanPos.bits          := cleanPos.bits
+  io.unlock.valid           := cleanPos.fire
+  io.unlock.bits.hnIdx      := cleanPos.bits.hnIdx
+  io.cleanDB.valid          := cleanPos.valid
+  io.cleanDB.bits.hnTxnID   := cleanPos.bits.hnIdx.getTxnID
   io.cleanDB.bits.dataVec   := DataVec.Full
-  HAssert.withEn(io.cleanDB.ready, io.cleanDB.valid)
 
   /*
    * Connect To Directory IO
@@ -148,7 +146,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   /*
    * Connect CMResp
    */
-  val cmResp = Pipe(fastQosRRArb.validOut(Seq(snoopCM.io.resp, readCM.io.resp, writeCM.io.resp, receiveCM.io.resp)))
+  val cmResp = Pipe(fastQosRRArb.validOut(Seq(snoopCM.io.resp, readCM.io.resp, writeCM.io.resp)))
   commit.io.cmResp.valid    := cmResp.valid & !cmResp.bits.toRepl
   replCM.io.cmResp.valid    := cmResp.valid &  cmResp.bits.toRepl
   commit.io.cmResp.bits     := cmResp.bits
@@ -174,22 +172,6 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
    */
   readCM.io.alloc           <> FastQueue(fastQosRRArb(Seq(commit.io.cmTaskVec(CMID.READ))))
   readCM.io.rxDat           := io.rxDat
-
-  /*
-   * Connect receiveCM
-   */
-  receiveCM.io.rxRsp        := io.rxRsp
-  receiveCM.io.rxDat        := io.rxDat
-  receiveCM.io.respType     <> io.recRespType
-
-  /*
-   * Connect fastResp
-   */
-  receiveCM.io.alloc.valid  := io.fastResp.valid & io.fastResp.bits.rsp.Opcode =/= ReadReceipt
-  respQueue.io.enq.valid    := io.fastResp.valid & io.fastResp.bits.rsp.Opcode === ReadReceipt
-  receiveCM.io.alloc.bits   := io.fastResp.bits
-  respQueue.io.enq.bits     := io.fastResp.bits.rsp
-  io.fastResp.ready         := Mux(io.fastResp.bits.rsp.Opcode === ReadReceipt, respQueue.io.enq.ready, receiveCM.io.alloc.ready)
 
   /*
    * Remap addr
