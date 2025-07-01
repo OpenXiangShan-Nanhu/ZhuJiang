@@ -196,7 +196,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
     next.alrSendVec(snpMetaId) := reg.alrSendVec(snpMetaId) | io.txSnp.fire
     HardwareAssertion.withEn(!reg.alrSendVec(snpMetaId), io.txSnp.fire)
     // getDataVec
-    val beatId = Mux(io.rxDat.bits.DataID === "b10".U, 1.U, 0.U)
+    val beatId = io.rxDat.valid & Mux(io.rxDat.bits.DataID === "b10".U, 1.U, 0.U)
     next.getDataVec(beatId) := reg.getDataVec(beatId) | datHit
     HardwareAssertion.withEn(!reg.getDataVec(beatId), datHit)
     // getRespVec
