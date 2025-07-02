@@ -358,7 +358,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     val alrSendData           = Mux(io.decListIn.valid, taskReg.alr.sData,      alloc.alr.sData)
     val needWaitAck           = Mux(io.decListIn.valid, flagReg.chi.w.compAck,  alloc.chi.expCompAck)
     val needWaitData          = allocHit & (alloc.task.returnDBID | alloc.alr.sDBID)
-    val copyBackNoNeedData    = alloc.chi.isCopyBackWrite & !alloc.task.returnDBID
+    val copyBackNeedData      = alloc.chi.isCopyBackWrite & needWaitData
     val replLLC               = cmt.wriLLC & !taskReg.dir.llc.hit
      // task flag internal send
     flagNext.intl.s.decode    := stateNext.isFstTask | stateNext.isSecTask
@@ -376,7 +376,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     // task flag chi wait
     flagNext.chi.w.xCBWrData0 := needWaitData & alloc.chi.dataVec(0) & !XCBWrDataHit0 & !alrGetReg.NCBWrD0 // only set in alloc
     flagNext.chi.w.xCBWrData1 := needWaitData & alloc.chi.dataVec(1) & !XCBWrDataHit1 & !alrGetReg.NCBWrD1 // only set in alloc
-    flagNext.chi.w.compAck    := needWaitAck  & copyBackNoNeedData   & !compAckHit    & !alrGetReg.compAck
+    flagNext.chi.w.compAck    := needWaitAck  & !copyBackNeedData    & !compAckHit    & !alrGetReg.compAck
     // HAssert
     HAssert(allocHit ^ io.decListIn.valid)
     HAssert.withEn(!(task.isValid & cmt.isValid), allocHit)
@@ -384,6 +384,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     HAssert.withEn(stateNext.isFstTask, flagNext.chi.s.dbid)
     HAssert.withEn(stateNext.isFstTask, flagNext.chi.w.xCBWrData0)
     HAssert.withEn(stateNext.isFstTask, flagNext.chi.w.xCBWrData1)
+    HAssert.withEn(!alloc.chi.isZero,   needWaitData)
   // Running
   }.otherwise {
     // task flag internal send
