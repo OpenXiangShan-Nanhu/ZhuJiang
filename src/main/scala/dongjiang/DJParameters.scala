@@ -319,8 +319,8 @@ abstract class DJModule(implicit val p: Parameters) extends Module with HasDJPar
          |  Support Protocol: CHI-G
          |  lanPortNum: ${nrLanIcn}
          |  bbnPortNum: ${nrBbnIcn}
-         |  llcSize: ${djparam.llcSizeInB} B
-         |  sfSize: ${djparam.sfSizeInB} B
+         |  llcSize: ${djparam.llcSizeInB} B = ${djparam.llcSizeInB / 1024} KiB
+         |  sfSize: ${djparam.sfSizeInB} B = ${djparam.sfSizeInB / 1024} KiB
          |  llcWays: ${djparam.llcWays}
          |  sfWays: ${djparam.sfWays}
          |  sfMetas: ${nrSfMetas}
@@ -329,7 +329,7 @@ abstract class DJModule(implicit val p: Parameters) extends Module with HasDJPar
          |  nrHprBuf: ${nrHprTaskBuf * djparam.nrDirBank}
          |  nrSnpBuf: ${nrSnpTaskBuf * djparam.nrDirBank}
          |  nrPoS: ${djparam.nrPoS} = dirBank[${djparam.nrDirBank}] x posSets[${posSets}] x posWays[${posWays}]
-         |  dataBufSize: ${djparam.dataBufSizeInByte} B
+         |  dataBufSize: ${djparam.dataBufSizeInByte} B = 32 B x ${djparam.dataBufSizeInByte / 32} Enrties
          |  dataSetup: ${djparam.dataRamSetup}
          |  dataLatency: ${djparam.dataRamSetup}
          |  dataExtraHold: ${djparam.dataRamExtraHold}
