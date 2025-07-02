@@ -356,8 +356,9 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     val cmt                   = Mux(io.decListIn.valid, taskNext.cmt,           alloc.cmt)
     val alrReqDB              = Mux(io.decListIn.valid, taskReg.alr.reqDB,      alloc.alr.reqDB)
     val alrSendData           = Mux(io.decListIn.valid, taskReg.alr.sData,      alloc.alr.sData)
-    val needWaitAck           = Mux(io.decListIn.valid, flagReg.chi.w.compAck,  alloc.chi.expCompAck & !alloc.chi.reqIs(WriteEvictOrEvict))
+    val needWaitAck           = Mux(io.decListIn.valid, flagReg.chi.w.compAck,  alloc.chi.expCompAck)
     val needWaitData          = allocHit & (alloc.task.returnDBID | alloc.alr.sDBID)
+    val copyBackNoNeedData    = alloc.chi.isCopyBackWrite & !alloc.task.returnDBID
     val replLLC               = cmt.wriLLC & !taskReg.dir.llc.hit
      // task flag internal send
     flagNext.intl.s.decode    := stateNext.isFstTask | stateNext.isSecTask
@@ -375,7 +376,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     // task flag chi wait
     flagNext.chi.w.xCBWrData0 := needWaitData & alloc.chi.dataVec(0) & !XCBWrDataHit0 & !alrGetReg.NCBWrD0 // only set in alloc
     flagNext.chi.w.xCBWrData1 := needWaitData & alloc.chi.dataVec(1) & !XCBWrDataHit1 & !alrGetReg.NCBWrD1 // only set in alloc
-    flagNext.chi.w.compAck    := needWaitAck & !compAckHit & !alrGetReg.compAck
+    flagNext.chi.w.compAck    := needWaitAck  & copyBackNoNeedData   & !compAckHit    & !alrGetReg.compAck
     // HAssert
     HAssert(allocHit ^ io.decListIn.valid)
     HAssert.withEn(!(task.isValid & cmt.isValid), allocHit)
