@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import xs.utils.ResetRRArbiter
 
-class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 4) extends Module {
+class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 7) extends Module {
   val io = IO(new Bundle {
     val inVec   = Input(Vec(size, Bool()))
     val enable  = Input(Bool())
@@ -48,7 +48,7 @@ class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 4) exten
     when(io.enable) {
       cntReg    := 0.U
     // inc
-    }.elsewhen(io.inVec(indexReg) & !io.enable) {
+    }.elsewhen(io.inVec(indexReg) & cntReg < lockCnt.U) {
       cntReg    := cntReg + 1.U
     }
     lock        := RegNext(cntReg === lockCnt.U)
