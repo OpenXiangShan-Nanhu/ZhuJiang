@@ -50,8 +50,8 @@ class Decode(implicit p: Parameters) extends DJModule {
   /*
    * Get ChiInst and StateInst
    */
-  val chiInst_s2        = WireInit(io.task_s2.bits.chi.getChiInst)
-  val respDir_s3        = Mux(io.respDir_s3.valid, io.respDir_s3.bits, 0.U.asTypeOf(new DirMsg()))
+  val chiInst_s2        =  WireInit(io.task_s2.bits.chi.getChiInst)
+  val respDir_s3        =  Mux(io.respDir_s3.valid, io.respDir_s3.bits, 0.U.asTypeOf(new DirMsg()))
   stateInst_s3          := Mux(io.respDir_s3.valid, io.respDir_s3.bits.getStateInst(taskReg_s3.chi.metaIdOH), (new StateInst).Lit(_.valid -> true.B))
   // valid
   chiInst_s2.valid      := io.task_s2.valid

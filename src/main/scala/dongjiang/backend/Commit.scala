@@ -156,7 +156,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
 
 
   /*
-   * Get CompAckHitReg
+   * Save Already Hit Message
    */
   val rxRspHit      = io.rxRsp.valid & io.rxRsp.bits.TxnID === io.hnTxnID
   val rxDatHit      = io.rxDat.valid & io.rxDat.bits.TxnID === io.hnTxnID
