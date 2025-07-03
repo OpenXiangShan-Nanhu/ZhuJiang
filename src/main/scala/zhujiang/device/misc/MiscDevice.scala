@@ -87,7 +87,7 @@ class HardwareAssertionDevice(implicit p:Parameters) extends ZJModule {
   wd.vld := true.B
 
   wp.valid := wq.valid && wcnt =/= hwaP.hwaDevDepth.U
-  wq.ready := wp.ready && wcnt =/= hwaP.hwaDevDepth.U
+  wq.ready := wp.ready || wcnt === hwaP.hwaDevDepth.U
   wp.bits.data.head := wd.asUInt
   wp.bits.addr := wcnt
   wp.bits.write := true.B
