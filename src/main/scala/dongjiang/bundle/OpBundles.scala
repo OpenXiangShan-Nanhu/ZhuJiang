@@ -266,21 +266,21 @@ trait HasChiOp { this: DJBundle with HasChiChannel =>
     val snpOp = WireInit(0.U(ChiOpcodeBits.W))
     when(isSnpFwd) {
       switch(opcode) {
-        is(SnpSharedFwd) {
-          snpOp := SnpShared
-        }
-        is(SnpCleanFwd) {
-          snpOp := SnpClean
-        }
-        is(SnpOnceFwd) {
-          snpOp := SnpOnce
-        }
-        is(SnpNotSharedDirtyFwd) {
-          snpOp := SnpNotSharedDirty
-        }
-        is(SnpPreferUniqueFwd) {
-          snpOp := SnpPreferUnique
-        }
+//        is(SnpSharedFwd) {
+//          snpOp := SnpShared
+//        }
+//        is(SnpCleanFwd) {
+//          snpOp := SnpClean
+//        }
+//        is(SnpOnceFwd) {
+//          snpOp := SnpOnce
+//        }
+//        is(SnpNotSharedDirtyFwd) {
+//          snpOp := SnpNotSharedDirty
+//        }
+//        is(SnpPreferUniqueFwd) {
+//          snpOp := SnpPreferUnique
+//        }
         is(SnpUniqueFwd) {
           snpOp := SnpUnique
         }
