@@ -13,7 +13,6 @@ import dongjiang.frontend._
 import dongjiang.frontend.decode._
 import zhujiang.chi.RspOpcode._
 import zhujiang.chi.DatOpcode._
-import zhujiang.chi.SnpOpcode._
 import dongjiang.bundle.ChiChannel._
 import dongjiang.backend._
 import dongjiang.backend.SNPSTARE._
@@ -116,13 +115,6 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
    */
   val snpMetaId   = PriorityEncoder(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt)
   val snpIsFst    = reg.alrSendVec.asUInt === 0.U
-
-  // For now, the only allowed non-fwd snoop is SnpUnique which is used for invalidating other cacheline copies from other cores.
-  // Non-fwd snoop is used for cachelines that are not the first snoop target since fwd snoop are only applicable for one snoop 
-  // target according to CHI specification.
-  val otherSnpOp  = SnpUnique
-  HAssert.withEn(reg.task.chi.opcode === SnpUniqueFwd, io.txSnp.fire && !snpIsFst && reg.task.chi.isSnpFwd)
-
   snpNodeId.setSnpNodeId(snpMetaId)
   // valid
   io.txSnp.valid            := reg.isSendSnp
@@ -131,7 +123,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   io.txSnp.bits.RetToSrc    := Mux(snpIsFst, reg.task.chi.retToSrc, false.B)
   io.txSnp.bits.DoNotGoToSD := true.B
   io.txSnp.bits.Addr        := DontCare // remap in chi xbar
-  io.txSnp.bits.Opcode      := Mux(snpIsFst, reg.task.chi.opcode, otherSnpOp)
+  io.txSnp.bits.Opcode      := Mux(snpIsFst, reg.task.chi.opcode, reg.task.chi.getNoFwdSnpOp)
   io.txSnp.bits.FwdTxnID    := reg.task.chi.txnID
   io.txSnp.bits.FwdNID      := reg.task.chi.nodeId
   io.txSnp.bits.TxnID       := reg.task.hnTxnID
