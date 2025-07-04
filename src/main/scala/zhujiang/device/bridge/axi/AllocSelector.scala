@@ -15,9 +15,10 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
     val in = Vec(outstanding, Flipped(Decoupled(new DataBufferAllocReq(outstanding))))
     val out = Decoupled(new AxiDataBufferAllocReq(outstanding))
   })
+  private val active = Cat(io.in.map(_.valid)).orR
   private def selFunc(self:DataBufferAllocReq, other:DataBufferAllocReq):Bool = self.qos >= other.qos
   private val selector = Module(new SelNto1(new DataBufferAllocReq(outstanding), outstanding, selFunc))
-  private val selReg = RegNext(selector.io.out) // Do not gate this reg
+  private val selReg = RegEnable(selector.io.out, active)
   private val selArb = Module(new VipArbiter(new AxiDataBufferAllocReq(outstanding), outstanding))
   private val selPipe = Module(new Queue(new AxiDataBufferAllocReq(outstanding), entries = 2))
 
@@ -26,7 +27,7 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
     selector.io.in(i).bits := io.in(i).bits
     io.in(i).ready := selArb.io.in(i).fire
 
-    selArb.io.in(i).valid := selReg(i)
+    selArb.io.in(i).valid := selReg(i) & io.in(i).valid
     selArb.io.in(i).bits.idxOH := (1.U(outstanding.W)) << i
     selArb.io.in(i).bits.size := io.in(i).bits.size
     selArb.io.in(i).bits.dataIdOffset := io.in(i).bits.dataIdOffset
