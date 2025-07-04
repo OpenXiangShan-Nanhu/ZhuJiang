@@ -91,7 +91,6 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   /*
    * Module declaration
    */
-  val level     = 0
   val frontends = Seq.fill(djparam.nrDirBank)(Module(new Frontend()))
   val backend   = Module(new Backend())
   val directory = Module(new Directory())
