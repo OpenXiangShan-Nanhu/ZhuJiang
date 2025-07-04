@@ -47,7 +47,6 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
     val bbnOpt      = if(hasBBN) Some(new DeviceIcnBundle(bbnNode.get)) else None
     val ramPwrCtl   = new SramPowerCtl
   })
-  dontTouch(io)
 
   // TODO
   io.flushCache.ack := DontCare
@@ -129,11 +128,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
 
   // [frontends].rxSnp <-> [ChiXbar] <-> io.chi.rxSnp
   if(hasBBN) {
-    connIcn(chiXbar.io.rxSnp.in, icnVec.last.rx.snoop.get)
-  } else {
-    chiXbar.io.rxSnp.in <> DontCare
+    connIcn(chiXbar.io.rxSnp.in.get, icnVec.last.rx.snoop.get)
+    chiXbar.io.rxSnp.outVec.get.zip(frontends.map(_.io.rxSnp.get)).foreach { case(a, b) => a <> b }
   }
-  chiXbar.io.rxSnp.outVec.zip(frontends.map(_.io.rxSnp)).foreach { case(a, b) => a <> b }
 
   // [backend].rxRsp <-> io.chi.rxRsp
   val rxRspArb = Module(new Arbiter(new RespFlit, nrIcn))
@@ -182,9 +179,11 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
       f.io.respDir          := directory.io.rRespVec(i)
       f.io.reqPoS           <> backend.io.reqPosVec(i)
       f.io.updPosTag        := backend.io.updPosTag
-      f.io.updPosNest       := backend.io.updPosNest
       f.io.cleanPos         := backend.io.cleanPos
       f.io.getAddrVec.zip(backend.io.getAddrVec).foreach { case(a, b) => a.hnIdx := b.hnIdx }
+      if(hasBBN) {
+        f.io.updPosNest.get := backend.io.updPosNest.get
+      }
   }
 
   /*

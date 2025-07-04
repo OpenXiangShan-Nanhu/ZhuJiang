@@ -26,7 +26,7 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
     // CHI REQ/SNP
     val rxReq           = Flipped(Decoupled(new ReqFlit(false)))
     val rxHpr           = Flipped(Decoupled(new ReqFlit(false)))
-    val rxSnp           = Flipped(Decoupled(new SnoopFlit))
+    val rxSnp           = if(hasBBN) Some(Flipped(Decoupled(new SnoopFlit))) else None
     // To DataBlock
     val reqDB_s1        = Decoupled(new HnTxnID with HasDataVec)
     val reqDB_s3        = Decoupled(new HnTxnID with HasDataVec)
@@ -42,7 +42,7 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
     // Update PoS Message
     val reqPoS          = Flipped(new ReqPoS)
     val updPosTag       = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
-    val updPosNest      = Flipped(Valid(new PosCanNest))
+    val updPosNest      = if(hasBBN) Some(Flipped(Valid(new PosCanNest))) else None
     val cleanPos        = Flipped(Valid(new PosClean)) // Dont care QoS
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp
     val fastResp        = Decoupled(new RespFlit)
@@ -125,24 +125,26 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   if(hasBBN) {
     // snp2Task
     snp2Task.get.io.config      := io.config
-    snp2Task.get.io.rxSnp       <> FastQueue(io.rxSnp)
+    snp2Task.get.io.rxSnp       <> FastQueue(io.rxSnp.get)
     // snpTaskBuf [S0]
     snpTaskBuf.get.io.chiTaskIn <> snp2Task.get.io.chiTask
     snpTaskBuf.get.io.retry_s1  := block.io.retry_s1
     snpTaskBuf.get.io.sleep_s1  := DontCare // snp never sleep
     snpTaskBuf.get.io.wakeup    := DontCare // not need to wakeup
     assert(!snpTaskBuf.get.io.chiTask_s0.valid," TODO")
-  } else {
-    io.rxSnp                    <> DontCare
   }
 
   // posTable [S1]
+  if (hasBBN) {
+    posAlloc_s0.bits.channel:= block.io.chiTask_s0.bits.chi.channel
+    posTable.io.updNest.get := io.updPosNest.get
+  } else {
+    posAlloc_s0.bits.channel:= ChiChannel.REQ
+  }
   posAlloc_s0.valid         := block.io.chiTask_s0.valid
   posAlloc_s0.bits.addr     := block.io.chiTask_s0.bits.addr
-  posAlloc_s0.bits.channel  := block.io.chiTask_s0.bits.chi.channel
   posTable.io.alloc_s0      := posAlloc_s0
   posTable.io.retry_s1      := block.io.retry_s1
-  posTable.io.updNest       := io.updPosNest
   posTable.io.clean         := io.cleanPos
   posTable.io.updTag        := io.updPosTag
   posTable.io.reqPoS        <> io.reqPoS

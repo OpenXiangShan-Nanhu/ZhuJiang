@@ -47,7 +47,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
     // Frontend -> Commit/TaskCM
     val cmtTaskVec      = Vec(djparam.nrDirBank, Flipped(Valid(new CommitTask with HasHnTxnID)))
     // Update PoS Message
-    val updPosNest      = Valid(new PosCanNest)
+    val updPosNest      = if(hasBBN) Some(Valid(new PosCanNest)) else None
     val cleanPos        = Valid(new PosClean)
     // Clean Signal to Directory
     val unlock          = Valid(new PackHnIdx)
@@ -99,7 +99,9 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
    */
   io.reqPosVec.zip(replCM.io.reqPosVec).foreach { case(a, b) => a <> b }
   io.updPosTag              := replCM.io.updPosTag
-  io.updPosNest             := fastQosRRArb.validOut(Seq(readCM.io.updPosNest, writeCM.io.updPosNest))
+  if(hasBBN) {
+    io.updPosNest.get       := fastQosRRArb.validOut(Seq(readCM.io.updPosNest.get, writeCM.io.updPosNest.get))
+  }
 
   /*
    * Release PoS / LockTable / DataBuffer

@@ -69,7 +69,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
     val txRsp         = if(hasBBN) Some(Decoupled(new RespFlit())) else None
     val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
     // Update PoS
-    val updPosNest    = Decoupled(new PosCanNest)
+    val updPosNest    = if(hasBBN) Some(Decoupled(new PosCanNest)) else None
     // For Debug
     val dbg           = Valid(new ReadState with HasHnTxnID)
   })
@@ -83,11 +83,11 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   /*
    * Set QoS
    */
-  io.txReq.bits.QoS       := reg.task.qos
-  io.resp.bits.qos        := reg.task.qos
-  io.updPosNest.bits.qos  := reg.task.qos
+  io.txReq.bits.QoS := reg.task.qos
+  io.resp.bits.qos  := reg.task.qos
   if (hasBBN) {
-    io.txRsp.get.bits.QoS := reg.task.qos
+    io.txRsp.get.bits.QoS       := reg.task.qos
+    io.updPosNest.get.bits.qos  := reg.task.qos
   }
 
   /*
@@ -100,7 +100,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   /*
    * Receive Task
    */
-  io.alloc.ready := reg.isFree
+  io.alloc.ready      := reg.isFree
   HAssert.withEn(!io.alloc.bits.doDMT, io.alloc.valid & io.alloc.bits.chi.toBBN)
 
   /*
@@ -139,10 +139,10 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
    * Send Resp To Commit
    */
   // valid
-  io.resp.valid         := reg.isRespCmt
+  io.resp.valid                     := reg.isRespCmt
   // bits
-  io.resp.bits.hnTxnID  := reg.task.hnTxnID
-  io.resp.bits.toRepl   := false.B
+  io.resp.bits.hnTxnID              := reg.task.hnTxnID
+  io.resp.bits.toRepl               := false.B
   when(!reg.task.doDMT) {
     io.resp.bits.taskInst           := 0.U.asTypeOf(new TaskInst)
     io.resp.bits.taskInst.valid     := true.B
@@ -159,9 +159,11 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   /*
    * Update PoS CanNest flag
    */
-  io.updPosNest.valid       := reg.isUpdNest
-  io.updPosNest.bits.hnIdx  := reg.task.getHnIdx
-  io.updPosNest.bits.nest   := reg.isCanNest
+  if(hasBBN) {
+    io.updPosNest.get.valid         := reg.isUpdNest
+    io.updPosNest.get.bits.hnIdx    := reg.task.getHnIdx
+    io.updPosNest.get.bits.nest     := reg.isCanNest
+  }
 
   /*
    * Modify Ctrl Machine
@@ -181,12 +183,13 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   }
 
   // Get Next State
+  val updNestFire = io.updPosNest.map(_.fire).getOrElse(false.B)
   switch(reg.state) {
     is(FREE) {
       when(io.alloc.fire)       { next.state := Mux(io.alloc.bits.chi.toBBN, CANNEST, SENDREQ) }
     }
     is(CANNEST) {
-      when(io.updPosNest.fire)  { next.state := SENDREQ }
+      when(updNestFire)         { next.state := SENDREQ }
     }
     is(SENDREQ) {
       when(io.txReq.fire)       { next.state := Mux(reg.task.doDMT, RESPCMT, WAITDATA0) }
@@ -198,7 +201,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
       when(recDataHit)          { next.state := Mux(reg.task.chi.toBBN, CANTNEST, RESPCMT) }
     }
     is(CANTNEST) {
-      when(io.updPosNest.fire)  { next.state := Mux(reg.task.chi.expCompAck, SENDACK, FREE) }
+      when(updNestFire)         { next.state := Mux(reg.task.chi.expCompAck, SENDACK, FREE) }
     }
     is(SENDACK) {
       when(io.txRsp.map(_.fire).getOrElse(false.B)) { next.state := RESPCMT }
@@ -212,7 +215,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
    * HAssert
    */
   HAssert.withEn(reg.isFree,        io.alloc.fire)
-  HAssert.withEn(reg.isUpdNest,     reg.isValid & io.updPosNest.fire)
+  HAssert.withEn(reg.isUpdNest,     reg.isValid & updNestFire)
   HAssert.withEn(reg.isSendReq,     reg.isValid & io.txReq.fire)
   HAssert.withEn(reg.isWaitData,    reg.isValid & recDataHit)
   HAssert.withEn(reg.isRespCmt,     reg.isValid & io.resp.fire)
@@ -248,7 +251,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
     val txRsp         = if(hasBBN) Some(Decoupled(new RespFlit())) else None
     val rxDat         = Flipped(Valid(new DataFlit())) // Dont use rxDat.Data/BE in Backend
     // Update PoS
-    val updPosNest    = Decoupled(new PosCanNest)
+    val updPosNest    = if(hasBBN) Some(Decoupled(new PosCanNest)) else None
   })
 
   /*
@@ -268,11 +271,11 @@ class ReadCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect IO <- CM
    */
-  io.txReq        <> fastQosRRArb(entries.map(_.io.txReq)) // TODO: split to LAN and BBN
-  io.resp         <> fastQosRRArb(entries.map(_.io.resp))
-  io.updPosNest   <> fastQosRRArb(entries.map(_.io.updPosNest))
+  io.txReq  <> fastQosRRArb(entries.map(_.io.txReq)) // TODO: split to LAN and BBN
+  io.resp   <> fastQosRRArb(entries.map(_.io.resp))
   if(hasBBN) {
-    io.txRsp.get  <> fastQosRRArb(entries.map(_.io.txRsp.get))
+    io.txRsp.get      <> fastQosRRArb(entries.map(_.io.txRsp.get))
+    io.updPosNest.get <> fastQosRRArb(entries.map(_.io.updPosNest.get))
   }
 
   /*

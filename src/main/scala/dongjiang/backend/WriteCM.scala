@@ -75,7 +75,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
     val dataTask      = Decoupled(new DataTask)
     val dataResp      = Flipped(Valid(new HnTxnID()))
     // Update PoS
-    val updPosNest    = Decoupled(new PosCanNest)
+    val updPosNest    = if(hasBBN) Some(Decoupled(new PosCanNest)) else None
     // For Debug
     val dbg           = Valid(new ReadState with HasHnTxnID)
   })
@@ -89,10 +89,13 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   /*
    * Set QoS
    */
-  io.txReq.bits.QoS       := reg.task.qos
-  io.resp.bits.qos        := reg.task.qos
-  io.dataTask.bits.qos    := reg.task.qos
-  io.updPosNest.bits.qos  := reg.task.qos
+  io.txReq.bits.QoS     := reg.task.qos
+  io.resp.bits.qos      := reg.task.qos
+  io.dataTask.bits.qos  := reg.task.qos
+  if (hasBBN) {
+    io.updPosNest.get.bits.qos := reg.task.qos
+  }
+
 
   /*
    * Output for debug
@@ -126,9 +129,11 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   /*
    * Update PoS Message
    */
-  io.updPosNest.valid       := reg.isUpdNest
-  io.updPosNest.bits.hnIdx  := reg.task.getHnIdx
-  io.updPosNest.bits.nest   := reg.isCanNest
+  if (hasBBN) {
+    io.updPosNest.get.valid       := reg.isUpdNest
+    io.updPosNest.get.bits.hnIdx  := reg.task.getHnIdx
+    io.updPosNest.get.bits.nest   := reg.isCanNest
+  }
 
   /*
    * Send DataTask to DataBlock
@@ -179,13 +184,14 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   HAssert.withEn(!reg.alrGetComp, compHit)
 
   // Get Next State
+  val updNestFire = io.updPosNest.map(_.fire).getOrElse(false.B)
   val dataRespHit = io.dataResp.fire  & io.dataResp.bits.hnTxnID === reg.task.hnTxnID
   switch(reg.state) {
     is(FREE) {
       when(io.alloc.fire)       { next.state := Mux(io.alloc.bits.chi.toBBN, CANNEST, SENDREQ) }
     }
     is(CANNEST) {
-      when(io.updPosNest.fire)  { next.state := SENDREQ }
+      when(updNestFire)         { next.state := SENDREQ }
     }
     is(SENDREQ) {
       when(io.txReq.fire)       { next.state := WAITDBID }
@@ -200,7 +206,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
       when(dataRespHit)         { next.state := Mux(reg.task.chi.toBBN, CANTNEST, RESPCMT) }
     }
     is(CANTNEST) {
-      when(io.updPosNest.fire)  { next.state := RESPCMT }
+      when(updNestFire)         { next.state := RESPCMT }
     }
     is(RESPCMT) {
       when(io.resp.fire)        { next.state := FREE }
@@ -211,7 +217,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
    * HAssert
    */
   HAssert.withEn(reg.isFree,      io.alloc.fire)
-  HAssert.withEn(reg.isUpdNest,   reg.isValid & io.updPosNest.fire)
+  HAssert.withEn(reg.isUpdNest,   reg.isValid & updNestFire)
   HAssert.withEn(reg.isWaitDBID,  reg.isValid & dbidHit)
   HAssert.withEn(reg.isDataTask,  reg.isValid & io.dataTask.fire)
   HAssert.withEn(reg.isWaitData,  reg.isValid & dataRespHit)
@@ -246,7 +252,7 @@ class WriteCM(implicit p: Parameters) extends DJModule {
     val dataTask      = Decoupled(new DataTask)
     val dataResp      = Flipped(Valid(new HnTxnID()))
     // Update PoS
-    val updPosNest    = Decoupled(new PosCanNest)
+    val updPosNest    = if(hasBBN) Some(Decoupled(new PosCanNest)) else None
   })
 
   /*
@@ -270,7 +276,9 @@ class WriteCM(implicit p: Parameters) extends DJModule {
   io.txReq      <> fastQosRRArb(entries.map(_.io.txReq)) // TODO: split to LAN and BBN
   io.resp       <> fastQosRRArb(entries.map(_.io.resp))
   io.dataTask   <> fastQosRRArb(entries.map(_.io.dataTask))
-  io.updPosNest <> fastQosRRArb(entries.map(_.io.updPosNest))
+  if(hasBBN) {
+    io.updPosNest.get <> fastQosRRArb(entries.map(_.io.updPosNest.get))
+  }
 
   /*
    * HardwareAssertion placePipe

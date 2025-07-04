@@ -26,8 +26,8 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     }
     // rxSnp
     val rxSnp = new Bundle {
-      val in      = Flipped(Decoupled(new SnoopFlit()))
-      val outVec  = Vec(djparam.nrDirBank, Decoupled(new SnoopFlit()))
+      val in      = if(hasBBN) Some(Flipped(Decoupled(new SnoopFlit()))) else None
+      val outVec  = if(hasBBN) Some(Vec(djparam.nrDirBank, Decoupled(new SnoopFlit()))) else None
     }
     // txReq
     val txReq = new Bundle {
@@ -99,7 +99,7 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
   if(hasHPR) { rxRedir(io.rxHpr.inVec.get, hprRedirVec, io.rxHpr.inVec.get.map(in => getDirBank(in.bits.Addr))) }
 
   // rxSnp
-  rxRedir(Seq(io.rxSnp.in), io.rxSnp.outVec, Seq(getDirBank(Cat(io.rxSnp.in.bits.Addr, 0.U(3.W)))))
+  if(hasBBN) { rxRedir(Seq(io.rxSnp.in.get), io.rxSnp.outVec.get, Seq(getDirBank(Cat(io.rxSnp.in.map(_.bits.Addr).get, 0.U(3.W))))) }
 
   // Select high QoS network:
   //

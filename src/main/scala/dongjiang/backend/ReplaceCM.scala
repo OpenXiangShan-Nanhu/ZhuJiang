@@ -178,7 +178,6 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.reqPoS.req.bits.pos.set  := reg.posSet
   io.reqPoS.req.bits.pos.way  := DontCare
   io.reqPoS.req.bits.channel  := Mux(reg.isReplSF, ChiChannel.SNP, ChiChannel.REQ)
-
   HAssert.withEn(reg.isReplDIR, io.reqPoS.req.valid)
 
   /*
@@ -218,14 +217,14 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.writeDir.bits.llc.bits.wayOH   := reg.dir.llc.wayOH
   io.writeDir.bits.llc.bits.hit     := reg.dir.llc.hit
   io.writeDir.bits.llc.bits.metaVec := reg.dir.llc.metaVec
-  io.writeDir.bits.llc.bits.hnIdx   := reg.getHnIdx
+  io.writeDir.bits.llc.bits.hnIdx   := reg.repl.getHnIdx
   // sf
   io.writeDir.bits.sf.valid         := reg.wriSF
   io.writeDir.bits.sf.bits.addr     := reg.hnTxnID  // remap in DongJiang
   io.writeDir.bits.sf.bits.wayOH    := reg.dir.sf.wayOH
   io.writeDir.bits.sf.bits.hit      := reg.dir.sf.hit
   io.writeDir.bits.sf.bits.metaVec  := reg.dir.sf.metaVec
-  io.writeDir.bits.sf.bits.hnIdx    := reg.getHnIdx
+  io.writeDir.bits.sf.bits.hnIdx    := reg.repl.getHnIdx
   // HAssert
   // when write dir meta is invalid, it must be hit
   HAssert.withEn(io.writeDir.bits.llc.bits.hit, io.writeDir.valid & io.writeDir.bits.llc.valid & io.writeDir.bits.llc.bits.meta.isInvalid)
@@ -237,8 +236,8 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   /*
    * Update PoS Tag and Save Message of Addr
    */
-  val sfRespHit   = reg.isWaitDir & io.respDir.sf.valid   & io.respDir.sf.bits.hnTxnID  === reg.hnTxnID
-  val llcRespHit  = reg.isWaitDir & io.respDir.llc.valid  & io.respDir.llc.bits.hnTxnID === reg.hnTxnID
+  val sfRespHit   = reg.isWaitDir & io.respDir.sf.valid   & io.respDir.sf.bits.hnTxnID  === reg.repl.hnTxnID
+  val llcRespHit  = reg.isWaitDir & io.respDir.llc.valid  & io.respDir.llc.bits.hnTxnID === reg.repl.hnTxnID
   val dirRespHit  = sfRespHit | llcRespHit
   val needReplSF  = io.respDir.sf.valid   & io.respDir.sf.bits.metaVec.map(_.isValid).reduce(_ | _)
   val needReplLLC = io.respDir.llc.valid  & io.respDir.llc.bits.metaVec.head.isValid

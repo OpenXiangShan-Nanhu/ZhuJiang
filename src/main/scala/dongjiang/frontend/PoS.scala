@@ -17,7 +17,7 @@ import dongjiang.backend.ReqPoS
 class PosState(implicit p: Parameters) extends DJBundle with HasAddr {
   val req     = Bool()
   val snp     = Bool()
-  val canNest = Bool()
+  val canNest = if(hasBBN) Some(Bool()) else None
   val tagVal  = Bool() // tag is valid
   val tag     = UInt(posTagBits.W)
 
@@ -44,7 +44,7 @@ class PosEntry(implicit p: Parameters) extends DJModule {
     // update PoS
     val alloc       = Flipped(Valid(new Addr with HasAddrValid with HasChiChannel))
     val updTag      = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx)) // broadcast signal
-    val updNest     = Flipped(Valid(new PosCanNest)) // broadcast signal
+    val updNest     = if(hasBBN) Some(Flipped(Valid(new PosCanNest))) else None // broadcast signal
     val clean       = Flipped(Valid(new PosClean))   // broadcast signal
     // wakeup TaskBuf Entry
     val wakeup      = Valid(new Addr) // broadcast signal
@@ -56,7 +56,7 @@ class PosEntry(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val stateReg  = RegInit(new PosState().Lit(_.req -> false.B, _.snp -> false.B, _.canNest -> false.B))
+  val stateReg  = RegInit(new PosState().Lit(_.req -> false.B, _.snp -> false.B))
   val stateNext = WireInit(stateReg)
   dontTouch(stateNext)
   stateReg.addr := DontCare // Dont use stateReg.addr
@@ -66,9 +66,8 @@ class PosEntry(implicit p: Parameters) extends DJModule {
    */
   val updTagHit  = io.updTag.valid  & io.updTag.bits.hnIdx.asUInt  === io.hnIdx.asUInt
   val cleanHit   = io.clean.valid   & io.clean.bits.hnIdx.asUInt   === io.hnIdx.asUInt
-  val canNestHit = io.updNest.valid & io.updNest.bits.hnIdx.asUInt === io.hnIdx.asUInt
+  val canNestHit = if(hasBBN) io.updNest.get.valid & io.updNest.get.bits.hnIdx.asUInt === io.hnIdx.asUInt else false.B
   dontTouch(cleanHit)
-  dontTouch(canNestHit)
 
   /*
    * Update PoS State
@@ -107,12 +106,11 @@ class PosEntry(implicit p: Parameters) extends DJModule {
     stateNext.req := true.B
     HAssert(!stateReg.req)
   }
-
   // release snp
   when(cleanHit & io.clean.bits.isSnp) {
     stateNext.snp := false.B
     HAssert(stateReg.snp)
-  // alloc snp
+    // alloc snp
   }.elsewhen(io.alloc.valid & io.alloc.bits.isSnp) {
     stateNext.snp := true.B
     HAssert(!stateReg.snp)
@@ -122,15 +120,21 @@ class PosEntry(implicit p: Parameters) extends DJModule {
    * Modify PoS canNest
    * if canNest is true, snp can nest req
    */
-  when(canNestHit) {
-    stateNext.canNest := io.updNest.bits.nest
-    HAssert(stateReg.canNest ^ io.updNest.bits.nest)
-    HAssert(stateReg.req)
+  if(hasBBN) {
+    // set
+    when(!stateNext.req) {
+      stateNext.canNest.get := false.B
+      HAssert(!canNestHit)
+    // init
+    }.elsewhen(canNestHit) {
+      stateNext.canNest.get := io.updNest.get.bits.nest
+      HAssert(stateReg.canNest.get ^ io.updNest.get.bits.nest)
+    }
+    HAssert.withEn(!stateReg.canNest.get, canNestHit     & io.updNest.get.bits.nest)
+    HAssert.withEn( stateReg.canNest.get, canNestHit     & !io.updNest.get.bits.nest)
+    HAssert.withEn(!stateReg.canNest.get, io.alloc.valid & io.alloc.bits.isReq)
+    HAssert.withEn( stateReg.canNest.get, io.alloc.valid & io.alloc.bits.isSnp & stateReg.req)
   }
-  HAssert.withEn(!stateReg.canNest, canNestHit      &  io.updNest.bits.nest)
-  HAssert.withEn( stateReg.canNest, canNestHit      & !io.updNest.bits.nest)
-  HAssert.withEn(!stateReg.canNest, io.alloc.valid  &  io.alloc.bits.isReq)
-  HAssert.withEn( stateReg.canNest, io.alloc.valid  &  io.alloc.bits.isSnp & stateReg.req)
 
   // HAssert
   HAssert(!(io.alloc.valid & cleanHit & canNestHit))
@@ -164,7 +168,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
     val reqPoS      = Flipped(new ReqPoS())
     val updTag      = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     // update PoS
-    val updNest     = Flipped(Valid(new PosCanNest)) // broadcast signal
+    val updNest     = if(hasBBN) Some(Flipped(Valid(new PosCanNest))) else None // broadcast signal
     val clean       = Flipped(Valid(new PosClean))   // broadcast signal
     // wakeup TaskBuf Entry
     val wakeup      = Valid(new Addr)
@@ -209,7 +213,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   val blockReq_s0     = Mux(hasMatTag, true.B, !hasFree_s0)
 
   // judge block snp
-  val canNest_s0      = Mux(hasMatTag, esVec(matTagWay_s0).canNest, false.B)
+  val canNest_s0      = if(hasBBN) hasMatTag & esVec(matTagWay_s0).canNest.get else false.B
   val blockSnp_s0     = Mux(hasMatTag, !canNest_s0, !hasFree_s0)
 
   // judge block by s1
@@ -283,9 +287,11 @@ class PosSet(implicit p: Parameters) extends DJModule {
     e.io.alloc.bits.addr    := Mux(io.reqPoS.req.valid, 0.U, allocReg_s1.bits.addr)
     e.io.alloc.bits.channel := Mux(io.reqPoS.req.valid, io.reqPoS.req.bits.channel, allocReg_s1.bits.channel)
     e.io.updTag             := io.updTag
-    e.io.updNest            := io.updNest
     e.io.clean              := io.clean
     io.stateVec(i)          := e.io.state
+    if(hasBBN) {
+      e.io.updNest.get      := io.updNest.get
+    }
   }
   io.wakeup                 := fastArb(entries.map(_.io.wakeup))
   //HAssert
@@ -336,7 +342,7 @@ class PosTable(implicit p: Parameters) extends DJModule {
     val reqPoS      = Flipped(new ReqPoS())
     val updTag      = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     // update PoS
-    val updNest     = Flipped(Valid(new PosCanNest)) // broadcast signal
+    val updNest     = if(hasBBN) Some(Flipped(Valid(new PosCanNest))) else None // broadcast signal
     val clean       = Flipped(Valid(new PosClean)) // broadcast signal
     // wakeup TaskBuf Entry
     val wakeup      = Valid(new Addr)
@@ -376,9 +382,11 @@ class PosTable(implicit p: Parameters) extends DJModule {
     set.io.retry_s1       := io.retry_s1
 
     // update PoS valid
-    set.io.updNest        := io.updNest
     set.io.clean          := io.clean
     set.io.updTag         := io.updTag
+    if(hasBBN) {
+      set.io.updNest.get  := io.updNest.get
+    }
   }
   io.reqPoS.req.ready     := VecInit(sets.map(_.io.reqPoS.req.ready))(io.reqPoS.req.bits.pos.set)
 
