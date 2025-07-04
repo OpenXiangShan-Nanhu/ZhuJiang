@@ -174,9 +174,10 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
     ))
     next.taskInst.resp      := PriorityMux(Seq(
       datHit -> io.rxDat.bits.Resp,
-      rspHit -> Mux(reg.taskInst.channel === DAT, reg.taskInst.resp, io.rxRsp.bits.Resp),
+      rspHit -> Mux(reg.taskInst.channel === DAT | reg.taskInst.resp >= io.rxRsp.bits.Resp, reg.taskInst.resp, io.rxRsp.bits.Resp),
       true.B -> reg.taskInst.resp,
     ))
+    HAssert.withEn(next.taskInst.resp =/= ChiResp.SD & next.taskInst.resp =/= ChiResp.SD_PD, rspHit | datHit)
   }
 
   // Release or alloc
