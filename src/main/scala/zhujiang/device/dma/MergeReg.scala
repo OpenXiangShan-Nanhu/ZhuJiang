@@ -30,10 +30,14 @@ class MergeReg(implicit p: Parameters) extends ZJModule {
 /* 
  * Reg and Wire Define
  */
-  private val mergeDataBeat1 = RegInit(0.U(dw.W))
-  private val mergeDataBeat2 = RegInit(0.U(dw.W))
-  private val mergeStrbBeat1 = RegInit(0.U(bew.W))
-  private val mergeStrbBeat2 = RegInit(0.U(bew.W))
+  private val mergeDataBeat1 = Reg(UInt(dw.W))
+  private val dataBeat1Next  = WireInit(mergeDataBeat1)
+  private val mergeDataBeat2 = Reg(UInt(dw.W))
+  private val dataBeat2Next  = WireInit(mergeDataBeat2)
+  private val mergeStrbBeat1 = Reg(UInt(bew.W))
+  private val strbBeat1Next  = WireInit(mergeStrbBeat1)
+  private val mergeStrbBeat2 = Reg(UInt(bew.W))
+  private val strbBeat2Next  = WireInit(mergeStrbBeat2)
   private val maskData       = WireInit(VecInit.fill(dw/8){0.U(8.W)})
   private val validBeat1     = RegInit(0.U(1.W))
   private val validBeat2     = RegInit(0.U(1.W))
@@ -63,33 +67,33 @@ class MergeReg(implicit p: Parameters) extends ZJModule {
   }
   private val dataIn   = io.dataIn.bits.data & maskData.asUInt
 
-  mergeDataBeat1 := PriorityMux(Seq(
+  dataBeat1Next := PriorityMux(Seq(
     firInAndOut.asBool   ->  dataIn,
     firInAndNOut.asBool  -> (dataIn | mergeDataBeat1),
     firFixMerge.asBool   ->  dataIn,
     firNInAndOut.asBool  ->  0.U,
-    firNInAndNOut.asBool ->  mergeDataBeat1
+    true.B               ->  mergeDataBeat1
   ))
-  mergeDataBeat2 := PriorityMux(Seq(
+  dataBeat2Next := PriorityMux(Seq(
     secInAndOut.asBool   ->  dataIn,
     secInAndNOut.asBool  -> (dataIn | mergeDataBeat2),
     secFixMerge.asBool   ->  dataIn,
     secNInAndOut.asBool  ->  0.U,
-    secNInAndNout.asBool ->  mergeDataBeat2
+    true.B               ->  mergeDataBeat2
   ))
-  mergeStrbBeat1 := PriorityMux(Seq(
+  strbBeat1Next := PriorityMux(Seq(
     firInAndOut.asBool   ->  io.dataIn.bits.strb,
     firInAndNOut.asBool  -> (io.dataIn.bits.strb | mergeStrbBeat1),
     firFixMerge.asBool   ->  io.dataIn.bits.strb,
     firNInAndOut.asBool  ->  0.U,
-    firNInAndNOut.asBool ->  mergeStrbBeat1
+    true.B               ->  mergeStrbBeat1
   ))
-  mergeStrbBeat2 := PriorityMux(Seq(
+  strbBeat2Next := PriorityMux(Seq(
     secInAndOut.asBool   ->  io.dataIn.bits.strb,
     secInAndNOut.asBool  -> (io.dataIn.bits.strb | mergeStrbBeat2),
     secFixMerge.asBool   ->  io.dataIn.bits.strb,
     secNInAndOut.asBool  ->  0.U,
-    secNInAndNout.asBool ->  mergeStrbBeat2
+    true.B               ->  mergeStrbBeat2
   ))
   validBeat1   := PriorityMux(Seq(
     firInAndOut.asBool   -> 1.U,
@@ -103,8 +107,14 @@ class MergeReg(implicit p: Parameters) extends ZJModule {
     secInAndNOut.asBool  -> 1.U,
     secFixMerge.asBool   -> 1.U,
     secNInAndOut.asBool  -> 0.U,
-    secNInAndNout.asBool -> validBeat2
+    true.B               -> validBeat2
   ))
+  when(io.dataIn.fire || io.dataOut.fire){
+    mergeDataBeat1 := dataBeat1Next
+    mergeDataBeat2 := dataBeat2Next
+    mergeStrbBeat1 := strbBeat1Next
+    mergeStrbBeat2 := strbBeat2Next
+  }
 
 /* 
  * IO Connection Logic
