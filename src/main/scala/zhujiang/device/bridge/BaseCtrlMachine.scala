@@ -48,7 +48,7 @@ abstract class BaseCtrlMachine[
 
   val allDone = payload.state.u.completed && payload.state.d.completed
   val valid = RegInit(false.B)
-  val waiting = RegInit(0.U(log2Ceil(outstanding).W))
+  val waiting = Reg(UInt(log2Ceil(outstanding).W))
   private val payloadEnqNext = WireInit(payload)
 
   valid := Mux(valid, !allDone, icn.rx.req.fire)
@@ -66,9 +66,9 @@ abstract class BaseCtrlMachine[
 
   private val wakeupVec = Cat(io.wakeupIns.map(wkp => wkp.valid && compareTag(wkp.bits, payload.info.addr) && valid))
   private val wakeupValid = wakeupVec.orR
-  private val wakeupValidReg = RegNext(wakeupValid, false.B)
+  private val wakeupValidReg = RegNext(wakeupValid)
   private val wakeupNumReg = RegEnable(PopCount(wakeupVec), wakeupValid)
-  private val waitNumSetEn = RegNext(icn.rx.req.fire, false.B)
+  private val waitNumSetEn = RegNext(icn.rx.req.fire)
   when(icn.rx.req.fire) {
     waiting := Fill(log2Ceil(outstanding), true.B) // to optimize waiting num calculation timing
   }.elsewhen(waitNumSetEn){
@@ -149,7 +149,7 @@ abstract class BaseCtrlMachine[
   val slvData = Fill(segNum, payload.info.data.getOrElse(0.U(ioDataBits.W)))
 
   if(!p(DebugOptionsKey).FPGAPlatform) {
-    val timer = RegInit(0.U(64.W))
+    val timer = Reg(UInt(64.W))
     when(icn.rx.req.fire) {
       timer := 0.U
     }.elsewhen(valid) {
