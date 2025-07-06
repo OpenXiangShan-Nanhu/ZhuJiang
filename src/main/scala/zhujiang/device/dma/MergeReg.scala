@@ -30,13 +30,13 @@ class MergeReg(implicit p: Parameters) extends ZJModule {
 /* 
  * Reg and Wire Define
  */
-  private val mergeDataBeat1 = Reg(UInt(dw.W))
+  private val mergeDataBeat1 = RegInit(0.U(dw.W))
   private val dataBeat1Next  = WireInit(mergeDataBeat1)
-  private val mergeDataBeat2 = Reg(UInt(dw.W))
+  private val mergeDataBeat2 = RegInit(0.U(dw.W))
   private val dataBeat2Next  = WireInit(mergeDataBeat2)
-  private val mergeStrbBeat1 = Reg(UInt(bew.W))
+  private val mergeStrbBeat1 = RegInit(0.U(bew.W))
   private val strbBeat1Next  = WireInit(mergeStrbBeat1)
-  private val mergeStrbBeat2 = Reg(UInt(bew.W))
+  private val mergeStrbBeat2 = RegInit(0.U(bew.W))
   private val strbBeat2Next  = WireInit(mergeStrbBeat2)
   private val maskData       = WireInit(VecInit.fill(dw/8){0.U(8.W)})
   private val validBeat1     = RegInit(0.U(1.W))
