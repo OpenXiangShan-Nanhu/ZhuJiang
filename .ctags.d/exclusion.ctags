@@ -1,0 +1,4 @@
+--exclude=build
+--exclude=out
+--exclude=.*
+--exclude=rocket-chip
