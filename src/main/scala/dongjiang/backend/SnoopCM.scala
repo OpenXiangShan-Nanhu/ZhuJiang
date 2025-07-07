@@ -19,7 +19,7 @@ import dongjiang.backend.SNPSTARE._
 import dongjiang.data.DataTask
 import chisel3.experimental.BundleLiterals._
 import xs.utils.queue.FastQueue
-import zhujiang.chi.SnpOpcode.SnpUniqueFwd
+import zhujiang.chi.SnpOpcode._
 
 // ----------------------------------------------------------------------------------------------------- //
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
@@ -131,6 +131,9 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   io.txSnp.bits.SrcID       := Mux(snpNodeId.fromLAN, LAN.U, BBN.U)
   io.txSnp.bits.TgtID       := snpNodeId.nodeId
   HAssert.withEn(reg.task.chi.snpIs(SnpUniqueFwd), reg.isValid & reg.task.chi.isSnpFwd & PopCount(reg.task.snpVec.asUInt) > 1.U)
+  HAssert.withEn(io.txSnp.bits.RetToSrc === false.B, 
+                (io.txSnp.bits.Opcode === SnpCleanShared | io.txSnp.bits.Opcode === SnpCleanInvalid | io.txSnp.bits.Opcode === SnpMakeInvalid |
+                 io.txSnp.bits.Opcode === SnpOnceFwd     | io.txSnp.bits.Opcode === SnpUniqueFwd)   & io.txSnp.valid)
   
 
   /*
