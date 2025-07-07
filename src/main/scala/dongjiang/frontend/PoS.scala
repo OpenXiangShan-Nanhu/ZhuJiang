@@ -14,7 +14,7 @@ import dongjiang.backend.ReqPoS
 // ----------------------------------------------------------------------------------------------------- //
 // -------------------------------------------- PoS Bundle --------------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-class PosState(implicit p: Parameters) extends DJBundle with HasAddr {
+class PosState(implicit p: Parameters) extends DJBundle {
   val req     = Bool()
   val snp     = Bool()
   val canNest = if(hasBBN) Some(Bool()) else None
@@ -49,7 +49,7 @@ class PosEntry(implicit p: Parameters) extends DJModule {
     // wakeup TaskBuf Entry
     val wakeup      = Valid(new Addr) // broadcast signal
     // PoS State Signal
-    val state       = Output(new PosState)
+    val state       = Output(new PosState with HasAddr)
   })
   dontTouch(io.state)
 
@@ -59,7 +59,6 @@ class PosEntry(implicit p: Parameters) extends DJModule {
   val stateReg  = RegInit(new PosState().Lit(_.req -> false.B, _.snp -> false.B))
   val stateNext = WireInit(stateReg)
   dontTouch(stateNext)
-  stateReg.addr := DontCare // Dont use stateReg.addr
 
   /*
    * hit message
@@ -79,7 +78,11 @@ class PosEntry(implicit p: Parameters) extends DJModule {
   /*
    * Output state
    */
-  io.state := stateReg
+  io.state.req    := stateReg.req
+  io.state.snp    := stateReg.snp
+  io.state.tagVal := stateReg.tagVal
+  io.state.tag    := stateReg.tag
+  if(hasBBN) io.state.canNest.get := stateReg.canNest.get
   io.state.Addr.catPoS(io.config.bankId, stateReg.tag, io.hnIdx.pos.set, io.hnIdx.dirBank)
 
   /*
@@ -173,7 +176,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
     // wakeup TaskBuf Entry
     val wakeup      = Valid(new Addr)
     // PoS State Signal
-    val stateVec    = Output(Vec(posWays, new PosState))
+    val stateVec    = Output(Vec(posWays, new PosState with HasAddr))
   })
   dontTouch(io.stateVec)
 

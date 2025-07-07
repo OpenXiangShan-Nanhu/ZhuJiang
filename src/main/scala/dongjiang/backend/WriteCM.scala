@@ -265,7 +265,7 @@ class WriteCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect CM <- IO
    */
-  Alloc(entries.map(_.io.alloc), FastQueue(io.alloc))
+  Alloc(entries.map(_.io.alloc), io.alloc)
   entries.foreach(_.io.config   := io.config)
   entries.foreach(_.io.rxRsp    := io.rxRsp)
   entries.foreach(_.io.dataResp := io.dataResp)

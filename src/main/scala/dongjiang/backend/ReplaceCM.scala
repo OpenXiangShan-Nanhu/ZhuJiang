@@ -510,7 +510,7 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   /*
    * Receive Replace Task from Commit
    */
-  Alloc(entries.map(_.io.alloc), FastQueue(io.task))
+  Alloc(entries.map(_.io.alloc), io.task)
 
   /*
    * Request PoS

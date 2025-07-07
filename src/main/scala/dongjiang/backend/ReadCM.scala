@@ -265,7 +265,7 @@ class ReadCM(implicit p: Parameters) extends DJModule {
    * Connect CM <- IO
    */
   entries.foreach(_.io.config := io.config)
-  Alloc(entries.map(_.io.alloc), FastQueue(io.alloc))
+  Alloc(entries.map(_.io.alloc), io.alloc)
   entries.foreach(_.io.rxDat := io.rxDat)
 
   /*
