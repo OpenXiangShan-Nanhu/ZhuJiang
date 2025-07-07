@@ -401,9 +401,9 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     when(io.txRsp.fire)       { flagNext.chi.s.dbid       := false.B; HAssert.withEn(flagReg.chi.s.dbid, !stateReg.isCommit) }
     when(io.txRsp.fire)       { flagNext.chi.s.resp       := false.B; HAssert.withEn(flagReg.chi.s.resp,  stateReg.isCommit) }
     // task flag chi wait
-    when(compAckHit)          { flagNext.chi.w.compAck    := false.B; HAssert.withEn(taskReg.chi.expCompAck, valid) }
-    when(XCBWrDataHit0)       { flagNext.chi.w.xCBWrData0 := false.B; HAssert(!(flagReg.chi.w.xCBWrData0 ^ valid))  }
-    when(XCBWrDataHit1)       { flagNext.chi.w.xCBWrData1 := false.B; HAssert(!(flagReg.chi.w.xCBWrData1 ^ valid))  }
+    when(compAckHit)          { flagNext.chi.w.compAck    := false.B; HAssert.withEn(taskReg.chi.expCompAck,   valid) }
+    when(XCBWrDataHit0)       { flagNext.chi.w.xCBWrData0 := false.B; HAssert.withEn(flagReg.chi.w.xCBWrData0, valid)  }
+    when(XCBWrDataHit1)       { flagNext.chi.w.xCBWrData1 := false.B; HAssert.withEn(flagReg.chi.w.xCBWrData1, valid)  }
   }
 
   // state
