@@ -328,7 +328,7 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
 
   // Update Lock Table
   // ------------------------------------------------------------------------------
-  // | operation | read | write | repl | hit | old | new |         node           |
+  // | operation | read | write | repl | hit | old | new |         note           |
   // |----------------------------------------------------------------------------|
   // | none      |   0  |   0   |   0  |  -  |  -  |  -  | no operation           |
   // | read      |   1  |   0   |   0  |  F  |  F  |  F  | read  dir without hit  |
@@ -337,7 +337,7 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   // | readRepl  |   1  |   0   |   1  |  F  |  F  |  T  | read  dir for write    |
   // | wriRepl   |   0  |   1   |   1  |  -  |  -  |  -  | write dir without hit  |
   // ------------------------------------------------------------------------------
-  // Node:
+  // Note:
   //  1. '-' indicate dont care
   //  2. 'old' and 'new' indicate 'lock' state
   val read_d3     =  shiftReg.read(D3) & !shiftReg.write(D3) & !shiftReg.repl(D3)
