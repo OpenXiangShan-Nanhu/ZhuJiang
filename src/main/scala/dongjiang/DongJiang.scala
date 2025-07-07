@@ -178,7 +178,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
       f.io.respDir          := directory.io.rRespVec(i)
       f.io.reqPoS           <> backend.io.reqPosVec(i)
       f.io.updPosTag        := backend.io.updPosTag
-      f.io.cleanPos         := backend.io.cleanPos
+      f.io.cleanPoS         := backend.io.cleanPoS
       f.io.getAddrVec.zip(backend.io.getAddrVec).foreach { case(a, b) => a.hnIdx := b.hnIdx }
       if(hasBBN) {
         f.io.updPosNest.get := backend.io.updPosNest.get

@@ -48,7 +48,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
     val cmtTaskVec      = Vec(djparam.nrDirBank, Flipped(Valid(new CommitTask with HasHnTxnID)))
     // Update PoS Message
     val updPosNest      = if(hasBBN) Some(Valid(new PosCanNest)) else None
-    val cleanPos        = Valid(new PosClean)
+    val cleanPoS        = Valid(new PosClean)
     // Clean Signal to Directory
     val unlock          = Valid(new PackHnIdx)
     // Frontend <> io.txRsp
@@ -106,14 +106,14 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   /*
    * Release PoS / LockTable / DataBuffer
    */
-  val cleanPos              = FastQueue(fastQosRRArb(Seq(commit.io.cleanPoS, replCM.io.cleanPoS)))
-  cleanPos.ready            := io.cleanDB.ready
-  io.cleanPos.valid         := cleanPos.fire
-  io.cleanPos.bits          := cleanPos.bits
-  io.unlock.valid           := cleanPos.fire
-  io.unlock.bits.hnIdx      := cleanPos.bits.hnIdx
-  io.cleanDB.valid          := cleanPos.valid
-  io.cleanDB.bits.hnTxnID   := cleanPos.bits.hnIdx.getTxnID
+  val cleanPoS              = FastQueue(fastQosRRArb(Seq(commit.io.cleanPoS, replCM.io.cleanPoS)))
+  cleanPoS.ready            := io.cleanDB.ready
+  io.cleanPoS.valid         := cleanPoS.fire
+  io.cleanPoS.bits          := cleanPoS.bits
+  io.unlock.valid           := cleanPoS.fire
+  io.unlock.bits.hnIdx      := cleanPoS.bits.hnIdx
+  io.cleanDB.valid          := cleanPoS.valid
+  io.cleanDB.bits.hnTxnID   := cleanPoS.bits.hnIdx.getTxnID
   io.cleanDB.bits.dataVec   := DataVec.Full
 
   /*

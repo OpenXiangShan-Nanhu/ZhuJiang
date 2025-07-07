@@ -43,7 +43,7 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
     val reqPoS          = Flipped(new ReqPoS)
     val updPosTag       = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     val updPosNest      = if(hasBBN) Some(Flipped(Valid(new PosCanNest))) else None
-    val cleanPos        = Flipped(Valid(new PosClean)) // Dont care QoS
+    val cleanPoS        = Flipped(Valid(new PosClean)) // Dont care QoS
     // Resp to Node(RN/SN): ReadReceipt, DBIDResp
     val fastResp        = Decoupled(new RespFlit)
     // PoS Busy Signal
@@ -145,7 +145,7 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   posAlloc_s0.bits.addr     := block.io.chiTask_s0.bits.addr
   posTable.io.alloc_s0      := posAlloc_s0
   posTable.io.retry_s1      := block.io.retry_s1
-  posTable.io.clean         := io.cleanPos
+  posTable.io.clean         := io.cleanPoS
   posTable.io.updTag        := io.updPosTag
   posTable.io.reqPoS        <> io.reqPoS
   posTable.io.reqPoS.req.valid := io.reqPoS.req.valid & io.reqPoS.req.bits.dirBank === io.dirBank
