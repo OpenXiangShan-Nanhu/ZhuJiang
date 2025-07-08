@@ -172,9 +172,6 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
   private val readRamStage2Pipe = Module(new Queue(new DataFlit, entries = 1, pipe = true))
   private val wDataVec = Wire(Vec(bew, UInt(8.W)))
 
-  when(wrRamQ.io.deq.fire) {
-    maskRam(wrRamQ.io.deq.bits.set) := wrRamQ.io.deq.bits.mask | maskRam(wrRamQ.io.deq.bits.set)
-  }
   maskRam.zipWithIndex.foreach {
     case (m, i) =>
       when(wrRamQ.io.deq.fire & wrRamQ.io.deq.bits.set === i.U) {
