@@ -19,6 +19,7 @@ import xs.utils.debug.HardwareAssertion
 import xs.utils.sram.SramPowerCtl
 import zhujiang.ZJParametersKey
 import zhujiang.utils.SramPwrCtlBoring
+import xs.utils.perf.XSPerfAccumulate
 
 
 class DJConfigIO(implicit p: Parameters) extends DJBundle {
@@ -216,6 +217,22 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
    */
   SramPwrCtlBoring.getSrc() := io.ramPwrCtl
   HardwareAssertion.placePipe(3)
+
+  /*
+   * Performance counters
+   */
+  var xsPerfSeq = Seq(
+    // count flit number
+    ("hn_lan_rx_req", io.lan.rx.req.get.fire),
+    ("hn_lan_tx_req", io.lan.tx.req.get.fire),
+    ("hn_lan_rx_dat", io.lan.rx.data.get.fire),
+    ("hn_lan_tx_dat", io.lan.tx.data.get.fire),
+    ("hn_lan_rx_rsp", io.lan.rx.resp.get.fire),
+    ("hn_lan_tx_rsp", io.lan.tx.resp.get.fire),
+    ("hn_lan_tx_snp", io.lan.tx.snoop.get.fire)
+  )
+  if (hasHPR) xsPerfSeq = xsPerfSeq ++ Seq(("hn_lan_rx_hpr", io.lan.rx.hpr.get.fire))
+  XSPerfAccumulate(xsPerfSeq)
 }
 
 // Top module for unit test only
