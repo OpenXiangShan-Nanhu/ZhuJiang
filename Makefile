@@ -7,6 +7,10 @@ init:
 	git submodule update --init
 	cd rocket-chip/dependencies && git submodule update --init cde hardfloat diplomacy
 
+init_ctags:
+	cd rocket-chip/dependencies && git submodule update --init chisel
+	ctags -R --fields=+nKz
+
 comp:
 	mill -i zhujiang.compile
 	mill -i zhujiang.test.compile
