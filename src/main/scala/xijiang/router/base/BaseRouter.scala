@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.tfb.{FlitMonitor, NodeRegister}
 import xijiang.{Node, NodeType}
-import xs.utils.ResetRRArbiter
+import xs.utils.{DFTResetSignals, ResetGen, ResetRRArbiter}
 import xs.utils.debug.HardwareAssertionKey
 import zhujiang.chi.FlitHelper.connIcn
 import zhujiang.chi._
@@ -99,26 +99,22 @@ trait BaseRouterUtils {
     val nodeId = Output(UInt(niw.W))
     val reset = new ResetRingIO
     val ci = Input(UInt(ciIdBits.W))
+    val dft = Input(new DFTResetSignals)
   })
   val icn = IO(new IcnBundle(node, true))
 
-  private val resetReg0 = withReset(router.reset.rx(0).asAsyncReset)(RegInit(3.U(2.W)))
-  private val resetReg1 = withReset(router.reset.rx(1).asAsyncReset)(RegInit(3.U(2.W)))
+  private val resetSync0 = withReset(router.reset.rx(0).asAsyncReset)(ResetGen(2, Some(router.dft)).asBool)
+  private val resetSync1 = withReset(router.reset.rx(1).asAsyncReset)(ResetGen(2, Some(router.dft)).asBool)
   if(isMiscNode) {
     router.reset.tx := icn.resetInject.get
   } else {
-    router.reset.tx(0) := resetReg0(0)
-    router.reset.tx(1) := resetReg1(0)
+    router.reset.tx(0) := resetSync0
+    router.reset.tx(1) := resetSync1
   }
-  icn.resetState.get(0) := resetReg0(0)
-  icn.resetState.get(1) := resetReg1(0)
-  resetReg0 := Cat(false.B, resetReg0(1))
-  resetReg1 := Cat(false.B, resetReg1(1))
+  icn.resetState.get(0) := resetSync0
+  icn.resetState.get(1) := resetSync1
 
   val nid = node.nodeId.U(niw.W)
-
-
-
   private val flitMap = Map[String, RingFlit](
     "REQ" -> new RingFlit(rreqFlitBits),
     "RSP" -> new RingFlit(respFlitBits),

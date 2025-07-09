@@ -148,7 +148,8 @@ class IoWrapper(nodes: Seq[Node])(implicit p:Parameters) extends ZJModule {
   mnDev.foreach(mn => {
     mn.io.icn <> mnIcn.head
     mn.clock := clock
-    mn.reset := reset
+    mn.reset := ResetGen(2, Some(io.dft.toResetDftBundle))
+    mn.io.dft := io.dft.toResetDftBundle
     io.onReset.get := mn.io.onReset
     mn.suggestName(mnIcn.head.node.deviceName)
   })

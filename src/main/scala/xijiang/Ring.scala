@@ -27,6 +27,7 @@ class Ring(implicit p: Parameters) extends ZJModule {
     r.router.ci := io_ci
     r.router.reset.rx := left._1.router.reset.tx
     r.reset := withClockAndReset(clock, r.icn.resetState.get(1).asAsyncReset){ResetGen(dft = Some(dfx_reset))}
+    r.router.dft := dfx_reset
   }
   println("\n}\n")
 

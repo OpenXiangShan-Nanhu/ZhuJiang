@@ -5,6 +5,7 @@ import chisel3.util.{Arbiter, Cat, Decoupled, Queue, log2Ceil}
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
+import xs.utils.{DFTResetSignals, ResetGen}
 import xs.utils.debug.HardwareAssertionKey
 import xs.utils.mbist.MbistPipeline
 import xs.utils.queue.FastQueue
@@ -105,11 +106,12 @@ class ResetDevice extends Module {
     val resetInject = Output(Vec(2, Bool()))
     val resetState = Input(Vec(2, Bool()))
     val onReset = Output(Bool())
+    val dft = Input(new DFTResetSignals)
   })
   private val resetReg = RegInit("b11".U)
   private val resetDriveReg = RegNext(resetReg, "b11".U)
-  private val resetState0 = withReset(io.resetState(0).asAsyncReset) { RegNext(false.B, true.B) }
-  private val resetState1 = withReset(io.resetState(1).asAsyncReset) { RegNext(false.B, true.B) }
+  private val resetState0 = withReset(io.resetState(0).asAsyncReset) {ResetGen(2, Some(io.dft)).asBool}
+  private val resetState1 = withReset(io.resetState(0).asAsyncReset) {ResetGen(1, Some(io.dft)).asBool}
   io.resetInject(0) := resetDriveReg(0)
   io.resetInject(1) := resetDriveReg(1)
   when(resetReg === 3.U) {
@@ -129,11 +131,13 @@ class MiscDevice(node: Node)(implicit p:Parameters) extends ZJModule {
     val onReset = Output(Bool())
     val axi = Option.when(hwaP.enable)(Flipped(new AxiBundle(hwaDev.get.io.axi.params)))
     val intr = Option.when(hwaP.enable)(Output(Bool()))
+    val dft = Input(new DFTResetSignals)
   })
   private val resetDev = Module(new ResetDevice)
   resetDev.io.resetState := io.icn.resetState.get
   io.icn.resetInject.get := resetDev.io.resetInject
   io.onReset := resetDev.io.onReset
+  resetDev.io.dft := io.dft
   if(hwaP.enable) {
     val dbgFlit = io.icn.rx.debug.get.bits.asTypeOf(new RingFlit(debugFlitBits))
     hwaDev.get.io.hwa.valid := io.icn.rx.debug.get.valid
