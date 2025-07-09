@@ -147,6 +147,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
     // task
     val chiTaskIn   = Flipped(Decoupled(new PackChi with HasAddr with HasQoS))
     val chiTask_s0  = Decoupled(new PackChi with HasAddr with HasQoS)
+    val lockTask    = Output(Bool())
     // ctrl
     val retry_s1    = Input(Bool()) // Reject Task by Block or PoS Full
     val sleep_s1    = Input(Bool()) // Reject Task by PoS Match
@@ -182,6 +183,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   // connect
   io.chiTask_s0.valid         := taskVec_s0(selId_s0).valid
   io.chiTask_s0.bits          := taskVec_s0(selId_s0).bits
+  io.lockTask                 := selRREncoder.io.lock
 
   /*
    * Connect Ctrl Signals

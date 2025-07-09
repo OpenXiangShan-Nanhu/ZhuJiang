@@ -109,24 +109,24 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   // req2Task
   req2Task.io.rxReq         <> FastQueue(io.rxReq)
 
-  // hprTaskBuf [S0]
+  // hprTaskBuf IO -> [S0]
   hprTaskBuf.io.chiTaskIn   <> hpr2Task.io.chiTask
   hprTaskBuf.io.retry_s1    := block.io.retry_s1
   hprTaskBuf.io.sleep_s1    := posTable.io.sleep_s1
   hprTaskBuf.io.wakeup      := posTable.io.wakeup
 
-  // reqTaskBuf [S0]
+  // reqTaskBuf IO -> [S0]
   reqTaskBuf.io.chiTaskIn   <> req2Task.io.chiTask
   reqTaskBuf.io.retry_s1    := block.io.retry_s1
   reqTaskBuf.io.sleep_s1    := posTable.io.sleep_s1
   reqTaskBuf.io.wakeup      := posTable.io.wakeup
 
-  // snp2Task and snpTaskBuf [S0]
+  // snp2Task and snpTaskBuf IO -> [S0]
   if(hasBBN) {
     // snp2Task
     snp2Task.get.io.config      := io.config
     snp2Task.get.io.rxSnp       <> FastQueue(io.rxSnp.get)
-    // snpTaskBuf [S0]
+    // snpTaskBuf IO -> [S0]
     snpTaskBuf.get.io.chiTaskIn <> snp2Task.get.io.chiTask
     snpTaskBuf.get.io.retry_s1  := block.io.retry_s1
     snpTaskBuf.get.io.sleep_s1  := DontCare // snp never sleep
@@ -134,7 +134,7 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
     assert(!snpTaskBuf.get.io.chiTask_s0.valid," TODO")
   }
 
-  // posTable [S1]
+  // posTable [S0] -> [S1]
   if (hasBBN) {
     posAlloc_s0.bits.channel:= block.io.chiTask_s0.bits.chi.channel
     posTable.io.updNest.get := io.updPosNest.get
@@ -148,20 +148,23 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   posTable.io.clean         := io.cleanPoS
   posTable.io.updTag        := io.updPosTag
   posTable.io.reqPoS        <> io.reqPoS
-  posTable.io.reqPoS.req.valid := io.reqPoS.req.valid & io.reqPoS.req.bits.dirBank === io.dirBank
+  posTable.io.reqPoS.req.valid    := io.reqPoS.req.valid & io.reqPoS.req.bits.dirBank === io.dirBank
 
   // block [S1]
-  val taskVec_s0            = if(hasBBN) Seq(snpTaskBuf.get.io.chiTask_s0, hprTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0) else Seq(hprTaskBuf.io.chiTask_s0, reqTaskBuf.io.chiTask_s0)
-  block.io.chiTask_s0       := fastArb.validOut(taskVec_s0)
+  require(!hasBBN, "TODO: connect snpTaskBuf.io.chiTask_s0")
+  val selectReq                   = !hprTaskBuf.io.chiTask_s0.valid & !hprTaskBuf.io.lockTask
+  reqTaskBuf.io.chiTask_s0.ready  := selectReq
+  hprTaskBuf.io.chiTask_s0.ready  := true.B
+  block.io.chiTask_s0.valid := Mux(selectReq, reqTaskBuf.io.chiTask_s0.valid, hprTaskBuf.io.chiTask_s0.valid)
+  block.io.chiTask_s0.bits  := Mux(selectReq, reqTaskBuf.io.chiTask_s0.bits,  hprTaskBuf.io.chiTask_s0.bits)
   block.io.posBlock_s1      := posTable.io.block_s1
   block.io.hnIdx_s1         := posTable.io.hnIdx_s1
-  HAssert(PopCount(taskVec_s0.map(_.fire)) <= 1.U)
 
-  // buffer [S2]
+  // buffer [S1] -> [S2]
   pipe.io.enq.valid         := block.io.task_s1.valid
   pipe.io.enq.bits          := block.io.task_s1.bits
 
-  // decode [S3]
+  // decode [S2] -> [S3]
   decode.io.task_s2.valid   := pipe.io.deq.valid
   decode.io.task_s2.bits    := pipe.io.deq.bits
   decode.io.respDir_s3      := io.respDir

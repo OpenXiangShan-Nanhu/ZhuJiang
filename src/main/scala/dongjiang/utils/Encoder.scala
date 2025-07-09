@@ -10,6 +10,7 @@ class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 7) exten
     val enable  = Input(Bool())
     val outIdx  = Output(UInt(log2Ceil(size).W))
     val vipIdx  = Output(UInt(log2Ceil(size).W))
+    val lock    = Output(Bool())
   })
 
   val indexReg  = RegInit(0.U(log2Ceil(size).W))
@@ -57,6 +58,7 @@ class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 7) exten
   // Output logic
   io.outIdx     := Mux(lock, io.vipIdx, indexOut)
   io.vipIdx     := indexReg
+  io.lock       := lock
 }
 
 object StepRREncoder {
