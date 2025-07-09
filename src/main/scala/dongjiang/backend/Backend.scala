@@ -119,7 +119,9 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   /*
    * Connect To Directory IO
    */
-  io.writeDir               <> replCM.io.writeDir
+  val wDirQ                 = Module(new Queue(chiselTypeOf(io.writeDir.bits), entries = 1, pipe = true, flow = false))
+  wDirQ.io.enq              <> replCM.io.writeDir
+  io.writeDir               <> wDirQ.io.deq
 
   /*
    * Connect To DataBlock IO
@@ -187,8 +189,8 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   // result
   io.txReq.bits.Addr              := Cat(io.getAddrVec(0).result.addr(addrBits-1, offsetBits), txReqArb.io.out.bits.Addr(offsetBits-1, 0))
   io.txSnp.bits.Addr              := io.getAddrVec(1).result.addr >> 3.U
-  io.writeDir.bits.llc.bits.addr  := io.getAddrVec(2).result.addr
-  io.writeDir.bits.sf.bits.addr   := io.getAddrVec(2).result.addr
+  wDirQ.io.enq.bits.llc.bits.addr := io.getAddrVec(2).result.addr
+  wDirQ.io.enq.bits.sf.bits.addr  := io.getAddrVec(2).result.addr
 
   /*
    * HardwareAssertion placePipe
