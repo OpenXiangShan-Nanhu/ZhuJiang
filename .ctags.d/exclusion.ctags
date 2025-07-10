@@ -2,3 +2,4 @@
 --exclude=out
 --exclude=.*
 --exclude=rocket-chip/src
+--exclude=rocket-chip/dependencies/chisel/svsim
