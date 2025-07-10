@@ -96,7 +96,7 @@ class Decode(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(respDir_s3.sf.metaIsVal, validReg_s3 & taskCode_s3.snoop)
 
   /*
-   * Request DataBuffer & Fast send CompData to CHI
+   * Request DataBuffer & Send fast CompData to CHI
    */
   val respCompData_s3               = validReg_s3 & !taskCode_s3.isValid & cmtCode_s3.sendResp & cmtCode_s3.channel === ChiChannel.DAT & cmtCode_s3.opcode === CompData // TODO: SnpRespData
   // reqDB
@@ -126,7 +126,7 @@ class Decode(implicit p: Parameters) extends DJModule {
 
 
   /*
-   * Clean unues DataBuffer
+   * Clean unused DataBuffer
    */
   val cleanUnuseDB_s3               = validReg_s3 & taskReg_s3.alr.reqDB & !taskReg_s3.chi.isFullSize & !(respDir_s3.sf.hit | respDir_s3.llc.hit)
   io.cleanDB_s3.valid               := cleanUnuseDB_s3

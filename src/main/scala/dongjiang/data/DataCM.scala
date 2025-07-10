@@ -124,14 +124,14 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
    * Read DS / DB
    */
   io.readForRepl              := reg.isRepl
-  // read DS to DB
+  // from DS to DB
   io.readToDB.valid           := reg.isRepl | reg.isRead
   io.readToDB.bits.ds         := reg.task.ds
   io.readToDB.bits.dcid       := io.dcid
   io.readToDB.bits.dbid       := DontCare // remap in DataCM
   io.readToDB.bits.beatNum    := reg.opBeatNum
   io.readToDB.bits.critical   := reg.isCritical
-  // to DB to DS
+  // from DB to DS
   io.readToDS.valid           := reg.isRepl | (reg.isSave & reg.waitall)
   io.readToDS.bits.ds         := reg.task.ds
   io.readToDS.bits.dcid       := io.dcid
@@ -139,7 +139,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   io.readToDS.bits.beatNum    := reg.opBeatNum
   io.readToDS.bits.critical   := reg.isCritical
   io.readToDS.bits.repl       := reg.isRepl
-  // to DB to CHI
+  // from DB to CHI
   io.readToCHI.valid          := reg.isSend & reg.waitall
   io.readToCHI.bits.ds        := DontCare
   io.readToCHI.bits.dcid      := io.dcid

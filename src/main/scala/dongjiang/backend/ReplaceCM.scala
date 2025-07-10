@@ -56,8 +56,8 @@ trait HasReplMes { this: DJBundle =>
   // 2. No need replace:
   //  State: Free -> WriDir -> RespCmt -> Free
   //
-  // Node: only do CleanPosT when alrReplSF in replace LLC directory
-  // Node: dont do RespCmt when alrReplSF in replace LLC directory
+  // Note: only do CleanPosT when alrReplSF in replace LLC directory
+  // Note: dont do RespCmt when alrReplSF in replace LLC directory
 
   val state         = UInt(REPLSTATE.width.W)
   val ds            = new DsIdx()
@@ -186,7 +186,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
    *  from alloc            -> 0
    *  from PoS first time   -> 1
    *  from PoS second time  -> 2
-   *  Node: alrReplSF indicate it from PoS second time
+   *  Note: alrReplSF indicate it from PoS second time
    *
    *  ---------------------------------------------------
    *  |    State     | alloc | ReqPoS | CopyID | ReqPoS |

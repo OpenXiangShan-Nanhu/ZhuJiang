@@ -302,7 +302,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   /*
    * Decode when get resp
    *
-   * Node:
+   * Note:
    *  1st decode after get task from CHI
    *  2nd decode after Decode completes, execute result in backend
    *  3rd decode after Commit gets TaskCM response(First Task) and all XCBWrData
