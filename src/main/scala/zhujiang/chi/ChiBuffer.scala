@@ -11,13 +11,14 @@ class ChiBuffer(node: Node, depth:Int = 2)(implicit p:Parameters) extends Module
     val dev = new DeviceIcnBundle(node)
     val icn = new IcnBundle(node)
   })
+  private val pipe = depth == 1
   for((chn, src) <- io.dev.rx.elements) {
     val sink = io.icn.tx.elements(chn)
-    sink <> Queue(src.asInstanceOf[DecoupledIO[Data]], entries = depth, pipe = true)
+    sink <> Queue(src.asInstanceOf[DecoupledIO[Data]], entries = depth, pipe = pipe)
   }
   for((chn, sink) <- io.dev.tx.elements) {
     val src = io.icn.rx.elements(chn)
-    sink <> Queue(src.asInstanceOf[DecoupledIO[Data]], entries = depth, pipe = true)
+    sink <> Queue(src.asInstanceOf[DecoupledIO[Data]], entries = depth, pipe = pipe)
   }
 }
 

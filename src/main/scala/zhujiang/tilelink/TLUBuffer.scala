@@ -8,8 +8,9 @@ class TLUBuffer(axiParams: TilelinkParams, depth:Int = 2) extends Module {
     val in = Flipped(new TLULBundle(axiParams))
     val out = new TLULBundle(axiParams)
   })
-  io.out.a <> Queue(io.in.a, entries = depth, pipe = true)
-  io.in.d <> Queue(io.out.d, entries = depth, pipe = true)
+  private val pipe = depth == 1
+  io.out.a <> Queue(io.in.a, entries = depth, pipe = pipe)
+  io.in.d <> Queue(io.out.d, entries = depth, pipe = pipe)
 }
 
 object TLUBuffer {

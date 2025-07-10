@@ -63,7 +63,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val txRspBdl   = WireInit(0.U.asTypeOf(new DmaRspFlit))
   //Pipe Reg
   private val selIdx     = WireInit(0.U(log2Ceil(node.outstanding).W))
-  private val rdDBQueue  = Module(new Queue(gen = new RdDBEntry(node), entries = 2, flow = false, pipe = true))
+  private val rdDBQueue  = Module(new Queue(gen = new RdDBEntry(node), entries = 2, flow = false, pipe = false))
   // Vec Define
   private val headPtrMask = UIntToMask(headPtr.value, node.outstanding)
   private val tailPtrMask = UIntToMask(tailPtr.value, node.outstanding)

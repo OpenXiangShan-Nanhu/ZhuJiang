@@ -8,11 +8,12 @@ class AxiBuffer(axiParams: AxiParams, depth:Int = 2) extends Module {
     val in = Flipped(new AxiBundle(axiParams))
     val out = new AxiBundle(axiParams)
   })
-  io.out.aw <> Queue(io.in.aw, entries = depth, pipe = true)
-  io.out.ar <> Queue(io.in.ar, entries = depth, pipe = true)
-  io.out.w <> Queue(io.in.w, entries = depth, pipe = true)
-  io.in.r <> Queue(io.out.r, entries = depth, pipe = true)
-  io.in.b <> Queue(io.out.b, entries = depth, pipe = true)
+  private val pipe = depth == 1
+  io.out.aw <> Queue(io.in.aw, entries = depth, pipe = pipe)
+  io.out.ar <> Queue(io.in.ar, entries = depth, pipe = pipe)
+  io.out.w <> Queue(io.in.w, entries = depth, pipe = pipe)
+  io.in.r <> Queue(io.out.r, entries = depth, pipe = pipe)
+  io.in.b <> Queue(io.out.b, entries = depth, pipe = pipe)
 }
 
 class AxiBufferChain(axiParams: AxiParams, chain:Int) extends Module {

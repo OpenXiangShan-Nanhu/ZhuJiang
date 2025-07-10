@@ -52,7 +52,7 @@ class SendReg(node: Node)(implicit p: Parameters) extends ZJModule {
 /* 
  * Reg and Wire Define
  */
-  private val sendQueue = Module(new Queue(gen = new RBundle(node), entries = 2, pipe = true, flow = false))
+  private val sendQueue = Module(new Queue(gen = new RBundle(node), entries = 2, pipe = false, flow = false))
   private val mergeData = RegInit(VecInit.fill(2){0.U(dw.W)})
 
   mergeData.zipWithIndex.foreach {
