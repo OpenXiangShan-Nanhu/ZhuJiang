@@ -111,7 +111,7 @@ class ResetDevice extends Module {
   private val resetReg = RegInit("b11".U)
   private val resetDriveReg = RegNext(resetReg, "b11".U)
   private val resetState0 = withReset(io.resetState(0).asAsyncReset) {ResetGen(2, Some(io.dft)).asBool}
-  private val resetState1 = withReset(io.resetState(0).asAsyncReset) {ResetGen(1, Some(io.dft)).asBool}
+  private val resetState1 = withReset(io.resetState(1).asAsyncReset) {ResetGen(2, Some(io.dft)).asBool}
   io.resetInject(0) := resetDriveReg(0)
   io.resetInject(1) := resetDriveReg(1)
   when(resetReg === 3.U) {
