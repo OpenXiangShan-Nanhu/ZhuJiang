@@ -71,7 +71,7 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   private val dataRam = Module(new DualPortSramTemplate(
     gen = UInt(dw.W),
     set = bufferSize,
-    bypassWrite = true,
+    bypassWrite = false,
     suffix = "_rni_rdb",
     hasMbist = hasMbist
   ))
