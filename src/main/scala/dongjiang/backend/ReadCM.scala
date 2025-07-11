@@ -79,16 +79,6 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   val next  = WireInit(reg)
 
   /*
-   * Set QoS
-   */
-  io.txReq.bits.QoS := reg.task.qos
-  io.resp.bits.qos  := reg.task.qos
-  if (hasBBN) {
-    io.txRsp.get.bits.QoS       := reg.task.qos
-    io.updPosNest.get.bits.qos  := reg.task.qos
-  }
-
-  /*
    * Output for debug
    */
   io.dbg.valid        := reg.isValid
@@ -118,6 +108,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   io.txReq.bits.ReturnNID.get   := Mux(reg.task.doDMT, reg.task.chi.nodeId, Fill(io.txReq.bits.ReturnNID.get.getWidth, 1.U)) // If set RetrunNID max value, it will be remap in SAM
   io.txReq.bits.TxnID           := reg.task.hnTxnID
   io.txReq.bits.SrcID           := reg.task.chi.getNoC
+  io.txReq.bits.QoS             := reg.task.qos
 
   /*
    * Send CompAck
@@ -131,6 +122,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
     io.txRsp.get.bits.TxnID   := reg.task.chi.txnID
     io.txRsp.get.bits.SrcID   := reg.task.chi.getNoC
     io.txRsp.get.bits.TgtID   := reg.task.chi.nodeId
+    io.txRsp.get.bits.QoS     := reg.task.qos
   }
 
   /*
@@ -141,6 +133,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   // bits
   io.resp.bits.hnTxnID              := reg.task.hnTxnID
   io.resp.bits.toRepl               := false.B
+  io.resp.bits.qos                  := reg.task.qos
   when(!reg.task.doDMT) {
     io.resp.bits.taskInst           := 0.U.asTypeOf(new TaskInst)
     io.resp.bits.taskInst.valid     := true.B
@@ -161,6 +154,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
     io.updPosNest.get.valid         := reg.isUpdNest
     io.updPosNest.get.bits.hnIdx    := reg.task.getHnIdx
     io.updPosNest.get.bits.nest     := reg.isCanNest
+    io.updPosNest.get.bits.qos      := reg.task.qos
   }
 
   /*

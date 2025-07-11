@@ -97,13 +97,6 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   require(djparam.nrBeat == 2)
 
   /*
-   * Set QoS
-   */
-  io.readToDB.bits.qos  := reg.task.qos
-  io.readToDS.bits.qos  := reg.task.qos
-  io.readToCHI.bits.qos := reg.task.qos
-
-  /*
     * Connect io
    */
   io.txDatBits          := reg.task.txDat
@@ -131,6 +124,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   io.readToDB.bits.dbid       := DontCare // remap in DataCM
   io.readToDB.bits.beatNum    := reg.opBeatNum
   io.readToDB.bits.critical   := reg.isCritical
+  io.readToDB.bits.qos        := reg.task.qos
   // from DB to DS
   io.readToDS.valid           := reg.isRepl | (reg.isSave & reg.waitall)
   io.readToDS.bits.ds         := reg.task.ds
@@ -139,6 +133,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   io.readToDS.bits.beatNum    := reg.opBeatNum
   io.readToDS.bits.critical   := reg.isCritical
   io.readToDS.bits.repl       := reg.isRepl
+  io.readToDS.bits.qos  := reg.task.qos
   // from DB to CHI
   io.readToCHI.valid          := reg.isSend & reg.waitall
   io.readToCHI.bits.ds        := DontCare
@@ -147,6 +142,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   io.readToCHI.bits.beatNum   := reg.opBeatNum
   io.readToCHI.bits.critical  := reg.isCritical
   io.readToCHI.bits.repl      := false.B
+  io.readToCHI.bits.qos       := reg.task.qos
   HAssert.withEn(!(io.readToDB.fire ^ io.readToDS.fire), reg.isRepl)
 
   /*

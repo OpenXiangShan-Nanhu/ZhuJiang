@@ -82,17 +82,6 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   val next  = WireInit(reg)
 
   /*
-   * Set QoS
-   */
-  io.txReq.bits.QoS     := reg.task.qos
-  io.resp.bits.qos      := reg.task.qos
-  io.dataTask.bits.qos  := reg.task.qos
-  if (hasBBN) {
-    io.updPosNest.get.bits.qos := reg.task.qos
-  }
-
-
-  /*
    * Output for debug
    */
   io.dbg.valid        := reg.isValid
@@ -119,6 +108,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   io.txReq.bits.Opcode  := reg.task.chi.opcode
   io.txReq.bits.TxnID   := reg.task.hnTxnID
   io.txReq.bits.SrcID   := reg.task.chi.getNoC
+  io.txReq.bits.QoS     := reg.task.qos
 
 
   /*
@@ -128,6 +118,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
     io.updPosNest.get.valid       := reg.isUpdNest
     io.updPosNest.get.bits.hnIdx  := reg.task.getHnIdx
     io.updPosNest.get.bits.nest   := reg.isCanNest
+    io.updPosNest.get.bits.qos    := reg.task.qos
   }
 
   /*
@@ -146,6 +137,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.txDat.TxnID    := reg.task.chi.txnID
   io.dataTask.bits.txDat.SrcID    := reg.task.chi.getNoC
   io.dataTask.bits.txDat.TgtID    := reg.task.chi.nodeId
+  io.dataTask.bits.qos            := reg.task.qos
 
   /*
    * Send Resp To Commit
@@ -157,6 +149,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   io.resp.bits.hnTxnID        := reg.task.hnTxnID
   io.resp.bits.toRepl         := reg.task.fromRepl
   io.resp.bits.taskInst.valid := true.B
+  io.resp.bits.qos            := reg.task.qos
 
   /*
    * Modify Ctrl Machine Table

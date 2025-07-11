@@ -74,12 +74,6 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   val datNodeId   =  WireInit(0.U.asTypeOf(new NodeId()))
 
   /*
-   * Set QoS
-   */
-  io.txSnp.bits.QoS := reg.task.qos
-  io.resp.bits.qos  := reg.task.qos
-
-  /*
    * Output for debug
    */
   io.dbg.valid        := reg.isValid
@@ -125,6 +119,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   io.txSnp.bits.TxnID       := reg.task.hnTxnID
   io.txSnp.bits.SrcID       := Mux(snpNodeId.fromLAN, LAN.U, BBN.U)
   io.txSnp.bits.TgtID       := snpNodeId.nodeId
+  io.txSnp.bits.QoS         := reg.task.qos
   HAssert.withEn(reg.task.chi.snpIs(SnpUniqueFwd), reg.isValid & reg.task.chi.isSnpFwd & PopCount(reg.task.snpVec.asUInt) > 1.U)
   HAssert.withEn(io.txSnp.bits.RetToSrc === false.B, 
                 (io.txSnp.bits.Opcode === SnpCleanShared | io.txSnp.bits.Opcode === SnpCleanInvalid | io.txSnp.bits.Opcode === SnpMakeInvalid |
@@ -140,6 +135,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   io.resp.bits.hnTxnID  := reg.task.hnTxnID
   io.resp.bits.taskInst := reg.taskInst
   io.resp.bits.toRepl   := reg.task.fromRepl
+  io.resp.bits.qos      := reg.task.qos
 
   /*
    * Modify Ctrl Machine Table

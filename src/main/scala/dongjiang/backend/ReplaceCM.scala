@@ -137,15 +137,6 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   val next  = WireInit(reg)
 
   /*
-   * Set QoS
-   */
-  io.reqPoS.req.bits.qos  := reg.qos
-  io.reqDB.bits.qos       := reg.qos
-  io.cleanPoS.bits.qos    := reg.qos
-  io.dataTask.bits.qos    := reg.qos
-  io.cmTaskVec.foreach(_.bits.qos := reg.qos)
-
-  /*
    * Ouput debug message
    */
   io.dbg.valid              := reg.isValid
@@ -166,6 +157,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     alloc.wriLLC        := io.alloc.bits.wriLLC
     alloc.hnTxnID       := io.alloc.bits.hnTxnID
     alloc.repl.hnTxnID  := io.alloc.bits.hnTxnID // reset repl.hnTxnID = alloc.hnTxnID
+    alloc.qos           := io.alloc.bits.qos
   }
 
   /*
@@ -176,6 +168,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.reqPoS.req.bits.pos.set  := reg.posSet
   io.reqPoS.req.bits.pos.way  := DontCare
   io.reqPoS.req.bits.channel  := Mux(reg.isReplSF, ChiChannel.SNP, ChiChannel.REQ)
+  io.reqPoS.req.bits.qos      := reg.qos
   HAssert.withEn(reg.isReplDIR, io.reqPoS.req.valid)
 
   /*
@@ -298,12 +291,15 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.cmTaskVec(CMID.WRI).bits.cbResp                := Mux(reg.repl.toLan, ChiResp.I, reg.dir.llc.meta.cbResp)
   io.cmTaskVec(CMID.WRI).bits.dataOp.repl           := true.B
 
+  io.cmTaskVec.foreach(_.bits.qos := reg.qos)
+
   /*
    * Request DataBuffer
    */
   io.reqDB.valid                := reg.isReqDB
   io.reqDB.bits.hnTxnID         := reg.repl.hnTxnID
   io.reqDB.bits.dataVec         := DataVec.Full
+  io.reqDB.bits.qos             := reg.qos
 
   /*
    * Replace HnTxnID in DataBlock
@@ -321,6 +317,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.dataOp.save  := true.B
   io.dataTask.bits.dataVec      := DataVec.Full
   io.dataTask.bits.ds           := reg.ds
+  io.dataTask.bits.qos          := reg.qos
 
   /*
    * Clean PoS
@@ -328,6 +325,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.cleanPoS.valid             := reg.isCleanPoS
   io.cleanPoS.bits.hnIdx        := Mux(reg.isCleanPosT, reg.getHnIdx, reg.repl.getHnIdx)
   io.cleanPoS.bits.channel      := Mux(reg.isCleanPosT, ChiChannel.SNP, Mux(reg.isReplSF, ChiChannel.SNP, ChiChannel.REQ))
+  io.cleanPoS.bits.qos          := reg.qos
 
   /*
    * Send Resp to Commit

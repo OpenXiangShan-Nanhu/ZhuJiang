@@ -145,17 +145,6 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   }))
 
   /*
-   * Set QoS
-   */
-  io.reqDB.bits.qos     := taskReg.qos
-  io.txRsp.bits.QoS     := taskReg.qos
-  io.replTask.bits.qos  := taskReg.qos
-  io.dataTask.bits.qos  := taskReg.qos
-  io.cleanPoS.bits.qos  := taskReg.qos
-  io.cmTaskVec.foreach(_.bits.qos := taskReg.qos)
-
-
-  /*
    * Save Already Hit Message
    */
   val rxRspHit      = io.rxRsp.valid & io.rxRsp.bits.TxnID === io.hnTxnID
@@ -195,6 +184,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.reqDB.valid        := valid & flagReg.intl.s.reqDB
   io.reqDB.bits.hnTxnID := io.hnTxnID
   io.reqDB.bits.dataVec := Mux(flagReg.intl.s.cmTask & taskReg.task.snoop, DataVec.Full, taskReg.chi.dataVec)
+  io.reqDB.bits.qos     := taskReg.qos
 
   /*
    * Send DataTask
@@ -220,6 +210,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.ds             := taskReg.ds
   io.dataTask.bits.hnTxnID        := io.hnTxnID
   io.dataTask.bits.dataVec        := Mux(taskReg.cmt.fullSize, DataVec.Full, taskReg.chi.dataVec)
+  io.dataTask.bits.qos            := taskReg.qos
 
   /*
    * Send write directory task to ReplaceCM
@@ -227,6 +218,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   // valid and hnTxnID
   io.replTask.valid               := valid & flagReg.intl.s.wriDir & !flagReg.intl.w.dataResp
   io.replTask.bits.hnTxnID        := io.hnTxnID
+  io.replTask.bits.qos            := taskReg.qos
   // write sf bits
   io.replTask.bits.wriSF          := taskReg.cmt.isWriSF
   io.replTask.bits.dir.sf.hit     := taskReg.dir.sf.hit
@@ -266,11 +258,13 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   cmTask.fromRepl                 := false.B
   cmTask.cbResp                   := taskReg.dir.llc.metaVec.head.cbResp
   cmTask.doDMT                    := taskReg.task.doDMT
+  cmTask.qos                      := taskReg.qos
   // alloc
   io.cmTaskVec(CMID.SNP).valid    := valid & flagReg.intl.s.cmTask & !flagReg.intl.s.reqDB & taskReg.task.snoop
   io.cmTaskVec(CMID.READ).valid   := valid & flagReg.intl.s.cmTask & !flagReg.intl.s.reqDB & taskReg.task.read
   io.cmTaskVec(CMID.WRI).valid    := valid & flagReg.intl.s.cmTask & !flagReg.intl.s.reqDB & taskReg.task.write
   io.cmTaskVec.foreach(_.bits     := cmTask)
+  io.cmTaskVec.foreach(_.bits.qos := taskReg.qos)
   HAssert(PopCount(io.cmTaskVec.map(_.fire)) <= 1.U)
 
   /*
@@ -288,6 +282,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.txRsp.bits.Opcode      := Mux(flagReg.chi.s.resp, taskReg.cmt.opcode, Mux(taskReg.chi.isCopyBackWrite, CompDBIDResp, DBIDResp))
   io.txRsp.bits.FwdState    := taskReg.cmt.fwdResp
   io.txRsp.bits.Resp        := taskReg.cmt.resp
+  io.txRsp.bits.QoS         := taskReg.qos
   HAssert.withEn(PopCount(flagReg.chi.s.asUInt) <= 1.U, valid)
 
   /*
@@ -298,6 +293,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   // bits
   io.cleanPoS.bits.hnIdx    := io.hnIdx
   io.cleanPoS.bits.channel  := taskReg.chi.channel
+  io.cleanPoS.bits.qos      := taskReg.qos
 
   /*
    * Decode when get resp
