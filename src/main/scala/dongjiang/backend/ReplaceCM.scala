@@ -1,27 +1,25 @@
 package dongjiang.backend
 
 import chisel3._
-import chisel3.util._
-import org.chipsalliance.cde.config._
-import zhujiang.chi._
-import dongjiang._
-import dongjiang.utils._
-import dongjiang.bundle._
-import xs.utils.debug._
-import dongjiang.directory.{DirEntry, DirMsg, HasPackDirMsg}
-import dongjiang.frontend.decode.{HasPackCmtCode, _}
-import dongjiang.data._
-import zhujiang.chi.ReqOpcode._
-import dongjiang.frontend._
-import dongjiang.backend._
-import dongjiang.backend.REPLSTATE._
 import chisel3.experimental.BundleLiterals._
-import xs.utils.queue.FastQueue
+import chisel3.util._
+import dongjiang._
+import dongjiang.backend.ReplaceState._
+import dongjiang.bundle._
+import dongjiang.data._
+import dongjiang.directory.DirEntry
+import dongjiang.frontend._
+import dongjiang.frontend.decode._
+import dongjiang.utils._
+import org.chipsalliance.cde.config._
+import xs.utils.debug._
+import zhujiang.chi.ReqOpcode._
+import zhujiang.chi._
 
 // ----------------------------------------------------------------------------------------------------- //
 // ------------------------------------------ Replace State -------------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-object REPLSTATE {
+object ReplaceState {
   val width     = 4
   val FREE      = 0x0.U
   val REQPOS    = 0x1.U
@@ -59,7 +57,7 @@ trait HasReplMes { this: DJBundle =>
   // Note: only do CleanPosT when alrReplSF in replace LLC directory
   // Note: dont do RespCmt when alrReplSF in replace LLC directory
 
-  val state         = UInt(REPLSTATE.width.W)
+  val state         = UInt(ReplaceState.width.W)
   val ds            = new DsIdx()
   // Replace task message
   val repl          = new DJBundle with HasHnTxnID { val toLan = Bool() }

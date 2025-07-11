@@ -1,30 +1,25 @@
 package dongjiang.backend
 
 import chisel3._
-import chisel3.util._
-import org.chipsalliance.cde.config._
-import zhujiang.chi._
-import dongjiang._
-import dongjiang.utils._
-import dongjiang.bundle._
-import xs.utils.debug._
-import dongjiang.directory.{DirEntry, DirMsg}
-import dongjiang.frontend._
-import dongjiang.frontend.decode._
-import zhujiang.chi.RspOpcode._
-import zhujiang.chi.DatOpcode._
-import dongjiang.bundle.ChiChannel._
-import dongjiang.backend._
-import dongjiang.backend.SNPSTARE._
-import dongjiang.data.DataTask
 import chisel3.experimental.BundleLiterals._
-import xs.utils.queue.FastQueue
+import chisel3.util._
+import dongjiang._
+import dongjiang.backend.SnpState._
+import dongjiang.bundle.ChiChannel._
+import dongjiang.bundle._
+import dongjiang.frontend.decode._
+import dongjiang.utils._
+import org.chipsalliance.cde.config._
+import xs.utils.debug._
+import zhujiang.chi.DatOpcode._
+import zhujiang.chi.RspOpcode._
 import zhujiang.chi.SnpOpcode._
+import zhujiang.chi._
 
 // ----------------------------------------------------------------------------------------------------- //
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-object SNPSTARE {
+object SnpState {
   val width       = 4
   val FREE        = "b0001".U // 0x1
   val SENDSNP     = "b0010".U // 0x2
@@ -34,7 +29,7 @@ object SNPSTARE {
 
 class SnpMes(implicit p: Parameters) extends DJBundle {
   // CHI: Free --> ReqDB --> SendSnp --> WaitResp --> RespCmt --> Free
-  val state       = UInt(SNPSTARE.width.W)
+  val state       = UInt(SnpState.width.W)
   val alrSendVec  = Vec(nrSfMetas, Bool())
   val getRespVec  = Vec(nrSfMetas, Bool())
   val getDataVec  = Vec(djparam.nrBeat, Bool())

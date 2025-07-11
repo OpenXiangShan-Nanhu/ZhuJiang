@@ -8,13 +8,13 @@ import dongjiang._
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
-import dongjiang.frontend.TASKSTATE._
+import dongjiang.frontend.TaskState._
 import chisel3.experimental.BundleLiterals._
 
 // ----------------------------------------------------------------------------------------------------- //
 // ----------------------------------------- Task Buffer State ----------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-object TASKSTATE {
+object TaskState {
   val width   = 4
   val FREE    = "b0001".U // 1
   val SEND    = "b0010".U // 2 // -> S0
@@ -23,7 +23,7 @@ object TASKSTATE {
 }
 
 class TaskState(implicit p: Parameters) extends DJBundle {
-  val state = UInt(TASKSTATE.width.W)
+  val state = UInt(TaskState.width.W)
 
   def isFree    = state(0)
   def isValid   = !isFree
@@ -52,7 +52,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
     val othRel      = if(sort) Some(Input(Bool())) else None // Other Release
     val state       = Output(new DJBundle with HasAddr {
       val valid     = Bool()
-      val value     = UInt(TASKSTATE.width.W)
+      val value     = UInt(TaskState.width.W)
       val release   = Bool()
       val nid       = UInt(nidBits.W)
     })

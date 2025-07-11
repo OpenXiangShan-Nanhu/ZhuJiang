@@ -1,29 +1,24 @@
 package dongjiang.backend
 
 import chisel3._
-import chisel3.util._
-import org.chipsalliance.cde.config._
-import zhujiang.chi._
-import dongjiang._
-import dongjiang.utils._
-import dongjiang.bundle._
-import xs.utils.debug._
-import dongjiang.directory.{DirEntry, DirMsg, HasPackDirMsg}
-import dongjiang.frontend._
-import dongjiang.frontend.decode._
-import zhujiang.chi.ReqOpcode._
-import zhujiang.chi.RspOpcode._
-import zhujiang.chi.DatOpcode._
-import dongjiang.backend._
-import dongjiang.backend.WRISTATE._
-import dongjiang.data._
 import chisel3.experimental.BundleLiterals._
-import xs.utils.queue.FastQueue
+import chisel3.util._
+import dongjiang._
+import dongjiang.backend.WriteState._
+import dongjiang.bundle._
+import dongjiang.data._
+import dongjiang.frontend._
+import dongjiang.utils._
+import org.chipsalliance.cde.config._
+import xs.utils.debug._
+import zhujiang.chi.DatOpcode._
+import zhujiang.chi.RspOpcode._
+import zhujiang.chi._
 
 // ----------------------------------------------------------------------------------------------------- //
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-object WRISTATE {
+object WriteState {
   val width       = 3
   val FREE        = 0x0.U
   val CANNEST     = 0x1.U
@@ -41,7 +36,7 @@ class WriMes(implicit p: Parameters) extends DJBundle {
   // CHI: Free --> SendReq --> WaitDBID --> DataTask --> WaitData --> RespCmt --> Free
   // REQ To BBN:
   // CHI: Free --> CanNest --> SendReq --> WaitDBID --> DataTask --> WaitData --> CantNest --> RespCmt --> Free
-  val state       = UInt(WRISTATE.width.W)
+  val state       = UInt(WriteState.width.W)
   val alrGetComp  = Bool() // already get comp from CHI
 
   def isFree      = state === FREE

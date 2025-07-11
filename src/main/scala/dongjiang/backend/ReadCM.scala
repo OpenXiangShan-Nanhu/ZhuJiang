@@ -1,26 +1,24 @@
 package dongjiang.backend
 
 import chisel3._
+import chisel3.experimental.BundleLiterals._
 import chisel3.util._
-import org.chipsalliance.cde.config._
-import zhujiang.chi._
 import dongjiang._
-import dongjiang.utils._
+import dongjiang.backend.ReadState._
 import dongjiang.bundle._
-import xs.utils.queue.FastQueue
-import xs.utils.debug._
 import dongjiang.frontend._
 import dongjiang.frontend.decode._
-import zhujiang.chi.RspOpcode._
+import dongjiang.utils._
+import org.chipsalliance.cde.config._
+import xs.utils.debug._
 import zhujiang.chi.DatOpcode._
-import dongjiang.backend._
-import dongjiang.backend.READSTATE._
-import chisel3.experimental.BundleLiterals._
+import zhujiang.chi.RspOpcode._
+import zhujiang.chi._
 
 // ----------------------------------------------------------------------------------------------------- //
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-object READSTATE {
+object ReadState {
   val width       = 3
   val FREE        = 0x0.U
   val CANNEST     = 0x1.U
@@ -37,7 +35,7 @@ class ReadState(implicit p: Parameters) extends DJBundle {
   // CHI: Free --> SendReq --> WaitData0 --> WaitData1 --> RespCmt --> Free
   // REQ To BBN:
   // CHI: Free --> CanNest --> SendReq --> WaitData0 --> WaitData1 --> CantNest --> SendCompAck --> RespCmt --> Free
-  val state         = UInt(READSTATE.width.W)
+  val state         = UInt(ReadState.width.W)
 
   def isFree        = state === FREE
   def isValid       = !isFree
