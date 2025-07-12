@@ -98,7 +98,8 @@ class Block(implicit p: Parameters) extends DJModule {
   blockByDB_s1                := sDBIDReg_s1 & !io.reqDB_s1.ready
   // Send Req To Data
   io.reqDB_s1.valid           := validReg_s1 & sDBIDReg_s1 & io.fastResp_s1.ready & !(block_s1.pos | block_s1.dir)
-  io.reqDB_s1.bits.dataVec    := DataVec.Full
+  io.reqDB_s1.bits.dataVec    := DataVec.Full // e.g. For WriteUniquePtl, LLC may require a Snoop to fetch data from upper-level cache, and the granularity of Snoop is full cacheline.
+                                              //      If the LLC does not need to send Snoop, then the redundant dataBuffer will be cleared using `cleanDB_s3` in the `Decode` module.
   io.reqDB_s1.bits.hnTxnID    := io.hnIdx_s1.getTxnID
   // Send Fast Resp To CHI
   io.fastResp_s1.valid        := validReg_s1 & shouldResp_s1 & !(block_s1.pos | block_s1.dir)
