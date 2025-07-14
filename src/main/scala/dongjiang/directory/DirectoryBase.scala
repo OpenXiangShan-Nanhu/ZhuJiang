@@ -294,11 +294,12 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   HardwareAssertion.withEn(PopCount(hitVec_d3) <= 1.U, shiftReg.read(D3))
 
   // Select Way
+  val useWayVecReg_d3   = RegEnable(useWayVec_d2,   shiftReg.req(D2))
   val selIsUsingReg_d3  = RegEnable(selIsUsing_d2,  shiftReg.req(D2))
   val unuseWayReg_d3    = RegEnable(unuseWay_d2,    shiftReg.req(D2))
   val replWayReg_d3     = RegEnable(replWay_d2,     shiftReg.req(D2))
   val hitWay_d3         = PriorityEncoder(hitVec_d3)
-  val invWay_d3         = PriorityEncoder(metaValVec_d3.map(!_))
+  val invWay_d3         = PriorityEncoder(metaValVec_d3.zip(useWayVecReg_d3.asBools).map { case(m, u) => !m & !u })
   val selWay_d3         = PriorityMux(Seq(
     hit_d3              -> hitWay_d3,
     hasInvalid_d3       -> invWay_d3,
