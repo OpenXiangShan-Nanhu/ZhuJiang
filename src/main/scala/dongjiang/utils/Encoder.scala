@@ -37,7 +37,7 @@ class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 7) exten
     vipIdxReg := PriorityMux(Seq(
       (priIdx < vipIdxReg) -> indexInc(vipIdxReg),
       io.inVec(vipIdxReg)  -> indexInc(vipIdxReg),
-      (priIdx > vipIdxReg) -> indexInc(priIdx)
+      (priIdx > vipIdxReg) -> priIdx
     ))
   }
   assert(vipIdxReg < size.U)
