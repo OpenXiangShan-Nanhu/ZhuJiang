@@ -179,6 +179,7 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   val reqSet_d3       = Wire(UInt(param.setBits.W))  ; dontTouch(reqSet_d3)
   val tagHitVec_d3    = Wire(Vec(param.ways, Bool())); dontTouch(tagHitVec_d3)
   val metaValVec_d3   = Wire(Vec(param.ways, Bool())); dontTouch(metaValVec_d3)
+  val invalidVec_d3   = Wire(Vec(param.ways, Bool())); dontTouch(invalidVec_d3)
   // create in d2
   val readHit_d3      = WireInit(false.B)
   val selWayOH_d3     = WireInit(0.U(param.ways.W))
@@ -284,22 +285,23 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   HAssert(!(shiftReg.read(D3) ^ metaArray.io.resp.valid))
 
   // Get Hit Vec
-  tagHitVec_d3      := addrVec_d3.map(_.Addr.tag === reqTag_d3)
-  metaValVec_d3     := metaResp_d3.map(meta => Cat(meta.map(_.isValid)).orR)
-  val hasInvalid_d3 = metaValVec_d3.map(!_).reduce(_ | _)
-  val hitVec_d3     = tagHitVec_d3.zip(metaValVec_d3).map { case(a, b) => a & b }
-  val hit_d3        = hitVec_d3.reduce(_ | _)
-  readHit_d3        := shiftReg.read(D3) & hit_d3
+  val useWayVecReg_d3   = RegEnable(useWayVec_d2,   shiftReg.req(D2))
+  tagHitVec_d3          := addrVec_d3.map(_.Addr.tag === reqTag_d3)
+  metaValVec_d3         := metaResp_d3.map(meta => Cat(meta.map(_.isValid)).orR)
+  invalidVec_d3         := metaValVec_d3.zip(useWayVecReg_d3.asBools).map { case(m, u) => !m & !u }
+  val hasInvalid_d3     = invalidVec_d3.reduce(_ | _)
+  val hitVec_d3         = tagHitVec_d3.zip(metaValVec_d3).map { case(a, b) => a & b }
+  val hit_d3            = hitVec_d3.reduce(_ | _)
+  readHit_d3            := shiftReg.read(D3) & hit_d3
   HardwareAssertion.withEn(!hit_d3, shiftReg.updTagMeta_d3)
   HardwareAssertion.withEn(PopCount(hitVec_d3) <= 1.U, shiftReg.read(D3))
 
   // Select Way
-  val useWayVecReg_d3   = RegEnable(useWayVec_d2,   shiftReg.req(D2))
   val selIsUsingReg_d3  = RegEnable(selIsUsing_d2,  shiftReg.req(D2))
   val unuseWayReg_d3    = RegEnable(unuseWay_d2,    shiftReg.req(D2))
   val replWayReg_d3     = RegEnable(replWay_d2,     shiftReg.req(D2))
   val hitWay_d3         = PriorityEncoder(hitVec_d3)
-  val invWay_d3         = PriorityEncoder(metaValVec_d3.zip(useWayVecReg_d3.asBools).map { case(m, u) => !m & !u })
+  val invWay_d3         = PriorityEncoder(invalidVec_d3)
   val selWay_d3         = PriorityMux(Seq(
     hit_d3              -> hitWay_d3,
     hasInvalid_d3       -> invWay_d3,
