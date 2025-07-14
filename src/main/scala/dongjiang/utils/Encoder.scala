@@ -13,34 +13,34 @@ class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 7) exten
     val lock    = Output(Bool())
   })
 
-  val indexReg  = RegInit(0.U(log2Ceil(size).W))
-  val indexOut  = Wire(UInt(log2Ceil(size).W))
+  val vipIdxReg = RegInit(0.U(log2Ceil(size).W))
+  val priIdx    = PriorityEncoder(io.inVec)
   val lock      = WireInit(false.B)
 
   // Inc logic
-  def indexInc: UInt = {
+  def indexInc(index: UInt): UInt = {
     if(isPow2(size)) {
-      indexReg + 1.U
+      index + 1.U
     } else {
       val newIndex = Wire(UInt(log2Ceil(size).W))
-      when(indexReg +& 1.U === size.U) {
+      when(index +& 1.U === size.U) {
         newIndex := 0.U
       }.otherwise {
-        newIndex := indexReg + 1.U
+        newIndex := index + 1.U
       }
       newIndex
     }
   }
 
   // Select logic
-  when(io.inVec(indexReg)) {
-    indexReg    := Mux(io.enable, indexInc, indexReg)
-    indexOut    := indexReg
-  }.otherwise {
-    indexReg    := Mux(io.inVec.reduce(_ | _) & io.enable, Mux(indexOut > indexReg, indexOut, indexInc), indexReg)
-    indexOut    := PriorityEncoder(io.inVec)
+  when(io.enable) {
+    vipIdxReg := PriorityMux(Seq(
+      (priIdx < vipIdxReg) -> indexInc(vipIdxReg),
+      io.inVec(vipIdxReg)  -> indexInc(vipIdxReg),
+      (priIdx > vipIdxReg) -> indexInc(priIdx)
+    ))
   }
-  assert(indexReg < size.U)
+  assert(vipIdxReg < size.U)
 
   // Lock logic
   if (hasLock) {
@@ -49,15 +49,15 @@ class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 7) exten
     when(io.enable) {
       cntReg    := 0.U
     // inc
-    }.elsewhen(io.inVec(indexReg) & cntReg < lockCnt.U) {
+    }.elsewhen(io.inVec(vipIdxReg) & cntReg < lockCnt.U) {
       cntReg    := cntReg + 1.U
     }
     lock        := RegNext(cntReg === lockCnt.U)
   }
 
   // Output logic
-  io.outIdx     := Mux(lock, io.vipIdx, indexOut)
-  io.vipIdx     := indexReg
+  io.outIdx     := Mux(io.inVec(vipIdxReg) | lock, io.vipIdx, priIdx)
+  io.vipIdx     := vipIdxReg
   io.lock       := lock
 }
 
