@@ -96,7 +96,7 @@ class DataBlock(isTop: Boolean = false)(implicit p: Parameters) extends DJModule
    */
   datBuf.io.readToCHI           <> dataCM.io.readToCHI
   datBuf.io.readToDS            <> dataCM.io.readToDS
-  datBuf.io.respDS              := fastArb(dataStorage.flatMap(_.map(_.io.resp)))
+  datBuf.io.respDS              := fastArb(dataStorage.map(bs => Pipe(fastArb(bs.map(_.io.resp)))))
   datBuf.io.fromCHI.valid       := io.rxDat.valid
   datBuf.io.fromCHI.bits.dat    := io.rxDat.bits
   datBuf.io.toCHI.ready         := io.txDat.ready
