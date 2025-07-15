@@ -310,7 +310,7 @@ abstract class DJModule(implicit val p: Parameters) extends Module with HasDJPar
     // dir bank id
     val sDirBankId = if (djparam.nrDirBank > 1) s"+ [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]" else s""
     // pos set
-    val sPosSet = if (posSets > 1) s"+ [posSet(${posSet_hn_hi}:${posSet_hn_lo})]" else s""
+    val sPosSet = if (posSets > 1) s"+ [posSet(${posSet_ua_hi}:${posSet_ua_lo})]" else s""
     //
     print(
       s"""
