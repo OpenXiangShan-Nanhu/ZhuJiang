@@ -12,7 +12,7 @@ class ArbiterGenerator[T <: Bundle](gen:T, size:Int, rr:Boolean, qos: Boolean) e
   })
   val qosName = if(gen.elements.contains("qos")) "qos" else "QoS"
   val rrName  = if(rr)  "RR"  else ""
-  override val desiredName = "Hn" + qosName.toUpperCase + rrName + "Arbiter"
+  override val desiredName = "Hn" + (if(qos) qosName.toUpperCase else "") + rrName + "Arbiter"
   if(qos) require(gen.elements.contains(qosName))
   // define ids
   val selId   = Wire(UInt(log2Ceil(size).W))
