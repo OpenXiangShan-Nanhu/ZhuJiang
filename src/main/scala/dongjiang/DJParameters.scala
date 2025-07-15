@@ -303,14 +303,15 @@ abstract class DJModule(implicit val p: Parameters) extends Module with HasDJPar
    */
   if(isTopModule) {
     // full addr
-    val sUseAddr1 = if (hnxBankOff != 6) s"[useAddr1(${useAddr_hi}:${bankId_hi + 1})] + " else s"[useAddr(${useAddr_hi}:${bankId_hi + 1})] + "
-    val sUseAddr0 = if (hnxBankOff != 6) s"[useAddr0(${bankId_lo - 1}:${useAddr_lo})] + " else s""
-    val sBankId = if (nrBank != 0) s"[bankId(${bankId_hi}:${bankId_lo})] + " else s""
-    val sFullAddr = s"[fullAddr(${djparam.addressBits - 1}:0)] = " + sUseAddr1 + sBankId + sUseAddr0 + s"[offset(${offset_hi}:${offset_lo})]"
+    val sUseAddr1   = if (hnxBankOff != 6) s"[useAddr1(${useAddr_hi}:${bankId_hi + 1})] + " else s"[useAddr(${useAddr_hi}:${bankId_hi + 1})] + "
+    val sUseAddr0   = if (hnxBankOff != 6) s"[useAddr0(${bankId_lo - 1}:${useAddr_lo})] + " else s""
+    val sBankId     = if (nrBank != 0) s"[bankId(${bankId_hi}:${bankId_lo})] + " else s""
+    val sFullAddr   = s"[fullAddr(${djparam.addressBits - 1}:0)] = " + sUseAddr1 + sBankId + sUseAddr0 + s"[offset(${offset_hi}:${offset_lo})]"
     // dir bank id
-    val sDirBankId = if (djparam.nrDirBank > 1) s"+ [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]" else s""
+    val sDirBankId  = if (djparam.nrDirBank > 1) s"+ [dirBank(${dirBank_ua_hi}:${dirBank_ua_lo})]" else s""
     // pos set
-    val sPosSet = if (posSets > 1) s"+ [posSet(${posSet_ua_hi}:${posSet_ua_lo})]" else s""
+    val sAddrPosSet = if (posSets > 1) s"+ [posSet(${posSet_ua_hi}:${posSet_ua_lo})]" else s""
+    val sHnPosSet   = if (posSets > 1) s"+ [posSet(${posSet_hn_hi}:${posSet_hn_lo})]" else s""
     //
     print(
       s"""
@@ -343,9 +344,9 @@ abstract class DJModule(implicit val p: Parameters) extends Module with HasDJPar
          |                     = [ci(${ci_hi}:${ci_lo})]
          |    [useAddr(${useAddrBits - 1}:0)]  = [llcTag(${llcTag_ua_hi}:${llcTag_ua_lo})] + [llcSet(${llcSet_ua_hi}:${llcSet_ua_lo})] $sDirBankId
          |                     = [sfTag (${sfTag_ua_hi}:${sfTag_ua_lo})] + [sfSet (${sfSet_ua_hi}:${sfSet_ua_lo})] $sDirBankId
-         |                     = [posTag(${posTag_ua_hi}:${posTag_ua_lo})] $sPosSet $sDirBankId
+         |                     = [posTag(${posTag_ua_hi}:${posTag_ua_lo})] $sAddrPosSet $sDirBankId
          |  hnTxnID slice:
-         |    [hnTxnID(${hnTxnIDBits - 1}:0)]   = [dirBank(${dirBank_hn_hi}:${dirBank_hn_lo})] $sPosSet + [posWay(${posWay_hn_hi}:${posWay_hn_lo})]
+         |    [hnTxnID(${hnTxnIDBits - 1}:0)]   = [dirBank(${dirBank_hn_hi}:${dirBank_hn_lo})] $sHnPosSet + [posWay(${posWay_hn_hi}:${posWay_hn_lo})]
          |  decodeTableSize: ${l_ci * l_si * l_ti} = ChiInst($l_ci) x StateInst($l_si) x TaskInst($l_ti) x SecTaskInst($l_sti)
          |}
          |""".stripMargin)
