@@ -20,15 +20,16 @@ import zhujiang.chi._
 // ---------------------------------------- Ctrl Machine State ----------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
 object SnpState {
-  val width       = 4
-  val FREE        = "b0001".U // 0x1
-  val SENDSNP     = "b0010".U // 0x2
-  val WAITRESP    = "b0100".U // 0x4
-  val RESPCMT     = "b1000".U // 0x8
+  val width       = 3
+  val FREE        = 0x0.U
+  val PRESNP      = 0x1.U // Pre-Snoop using for the SnpUniqueFwd snoop is only permitted if the cacheline is cached at a single RN-F
+  val SENDSNP     = 0x2.U
+  val WAITRESP    = 0x3.U
+  val RESPCMT     = 0x4.U
 }
 
 class SnpMes(implicit p: Parameters) extends DJBundle {
-  // CHI: Free --> ReqDB --> SendSnp --> WaitResp --> RespCmt --> Free
+  // CHI: Free --> PreSnp --> SendSnp --> WaitResp --> RespCmt --> Free
   val state       = UInt(SnpState.width.W)
   val alrSendVec  = Vec(nrSfMetas, Bool())
   val getRespVec  = Vec(nrSfMetas, Bool())
@@ -36,11 +37,12 @@ class SnpMes(implicit p: Parameters) extends DJBundle {
   def getDataOne  = getDataVec.reduce(_ ^ _)
   def getDataAll  = getDataVec.reduce(_ & _)
 
-  def isFree      = state(0)
+  def isFree      = state === FREE
   def isValid     = !isFree
-  def isSendSnp   = state(1)
-  def isWaitResp  = state(2)
-  def isResp      = state(3)
+  def isPreSnp    = state === PRESNP
+  def isSendSnp   = state === SENDSNP
+  def isWaitResp  = state === WAITRESP
+  def isResp      = state === RESPCMT
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -104,16 +106,16 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
    * Send Snoop
    */
   val snpMetaId   = PriorityEncoder(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt)
-  val snpIsFst    = reg.alrSendVec.asUInt === 0.U
+  val snpIsLast   = PopCount(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt) === 1.U
   snpNodeId.setSnpNodeId(snpMetaId)
   // valid
-  io.txSnp.valid            := reg.isSendSnp
+  io.txSnp.valid            := reg.isPreSnp | reg.isSendSnp
   // bits
   io.txSnp.bits             := DontCare
-  io.txSnp.bits.RetToSrc    := Mux(snpIsFst, reg.task.chi.retToSrc, false.B)
+  io.txSnp.bits.RetToSrc    := snpIsLast & reg.task.chi.retToSrc
   io.txSnp.bits.DoNotGoToSD := true.B
   io.txSnp.bits.Addr        := DontCare // remap in chi xbar
-  io.txSnp.bits.Opcode      := Mux(snpIsFst, reg.task.chi.opcode, reg.task.chi.getNoFwdSnpOp)
+  io.txSnp.bits.Opcode      := Mux(reg.isPreSnp, SnpMakeInvalid, reg.task.chi.opcode)
   io.txSnp.bits.FwdTxnID    := reg.task.chi.txnID
   io.txSnp.bits.FwdNID      := reg.task.chi.nodeId
   io.txSnp.bits.TxnID       := reg.task.hnTxnID
@@ -200,15 +202,20 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
 
 
   // Check send or wait
+  val snpLastNext   = PopCount(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt) === 2.U & io.txSnp.fire
   val alrSnpAll     = PopCount(reg.task.snpVec.asUInt ^ reg.alrSendVec.asUInt) === 1.U & io.txSnp.fire
   val alrGetRspAll  = PopCount(reg.task.snpVec.asUInt ^ reg.getRespVec.asUInt) === 0.U
   val alrGetDatAll  = !reg.getDataOne
   val alrGetAll     = alrGetRspAll & alrGetDatAll
 
   // Get Next State
+  val snpUnqiueFwdMoreThan1 = io.alloc.bits.chi.snpIs(SnpUniqueFwd) & PopCount(io.alloc.bits.snpVec) > 1.U
   switch(reg.state) {
     is(FREE) {
-      when(io.alloc.fire) { next.state := SENDSNP }
+      when(io.alloc.fire) { next.state := Mux(snpUnqiueFwdMoreThan1, PRESNP, SENDSNP) }
+    }
+    is(PRESNP) {
+      when(snpLastNext)   { next.state := SENDSNP }
     }
     is(SENDSNP) {
       when(alrSnpAll)     { next.state := WAITRESP }
@@ -224,10 +231,10 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   /*
    * HAssert
    */
-  HAssert.withEn(reg.isFree,    io.alloc.fire)
-  HAssert.withEn(reg.isSendSnp, reg.isValid & io.txSnp.fire)
-  HAssert.withEn(reg.isResp,    reg.isValid & io.resp.fire)
-  HAssert.withEn(reg.isSendSnp | reg.isWaitResp, rspHit | datHit)
+  HAssert.withEn(reg.isFree, io.alloc.fire)
+  HAssert.withEn(reg.isResp, reg.isValid & io.resp.fire)
+  HAssert.withEn(reg.isPreSnp | reg.isSendSnp, reg.isValid & io.txSnp.fire)
+  HAssert.withEn(reg.isPreSnp | reg.isSendSnp | reg.isWaitResp, rspHit | datHit)
 
   /*
    * Set new task
