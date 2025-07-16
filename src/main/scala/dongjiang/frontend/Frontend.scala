@@ -71,8 +71,6 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   val pipe        = Module(new Pipe(chiselTypeOf(block.io.task_s1.bits), readDirLatency-1))
   // S3: Receive DirResp and Decode
   val decode      = Module(new Decode())
-  // Queue
-  val cleanDBQ    = Module(new FastQueue(new HnTxnID with HasDataVec, size = djparam.nrDirBank, deqDataNoX = false))
 
   /*
    * Connect
@@ -93,15 +91,12 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   io.readDir                <> block.io.readDir_s1
   io.fastResp               <> FastQueue(block.io.fastResp_s1)
   io.fastData               <> decode.io.fastData_s3
-  io.cleanDB                <> cleanDBQ.io.deq
+  io.cleanDB.valid          := decode.io.cleanDB_s3.valid
+  io.cleanDB.bits           := decode.io.cleanDB_s3.bits
   io.cmtTask                := decode.io.cmtTask_s3
   io.alrUsePoS              := posTable.io.alrUsePoS
   io.working                := hprTaskBuf.io.working | reqTaskBuf.io.working | snpTaskBuf.map(_.io.working).getOrElse(false.B) | posTable.io.working
-
-  // cleanDBQ
-  cleanDBQ.io.enq.valid     := decode.io.cleanDB_s3.valid
-  cleanDBQ.io.enq.bits      := decode.io.cleanDB_s3.bits
-  HAssert.withEn(cleanDBQ.io.enq.ready, cleanDBQ.io.enq.valid)
+  HAssert.withEn(io.cleanDB.ready, io.cleanDB.valid)
 
   // hpr2Task
   hpr2Task.io.rxReq         <> FastQueue(io.rxHpr)
