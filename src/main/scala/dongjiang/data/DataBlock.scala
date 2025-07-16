@@ -34,16 +34,14 @@ class DataBlock(isTop: Boolean = false)(implicit p: Parameters) extends DJModule
   val dataCM      = Module(new DataCM)
   val dbidCtrl    = Module(new DBIDCtrl)
   val datBuf      = Module(new DataBuffer(!isTop))
+  val rxDatQ      = Module(new Queue(new DataFlit, entries = 1, flow = false, pipe = true))
+  val txDatQ      = Module(new Queue(new DataFlit, entries = 1, flow = false, pipe = true))
 
   /*
    * Connect IO
    */
   // txDat
-  io.txDat.valid        := datBuf.io.toCHI.valid
-  io.txDat.bits         := dataCM.io.txDatBits
-  io.txDat.bits.Data    := datBuf.io.toCHI.bits.dat.Data
-  io.txDat.bits.BE      := datBuf.io.toCHI.bits.dat.BE
-  io.rxDat.ready        := datBuf.io.fromCHI.ready
+  io.txDat              <> txDatQ.io.deq
   // resp
   io.resp               := dataCM.io.resp
 
@@ -78,18 +76,24 @@ class DataBlock(isTop: Boolean = false)(implicit p: Parameters) extends DJModule
   dataCM.io.reqDBIn             <> io.reqDB
   dataCM.io.task                := io.task
   dataCM.io.clean               := io.cleanDB
-  dataCM.io.txDataDCID          := datBuf.io.toCHI.bits.dcid
+  dataCM.io.dbidResp            := dbidCtrl.io.resp
   dataCM.io.dsWriDB.valid       := datBuf.io.respDS.valid
   dataCM.io.dsWriDB.bits.dcid   := datBuf.io.respDS.bits.dcid
-  dataCM.io.txDatFire.valid     := io.txDat.fire
+  dataCM.io.txDatFire.valid     := txDatQ.io.enq.fire
   dataCM.io.txDatFire.bits.dcid := datBuf.io.toCHI.bits.dcid // TODO
+  // Get CHI Data bits
+  dataCM.io.getChiDat.valid     := txDatQ.io.enq.valid
+  dataCM.io.getChiDat.dcid      := datBuf.io.toCHI.bits.dcid // TODO
+  // Get dbid
+  dataCM.io.getDBID.valid       := rxDatQ.io.deq.valid
+  dataCM.io.getDBID.TxnID       := rxDatQ.io.deq.bits.TxnID
+  dataCM.io.getDBID.DataID      := rxDatQ.io.deq.bits.DataID
 
   /*
    * Connect dbidCtrl
    */
-  dbidCtrl.io.alloc.req         <> dataCM.io.reqDBOut
-  dbidCtrl.io.release           := io.cleanDB
-  dbidCtrl.io.updHnTxnID        := io.updHnTxnID
+  dbidCtrl.io.req               <> dataCM.io.reqDBOut
+  dbidCtrl.io.release           := dataCM.io.release
 
   /*
    * Connect datBuf
@@ -97,25 +101,23 @@ class DataBlock(isTop: Boolean = false)(implicit p: Parameters) extends DJModule
   datBuf.io.readToCHI           <> dataCM.io.readToCHI
   datBuf.io.readToDS            <> dataCM.io.readToDS
   datBuf.io.respDS              := fastArb(dataStorage.map(bs => Pipe(fastArb(bs.map(_.io.resp)))))
-  datBuf.io.fromCHI.valid       := io.rxDat.valid
-  datBuf.io.fromCHI.bits.dat    := io.rxDat.bits
-  datBuf.io.toCHI.ready         := io.txDat.ready
-  datBuf.io.rstFlagVec.zipWithIndex.foreach { case (c, i) =>
-    c.valid                     := dbidCtrl.io.alloc.resp(i).valid
-    c.bits.dbid                 := dbidCtrl.io.alloc.resp(i).bits
-  }
+  datBuf.io.fromCHI.valid       := rxDatQ.io.deq.valid
+  datBuf.io.fromCHI.bits.dat    := rxDatQ.io.deq.bits
+  datBuf.io.fromCHI.bits.dbid   := dataCM.io.getDBID.dbid
+  datBuf.io.toCHI.ready         := txDatQ.io.enq.ready
+  datBuf.io.release             := dataCM.io.release
 
   /*
-   * Connect getDBIDVec
+   * Connect RxDatQ and TxDatQ
    */
-  // connect dataCM <> dbidCtrl
-  dbidCtrl.io.getDBIDVec.slice(0, dbidCtrl.io.getDBIDVec.size).zip(dataCM.io.getDBIDVec).foreach { case(a, b) => a <> b }
-  // remap data from CHI TxnID and DataID to DBID
-  dbidCtrl.io.getDBIDVec(3).hnTxnID := io.rxDat.bits.TxnID
-  datBuf.io.fromCHI.bits.dbid       := dbidCtrl.io.getDBIDVec(3).dbidVec(Mux(io.rxDat.bits.DataID === "b00".U, 0.U, 1.U)).bits; require(djparam.nrBeat == 2)
-  HAssert.withEn(dbidCtrl.io.getDBIDVec(3).dbidVec(Mux(io.rxDat.bits.DataID === "b00".U, 0.U, 1.U)).valid, io.rxDat.valid)
-  // require
-  require(dataCM.io.getDBIDVec.size + 1 == dbidCtrl.io.getDBIDVec.size)
+  // RxDatQ
+  rxDatQ.io.enq                 <> io.rxDat
+  rxDatQ.io.deq.ready           := datBuf.io.fromCHI.ready
+  // TxDatQ
+  txDatQ.io.enq.valid           := datBuf.io.toCHI.valid
+  txDatQ.io.enq.bits            := dataCM.io.getChiDat.bits
+  txDatQ.io.enq.bits.Data       := datBuf.io.toCHI.bits.dat.Data
+  txDatQ.io.enq.bits.BE         := datBuf.io.toCHI.bits.dat.BE
 
   /*
    * HardwareAssertion placePipe
