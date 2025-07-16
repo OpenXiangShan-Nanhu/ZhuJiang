@@ -20,7 +20,7 @@ object CTRLSTATE {
   val width   = 3
   val FREE    = 0x0.U // -> ALLOC
   val ALLOC   = 0x1.U
-  val REPL    = 0x2.U // Read DS and DB at the same time to replace
+  val REPL    = 0x2.U // Read DS and DB at the same time to replacegg
   val READ    = 0x3.U // Read DS and save in DB
   val SEND    = 0x4.U // Read DB and send to CHI
   val SAVE    = 0x5.U // Read DB adn send to DS
@@ -69,7 +69,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     val dcid        = Input(UInt(dcIdBits.W))
     // From/To Frontend/Backend
     val updHnTxnID  = Flipped(Valid(new UpdHnTxnID))
-    val alloc       = Flipped(Decoupled(new HnTxnID with HasDataVec))
+    val alloc       = Flipped(Decoupled(new HnTxnID with HasDataVec with HasDBIDVec))
     val task        = Flipped(Valid(new DataTask)) // broadcast signal
     val resp        = Decoupled(new HnTxnID)
     val clean       = Flipped(Valid(new HnTxnID with HasDataVec)) // broadcast signal
@@ -79,22 +79,25 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     val readToDS    = Decoupled(new ReadDB)
     val readToCHI   = Decoupled(new ReadDB)
     // Other
+    val release     = Decoupled(new DBIDVec with HasDataVec) // broadcast signal
     val dsWriDB     = Flipped(Valid(new DCID)) // broadcast signal
     val txDatFire   = Flipped(Valid(new DCID)) // broadcast signal
     val txDatBits   = Output(new DataFlit)
     // State
-    val state       = Valid(new HnTxnID)
+    val state       = Valid(new HnTxnID with HasDataVec with HasDBIDVec)
   })
 
   /*
    * Reg and Wire declaration
    */
-  val reg = RegInit(new PackDataTask with HasCtrlMes with HasDataVec {
+  val reg = RegInit(new PackDataTask with HasCtrlMes with HasDataVec with HasDBIDVec {
     def opBeatNum  = Mux(opBeat === 0.U, PriorityEncoder(task.dataVec), 1.U)
     def willOpAll  = Mux(task.isFullSize, opBeat === 1.U, opBeat === 0.U)
+    def dbid       = dbidVec(opBeatNum)
   }.Lit(_.state -> FREE))
   val next = WireInit(reg)
   require(djparam.nrBeat == 2)
+  HAssert.withEn(reg.dbidVec(0) =/= reg.dbidVec(1), reg.isValid & reg.isFullSize)
 
   /*
     * Connect io
@@ -107,6 +110,8 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   ))
   io.state.valid        := reg.isValid
   io.state.bits.hnTxnID := reg.task.hnTxnID
+  io.state.bits.dataVec := reg.dataVec
+  io.state.bits.dbidVec := reg.dbidVec
 
   /*
    * Receive Req
@@ -121,7 +126,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   io.readToDB.valid           := reg.isRepl | reg.isRead
   io.readToDB.bits.ds         := reg.task.ds
   io.readToDB.bits.dcid       := io.dcid
-  io.readToDB.bits.dbid       := DontCare // remap in DataCM
+  io.readToDB.bits.dbid       := reg.dbid
   io.readToDB.bits.beatNum    := reg.opBeatNum
   io.readToDB.bits.critical   := reg.isCritical
   io.readToDB.bits.qos        := reg.task.qos
@@ -129,7 +134,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   io.readToDS.valid           := reg.isRepl | (reg.isSave & reg.waitall)
   io.readToDS.bits.ds         := reg.task.ds
   io.readToDS.bits.dcid       := io.dcid
-  io.readToDS.bits.dbid       := DontCare // remap in DataCM
+  io.readToDS.bits.dbid       := reg.dbid
   io.readToDS.bits.beatNum    := reg.opBeatNum
   io.readToDS.bits.critical   := reg.isCritical
   io.readToDS.bits.repl       := reg.isRepl
@@ -138,12 +143,20 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   io.readToCHI.valid          := reg.isSend & reg.waitall
   io.readToCHI.bits.ds        := DontCare
   io.readToCHI.bits.dcid      := io.dcid
-  io.readToCHI.bits.dbid      := DontCare // remap in DataCM
+  io.readToCHI.bits.dbid      := reg.dbid
   io.readToCHI.bits.beatNum   := reg.opBeatNum
   io.readToCHI.bits.critical  := reg.isCritical
   io.readToCHI.bits.repl      := false.B
   io.readToCHI.bits.qos       := reg.task.qos
   HAssert.withEn(!(io.readToDB.fire ^ io.readToDS.fire), reg.isRepl)
+
+  /*
+   * Send Release to DBIDCtrl and DataBuffer
+   */
+  io.release.valid            := reg.isClean
+  io.release.bits.dataVec     := (reg.dataVec.asUInt & reg.task.dataVec.asUInt).asBools
+  io.release.bits.dbidVec     := reg.dbidVec
+  HAssert.withEn(!io.release.bits.isZero, io.release.valid)
 
   /*
    * Send response to Bankend
@@ -163,15 +176,18 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     reg.dataVec.zip(io.task.bits.dataVec).map { case(v, t) => HAssert.withEn(v, t) } // Check that the data location of the operation is not out of bounds
   }
 
-  // Get next dataVec
+  // Get next dataVec and dbidVec
   val cleanHit = reg.isValid & io.clean.valid & io.clean.bits.hnTxnID === reg.task.hnTxnID
   when(io.alloc.fire) {
-    next.dataVec  := io.alloc.bits.dataVec
+    next.dataVec      := io.alloc.bits.dataVec
+    next.dbidVec      := io.alloc.bits.dbidVec
   }.elsewhen(cleanHit) {
-    next.dataVec  := VecInit((reg.dataVec.asUInt & ~io.clean.bits.dataVec.asUInt).asBools)
+    next.task.dataVec := io.clean.bits.dataVec
     HAssert(!io.clean.bits.isZero)
     HAssert(reg.isAlloc)
     HAssert(!taskHit)
+  }.elsewhen(io.release.fire) {
+    next.dataVec      := VecInit((reg.dataVec.asUInt & ~io.clean.bits.dataVec.asUInt).asBools)
   }
 
   // Get next wait read beat
@@ -212,10 +228,10 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   HAssert.withEn(reg.opBeat === 0.U, taskHit)
 
   // Get next hnTxnID
-  val cutIdHit = reg.isValid & io.updHnTxnID.valid & io.updHnTxnID.bits.before === reg.task.hnTxnID
+  val updHnTxnIDHit   = reg.isValid & io.updHnTxnID.valid & io.updHnTxnID.bits.before === reg.task.hnTxnID
   when(io.alloc.fire) {
     next.task.hnTxnID := io.alloc.bits.hnTxnID
-  }.elsewhen(cutIdHit) {
+  }.elsewhen(updHnTxnIDHit) {
     next.task.hnTxnID := io.updHnTxnID.bits.next
     HAssert(reg.isAlloc)
   }
@@ -269,8 +285,8 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
       }
     }
     is(CLEAN) {
-      when(true.B) {
-        next.state := Mux(reg.isZero, FREE, ALLOC)
+      when(io.release.fire) {
+        next.state := Mux(next.isZero, FREE, ALLOC)
       }
     }
   }
@@ -278,7 +294,6 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   HAssert.withEn(next.isFree | next.isAlloc,  next.state < reg.state)
   HAssert.withEn(reg.isFree  | reg.isClean,   next.isFree)
   HAssert.withEn(reg.isFree  | reg.isAlloc | reg.isResp | reg.isClean,  next.isAlloc)
-
 
   /*
    * Set new task
@@ -289,7 +304,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   /*
    * Check timeout
    */
-  HAssert.checkTimeout(reg.isFree, TIMEOUT_DATACM, cf"TIMEOUT: DataCM State[${reg.state}]")
+  HAssert.checkTimeout(reg.isFree | updHnTxnIDHit, TIMEOUT_DATACM, cf"TIMEOUT: DataCM State[${reg.state}]")
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -310,13 +325,23 @@ class DataCM(implicit p: Parameters) extends DJModule {
     val readToDB      = Decoupled(new ReadDS)
     val readToDS      = Decoupled(new ReadDB)
     val readToCHI     = Decoupled(new ReadDB)
-    // From/To DBID Pool
+    // To DBID Pool
     val reqDBOut      = Decoupled(new HnTxnID with HasDataVec)
-    val getDBIDVec    = Vec(3, new GetDBID)
+    val dbidResp      = Vec(djparam.nrBeat, Flipped(UInt(dbIdBits.W)))
     // From/To CHI
-    val txDataDCID    = Input(UInt(dcIdBits.W))
-    val txDatBits     = Output(new DataFlit)
+    val getChiDat     = new DJBundle {
+      val valid       = Input(Bool())
+      val dcid        = Input(UInt(dcIdBits.W))
+      val bits        = Output(new DataFlit)
+    }
+    val getDBID       = new DJBundle {
+      val valid       = Input(Bool())
+      val TxnID       = Input(UInt(ChiTxnIdBits.W))
+      val DataID      = Input(UInt(2.W))
+      val dbid        = Output(UInt(dbIdBits.W))
+    }
     // Other
+    val release       = Valid(new DBIDVec with HasDataVec) // broadcast signal
     val dsWriDB       = Flipped(Valid(new DCID)) // broadcast signal
     val txDatFire     = Flipped(Valid(new DCID)) // broadcast signal
   })
@@ -333,6 +358,13 @@ class DataCM(implicit p: Parameters) extends DJModule {
   val taskReg     = RegEnable(io.task.bits, io.task.fire)
   val dbgVec      = VecInit(entries.map(_.io.state))
   dontTouch(dbgVec)
+  dbgVec.zipWithIndex.foreach { case(src, i) =>
+    dbgVec.zipWithIndex.foreach { case (sink, j) =>
+      HAssert.withEn(!(src.bits.hnTxnID === sink.bits.hnTxnID), src.valid & sink.valid & i.U =/= j.U)
+      HAssert.withEn(!(src.bits.dbidVec(0) === sink.bits.dbidVec(0) & src.bits.dataVec(0) & sink.bits.dataVec(0)), src.valid & sink.valid & i.U =/= j.U)
+      HAssert.withEn(!(src.bits.dbidVec(1) === sink.bits.dbidVec(1) & src.bits.dataVec(1) & sink.bits.dataVec(1)), src.valid & sink.valid & i.U =/= j.U)
+    }
+  }
 
   /*
    * Receive and send ReqDB
@@ -354,7 +386,9 @@ class DataCM(implicit p: Parameters) extends DJModule {
     e.io.dcid               := i.U
     // Alloc
     e.io.alloc.valid        := io.reqDBIn.fire & freeDCID === i.U
-    e.io.alloc.bits         := io.reqDBIn.bits
+    e.io.alloc.bits.hnTxnID := io.reqDBIn.bits.hnTxnID
+    e.io.alloc.bits.dataVec := io.reqDBIn.bits.dataVec
+    e.io.alloc.bits.dbidVec := io.dbidResp
     HAssert.withEn(io.reqDBOut.fire, e.io.alloc.fire, cf"DCID[${i.U}]")
     // Task
     e.io.task.valid         := taskFireReg
@@ -366,17 +400,27 @@ class DataCM(implicit p: Parameters) extends DJModule {
   /*
    * Connect CM <- IO
    */
-  entries.foreach(_.io.updHnTxnID   := io.updHnTxnID)
-  entries.foreach(_.io.clean        := io.clean)
-  entries.foreach(_.io.dsWriDB      := io.dsWriDB)
-  entries.foreach(_.io.txDatFire    := io.txDatFire)
+  entries.foreach(_.io.updHnTxnID := io.updHnTxnID)
+  entries.foreach(_.io.clean      := io.clean)
+  entries.foreach(_.io.dsWriDB    := io.dsWriDB)
+  entries.foreach(_.io.txDatFire  := io.txDatFire)
   HAssert.withEn(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === io.updHnTxnID.bits.before).reduce(_ | _), io.updHnTxnID.valid)
 
   /*
    * Connect IO <- CM
    */
-  io.resp      := fastRRArb.validOut(entries.map(_.io.resp))
-  io.txDatBits := VecInit(entries.map(_.io.txDatBits))(io.txDataDCID)
+  io.resp           := fastRRArb.validOut(entries.map(_.io.resp))
+  io.release        := fastRRArb.validOut(entries.map(_.io.release))
+  io.getChiDat.bits := VecInit(entries.map(_.io.txDatBits))(io.getChiDat.dcid)
+  HAssert.withEn(dbgVec(io.getChiDat.dcid).valid, io.getChiDat.valid)
+  // Get DBID by TxnID and DBID from CHI RxDat
+  val getDBIDHitVec = VecInit(entries.map(e => e.io.state.valid & io.getDBID.TxnID === e.io.state.bits.hnTxnID))
+  val getDCID       = PriorityEncoder(getDBIDHitVec)
+  val getBeatNum    = Mux(io.getDBID.DataID === "b10".U, 1.U, 0.U)
+  io.getDBID.dbid   := VecInit(entries.map(_.io.state.bits.dbidVec))(getDCID)(getBeatNum)
+  HAssert.withEn(PopCount(getDBIDHitVec) === 1.U, io.getDBID.valid)
+  HAssert.withEn(VecInit(entries.map(_.io.state.bits.dataVec))(getDCID)(getBeatNum), io.getDBID.valid)
+
 
   /*
    * Connect ReadToX
@@ -424,23 +468,6 @@ class DataCM(implicit p: Parameters) extends DJModule {
   HAssert(!(io.readToDB.fire  ^ PopCount(entries.map(_.io.readToDB.fire))  === 1.U))
   HAssert(!(io.readToDS.fire  ^ PopCount(entries.map(_.io.readToDS.fire))  === 1.U))
   HAssert(!(io.readToCHI.fire ^ PopCount(entries.map(_.io.readToCHI.fire)) === 1.U))
-
-  /*
-   * Get DBID from DBIDPool
-   */
-  // Get dbid
-  val hnTxnIDVec  = VecInit(entries.map(_.io.state.bits.hnTxnID))
-  io.getDBIDVec(0).hnTxnID  := hnTxnIDVec(io.readToDB.bits.dcid)
-  io.getDBIDVec(1).hnTxnID  := hnTxnIDVec(io.readToDS.bits.dcid)
-  io.getDBIDVec(2).hnTxnID  := hnTxnIDVec(io.readToCHI.bits.dcid)
-  // Set dbid
-  io.readToDB.bits.dbid     := io.getDBIDVec(0).dbidVec(io.readToDB.bits.beatNum).bits
-  io.readToDS.bits.dbid     := io.getDBIDVec(1).dbidVec(io.readToDS.bits.beatNum).bits
-  io.readToCHI.bits.dbid    := io.getDBIDVec(2).dbidVec(io.readToCHI.bits.beatNum).bits
-  // HAssert
-  HAssert.withEn(io.getDBIDVec(0).dbidVec(io.readToDB.bits.beatNum).valid,  io.readToDB.valid)
-  HAssert.withEn(io.getDBIDVec(1).dbidVec(io.readToDS.bits.beatNum).valid,  io.readToDS.valid)
-  HAssert.withEn(io.getDBIDVec(2).dbidVec(io.readToCHI.bits.beatNum).valid, io.readToCHI.valid)
 
   /*
    * HardwareAssertion placePipe

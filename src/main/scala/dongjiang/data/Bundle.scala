@@ -80,6 +80,12 @@ trait HasDBID { this: DJBundle =>
 
 class DBID(implicit p: Parameters) extends DJBundle with HasDBID
 
+trait HasDBIDVec { this: DJBundle =>
+  val dbidVec = Vec(djparam.nrBeat, UInt(dbIdBits.W))
+}
+
+class DBIDVec(implicit p: Parameters) extends DJBundle with HasDBIDVec
+
 /*
  * HasDCID -> DCID
  */
@@ -103,14 +109,6 @@ class Critical(implicit p: Parameters) extends DJBundle with HasDCID
  */
 class ReadDB(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasQoS with HasCritical { val repl = Bool() }
 class ReadDS(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasQoS with HasCritical
-
-/*
- * GetDBID
- */
-class GetDBID(implicit p: Parameters) extends DJBundle {
-  val hnTxnID   = Output(UInt(hnTxnIDBits.W))
-  val dbidVec   = Vec(djparam.nrBeat, Flipped(Valid(UInt(dbIdBits.W))))
-}
 
 /*
  * PackDataFilt
