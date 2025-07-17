@@ -24,7 +24,7 @@ class DataBuffer(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
     // Req In
     val readToCHI     = Flipped(Decoupled(new ReadDB))
     val readToDS      = Flipped(Decoupled(new ReadDB))
-    val release       = Flipped(Valid(new DBIDVec with HasDataVec))
+    val clean         = Flipped(Valid(new DBIDVec with HasDataVec))
     // Data In
     val respDS        = Flipped(Valid(new DsResp))
     val fromCHI       = Flipped(Decoupled(new PackDataFilt with HasDBID)) // Only use rxDat.Data/DataID/BE in DataBlock
@@ -74,15 +74,15 @@ class DataBuffer(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
 
   // Set replace flag
   replRegVec.zipWithIndex.foreach { case(r, i) =>
-    val replHit = io.readToDS.fire & io.readToDS.bits.repl & io.readToDS.bits.dbid === i.U
-    val relHit  = io.release.valid & (io.release.bits.dataVec.asUInt & VecInit(io.release.bits.dbidVec.map(_ === i.U)).asUInt) =/= 0.U
+    val replHit   = io.readToDS.fire & io.readToDS.bits.repl & io.readToDS.bits.dbid === i.U
+    val cleanHit  = io.clean.valid & (io.clean.bits.dataVec.asUInt & VecInit(io.clean.bits.dbidVec.map(_ === i.U)).asUInt) =/= 0.U
     when(replHit) {
       r := true.B
       HAssert(!r)
-    }.elsewhen(relHit) {
+    }.elsewhen(cleanHit) {
       r := false.B
     }
-    HAssert(!(replHit & relHit))
+    HAssert(!(replHit & cleanHit))
   }
 
   /*
@@ -120,17 +120,17 @@ class DataBuffer(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
    * TODO: optimize clock gating
    */
   maskRegVec.zipWithIndex.foreach { case(m, i) =>
-    val relHit  = io.release.valid & (io.release.bits.dataVec.asUInt & VecInit(io.release.bits.dbidVec.map(_ === i.U)).asUInt) =/= 0.U
-    val dsHit   = io.respDS.fire  & io.respDS.bits.dbid  === i.U
-    val chiHit  = io.fromCHI.fire & io.fromCHI.bits.dbid === i.U
-    when(relHit) {
+    val cleanHit  = io.clean.valid & (io.clean.bits.dataVec.asUInt & VecInit(io.clean.bits.dbidVec.map(_ === i.U)).asUInt) =/= 0.U
+    val dsHit     = io.respDS.fire  & io.respDS.bits.dbid  === i.U
+    val chiHit    = io.fromCHI.fire & io.fromCHI.bits.dbid === i.U
+    when(cleanHit) {
       m := 0.U
     }.elsewhen(dsHit) {
       m := FullMask
     }.elsewhen(chiHit) {
       m :=  Mux(io.fromCHI.bits.dat.Opcode === CompData | io.fromCHI.bits.dat.Opcode === SnpRespData | io.fromCHI.bits.dat.Opcode === SnpRespDataFwded, FullMask, m | io.fromCHI.bits.dat.BE)
     }
-    HAssert(PopCount(Seq(relHit, dsHit, chiHit)) <= 1.U)
+    HAssert(PopCount(Seq(cleanHit, dsHit, chiHit)) <= 1.U)
   }
 
   /*

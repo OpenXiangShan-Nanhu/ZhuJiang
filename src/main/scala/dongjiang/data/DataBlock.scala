@@ -105,7 +105,9 @@ class DataBlock(isTop: Boolean = false)(implicit p: Parameters) extends DJModule
   datBuf.io.fromCHI.bits.dat    := rxDatQ.io.deq.bits
   datBuf.io.fromCHI.bits.dbid   := dataCM.io.getDBID.dbid
   datBuf.io.toCHI.ready         := txDatQ.io.enq.ready
-  datBuf.io.release             := dataCM.io.release
+  datBuf.io.clean.valid         := dbidCtrl.io.req.fire
+  datBuf.io.clean.bits.dataVec  := dbidCtrl.io.req.bits
+  datBuf.io.clean.bits.dbidVec  := dbidCtrl.io.resp
 
   /*
    * Connect RxDatQ and TxDatQ
