@@ -326,7 +326,7 @@ class DataCM(implicit p: Parameters) extends DJModule {
     val readToDS      = Decoupled(new ReadDB)
     val readToCHI     = Decoupled(new ReadDB)
     // To DBID Pool
-    val reqDBOut      = Decoupled(new HnTxnID with HasDataVec)
+    val reqDBOut      = Decoupled(Vec(djparam.nrBeat, Bool()))
     val dbidResp      = Vec(djparam.nrBeat, Flipped(UInt(dbIdBits.W)))
     // From/To CHI
     val getChiDat     = new DJBundle {
@@ -347,7 +347,6 @@ class DataCM(implicit p: Parameters) extends DJModule {
   })
   // HAssert is request DataBuffer, size can be zero
   HAssert.withEn(!io.reqDBIn.bits.isZero,   io.reqDBIn.valid)
-  HAssert.withEn(!io.reqDBOut.bits.isZero,  io.reqDBOut.valid)
   HAssert.withEn(!io.task.bits.isZero,      io.task.valid)
 
   /*
@@ -375,7 +374,7 @@ class DataCM(implicit p: Parameters) extends DJModule {
 
   // reqDBOut
   io.reqDBOut.valid         := io.reqDBIn.valid & hasFreeDC
-  io.reqDBOut.bits          := io.reqDBIn.bits
+  io.reqDBOut.bits          := io.reqDBIn.bits.dataVec
   // ready
   io.reqDBIn.ready          :=  io.reqDBOut.ready & hasFreeDC
 

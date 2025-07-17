@@ -99,7 +99,7 @@ class DBIDPool(implicit p: Parameters) extends DJModule {
 // ----------------------------------------------------------------------------------------------------- //
 class DBIDCtrl(implicit p: Parameters) extends DJModule {
   val io = IO(new Bundle {
-    val req     = Flipped(Decoupled(new HnTxnID with HasDataVec))
+    val req     = Flipped(Decoupled(Vec(djparam.nrBeat, Bool())))
     val resp    = Vec(djparam.nrBeat, UInt(dbIdBits.W))
     val release = Flipped(Valid(new DBIDVec with HasDataVec))
   })
@@ -116,15 +116,15 @@ class DBIDCtrl(implicit p: Parameters) extends DJModule {
   val hasTwo          = pool.io.deq0.valid & pool.io.deq1.valid
   io.req.ready        := hasTwo // Waste a DB to simplify ready judgment condition
   // Set pool deq ready
-  pool.io.deq0.ready  := io.req.valid & io.req.bits.dataVec(0) & hasTwo
-  pool.io.deq1.ready  := io.req.valid & io.req.bits.dataVec(1) & hasTwo
+  pool.io.deq0.ready  := io.req.valid & io.req.bits(0) & hasTwo
+  pool.io.deq1.ready  := io.req.valid & io.req.bits(1) & hasTwo
   // Output DBID
   io.resp(0)          := pool.io.deq0.bits
   io.resp(1)          := pool.io.deq1.bits
   // HAssert
-  HAssert.withEn(pool.io.deq0.fire, io.req.fire & io.req.bits.dataVec(0))
-  HAssert.withEn(pool.io.deq1.fire, io.req.fire & io.req.bits.dataVec(1))
-  HAssert.withEn(!io.req.bits.isZero, io.req.valid)
+  HAssert.withEn(pool.io.deq0.fire, io.req.fire & io.req.bits(0))
+  HAssert.withEn(pool.io.deq1.fire, io.req.fire & io.req.bits(1))
+  HAssert.withEn(io.req.bits.asUInt =/= 0.U, io.req.valid)
 
   /*
    * Receive release
