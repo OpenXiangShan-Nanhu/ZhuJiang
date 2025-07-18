@@ -16,6 +16,7 @@ class SendDataIn(node: Node)(implicit p: Parameters) extends ZJBundle {
   private val rni = DmaParams(node = node)
   val data        = UInt(dw.W)
   val beat        = UInt(1.W)
+  val resp        = UInt(2.W)
   val id          = UInt(rni.idBits.W)
   val idx         = UInt(log2Ceil(node.outstanding).W)
   val last        = Bool()
@@ -39,6 +40,7 @@ class RBundle(node: Node)(implicit p: Parameters) extends  ZJBundle {
   val data        = Vec(2, UInt(dw.W))
   val idx         = UInt(log2Ceil(node.outstanding).W)
   val id          = UInt(rni.idBits.W)
+  val resp        = UInt(2.W)
 }
 
 class SendReg(node: Node)(implicit p: Parameters) extends ZJModule {
@@ -68,6 +70,7 @@ class SendReg(node: Node)(implicit p: Parameters) extends ZJModule {
   sendQueue.io.enq.bits.data   := mergeData
   sendQueue.io.enq.bits.id     := RegEnable(io.dataIn.bits.id, io.dataIn.fire)
   sendQueue.io.enq.bits.idx    := RegEnable(io.dataIn.bits.idx, io.dataIn.fire)
+  sendQueue.io.enq.bits.resp   := RegEnable(io.dataIn.bits.resp, io.dataIn.fire)
   sendQueue.io.deq.ready       := ((io.ptr.nextShift === io.ptr.endShift) & (io.ptr.merFixLen === 0.U) || io.ptr.merFixLen === 1.U) && io.dataOut.fire
 
 
@@ -76,5 +79,5 @@ class SendReg(node: Node)(implicit p: Parameters) extends ZJModule {
   io.dataOut.bits.data    := sendQueue.io.deq.bits.data(io.ptr.outBeat)
   io.dataOut.bits.id      := sendQueue.io.deq.bits.id
   io.dataOut.bits.idx     := sendQueue.io.deq.bits.idx
-  io.dataOut.bits.resp    := DontCare
+  io.dataOut.bits.resp    := sendQueue.io.deq.bits.resp
 }

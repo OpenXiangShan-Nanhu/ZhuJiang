@@ -209,6 +209,7 @@ class CHIREntry(node: Node)(implicit p : Parameters) extends ZJBundle {
   val fromDCT        = Bool()
   val rcvDatComp     = Bool()
   val qos            = UInt(4.W)
+  val respErr        = UInt(2.W)
   val haveSendAck    = if(rni.readDMT) Some(Bool())      else None
   val homeNid        = if(rni.readDMT) Some(UInt(niw.W)) else None
   val dbid           = if(rni.readDMT) Some(UInt(12.W))  else None
@@ -241,7 +242,7 @@ class readRdDataBuffer(outstanding: Int, axiParams: AxiParams)(implicit p: Param
   def SetBdl[T <: RdDBEntry](c: T, i: UInt): readRdDataBuffer = {
     this.id       := c.idx
     this.originId := c.arID
-    this.resp     := 0.U
+    this.resp     := c.respErr
     this.set      := Mux(i === 1.U, c.dbSite2, c.dbSite1)
     this.last     := Mux(c.double & i === 0.U, false.B, true.B)
     this
@@ -369,6 +370,7 @@ class RdDBEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val double        = Bool()
   val dbSite1       = UInt(log2Ceil(node.outstanding).W)
   val dbSite2       = UInt(log2Ceil(node.outstanding).W)
+  val respErr       = UInt(2.W)
 
   def rdDBInit[T <: CHIREntry](b: T): RdDBEntry = {
     this.arID    := b.arId
@@ -376,6 +378,7 @@ class RdDBEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
     this.double  := b.double
     this.dbSite1 := b.dbSite1
     this.dbSite2 := b.dbSite2
+    this.respErr := b.respErr
     this
   }
 }

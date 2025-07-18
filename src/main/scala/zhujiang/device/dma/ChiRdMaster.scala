@@ -56,6 +56,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val txDatPtr    = RegInit(0.U(1.W))
   //Wire Define
   private val rcvIsRct   = io.chiRxRsp.fire & io.chiRxRsp.bits.Opcode === RspOpcode.ReadReceipt
+  private val rctTxnid   = io.chiRxRsp.bits.TxnID(log2Ceil(node.outstanding) - 1, 0)
   private val dataTxnid  = io.chiDat.bits.TxnID(log2Ceil(node.outstanding) - 1, 0)
   private val txReqBdl   = WireInit(0.U.asTypeOf(new DmaReqFlit))
   private val txDatBdl   = WireInit(0.U.asTypeOf(io.rdDB.bits))
@@ -134,9 +135,13 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
       when(dataTxnid === i.U & io.chiDat.fire){
         en.haveWrDB1 := Mux(io.chiDat.bits.DataID === 0.U, true.B, e.haveWrDB1)
         en.haveWrDB2 := Mux(io.chiDat.bits.DataID === 2.U, true.B, e.haveWrDB2)
+        en.respErr := Mux(e.respErr =/= 0.U, e.respErr, io.chiDat.bits.RespErr)
       }
       when(dataTxnid === i.U & io.chiDat.fire & !e.double & fromDCT(io.chiDat.bits.SrcID)){
         en.fromDCT   := true.B
+      }
+      when(rcvIsRct & (rctTxnid === i.U)){
+        en.respErr  := io.chiRxRsp.bits.RespErr
       }
       if(rni.readDMT){
         when(io.wrDB.fire & dataTxnid === i.U){
@@ -192,4 +197,8 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   rdDBQueue.io.enq.valid      := sendDBVec.reduce(_|_)
   rdDBQueue.io.enq.bits       := rdDBQBdl
   rdDBQueue.io.deq.ready      := io.rdDB.ready & io.rdDB.bits.last
+
+  when(rcvIsRct){
+    assert(rctTxnid === rxRspPtr.value, "ReadReceipt Txnid is error!")
+  }
 }

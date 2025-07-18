@@ -175,6 +175,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   dataCtrlQ.io.dataIn.bits.idx    := io.dAxiR.bits.id
   dataCtrlQ.io.dataIn.bits.last   := io.dAxiR.bits.last
   dataCtrlQ.io.dataIn.bits.beat   := dArEntrys(io.dAxiR.bits.id).beat
+  dataCtrlQ.io.dataIn.bits.resp   := io.dAxiR.bits.resp
   dataCtrlQ.io.dataOut.ready      := io.uAxiR.ready
 
   dataCtrlQ.io.ptr.endShift       := dArEntrys(dataCtrlQ.io.dataOut.bits.idx).endShift
