@@ -263,7 +263,13 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   // ----------------------------------- [D2]: Update repl resp and select repl/unuse way --------------------------------- //
   // ---------------------------------------------------------------------------------------------------------------------- //
   // Get Replace Message
-  replMes_d2          := Mux(req_d4.Addr.set === reqSftReg(D2).Addr.set, newReplMesReg_d4, replArray.io.rresp.bits(0))
+  val replSetMatch_d1_d4 = req_d4.Addr.set === reqSftReg(D1).Addr.set & replArray.io.wreq.fire
+  val replSetMatch_d2_d4 = req_d4.Addr.set === reqSftReg(D2).Addr.set & replArray.io.wreq.fire
+  replMes_d2          := PriorityMux(Seq(
+    RegNext(replSetMatch_d1_d4) -> RegEnable(newReplMesReg_d4, replSetMatch_d1_d4), // D4 -> D1 -> D2
+    replSetMatch_d2_d4          -> newReplMesReg_d4,                                // D4 -> D2
+    true.B                      -> replArray.io.rresp.bits(0)                       // Array -> D2
+  ))
   val replRespNeedVal = shiftReg.read(D2) | (shiftReg.write(D2) & !shiftReg.repl(D2))
   HAssert(!(replRespNeedVal ^ replArray.io.rresp.valid))
 
