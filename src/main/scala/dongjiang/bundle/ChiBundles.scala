@@ -150,3 +150,16 @@ trait HasChiSnpField { this: Bundle =>
   def cantSnp = !snpAttr
   def illegalSnpField = snoopMe & !snpAttr
 }
+
+/*
+ * Chi RespErr
+ */
+trait HasRespErr { this: Bundle =>
+  val respErr = Bool()
+
+  def isOK    = respErr === RespErr.NormalOkay
+  def isEXOK  = respErr === RespErr.ExclusiveOkay
+  def isDERR  = respErr === RespErr.DataError
+  def isNDERR = respErr === RespErr.NonDataError
+  def isERR   = isDERR | isNDERR
+}

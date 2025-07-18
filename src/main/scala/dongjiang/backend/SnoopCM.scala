@@ -69,7 +69,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val reg         = RegInit((new SnpMes with HasPackCMTask with HasPackTaskInst).Lit(_.state -> FREE))
+  val reg         = RegInit((new SnpMes with HasPackCMTask with HasPackTaskInst with HasRespErr).Lit(_.state -> FREE))
   val next        = WireInit(reg)
   val snpNodeId   = Wire(new NodeId())
   val rspNodeId   = WireInit(0.U.asTypeOf(new NodeId()))
@@ -99,7 +99,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   /*
    * Receive Task
    */
-  io.alloc.ready  := reg.isFree
+  io.alloc.ready    := reg.isFree
   HardwareAssertion.withEn(io.alloc.bits.snpVec.asUInt.orR, io.alloc.valid)
 
   /*
@@ -132,12 +132,13 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
    * Send Resp To Commit
    */
   // valid
-  io.resp.valid         := reg.isResp
+  io.resp.valid             := reg.isResp
   // bits
-  io.resp.bits.hnTxnID  := reg.task.hnTxnID
-  io.resp.bits.taskInst := reg.taskInst
-  io.resp.bits.toRepl   := reg.task.fromRepl
-  io.resp.bits.qos      := reg.task.qos
+  io.resp.bits.hnTxnID      := reg.task.hnTxnID
+  io.resp.bits.taskInst     := reg.taskInst
+  io.resp.bits.toRepl       := reg.task.fromRepl
+  io.resp.bits.qos          := reg.task.qos
+  io.resp.bits.respErr      := reg.respErr
 
   /*
    * Modify Ctrl Machine Table
@@ -148,32 +149,41 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   when(io.alloc.fire) {
     next.task               := io.alloc.bits
     next.taskInst           := 0.U.asTypeOf(new TaskInst)
+    next.respErr            := RespErr.NormalOkay
   // Store message from CHI
   }.elsewhen(rspHit | datHit) {
-    // inst
+    // inst valid
     next.taskInst.valid     := true.B
+    // inst fwd
     next.taskInst.fwdValid  := reg.taskInst.fwdValid | rspIsFwd | datIsFwd
     next.taskInst.fwdResp   := PriorityMux(Seq(
       rspIsFwd -> io.rxRsp.bits.FwdState,
       datIsFwd -> io.rxDat.bits.FwdState,
       true.B   -> reg.taskInst.fwdResp,
     ))
+    // inst channel
     next.taskInst.channel   := PriorityMux(Seq(
       datHit -> DAT,
       rspHit -> Mux(reg.taskInst.channel === DAT, DAT, RSP),
       true.B -> reg.taskInst.channel,
     ))
+    // inst opcode
     next.taskInst.opcode    := PriorityMux(Seq(
       datHit -> io.rxDat.bits.Opcode,
       rspHit -> Mux(reg.taskInst.channel === DAT | reg.taskInst.fwdValid, reg.taskInst.opcode, io.rxRsp.bits.Opcode),
       true.B -> reg.taskInst.opcode,
     ))
+    // inst resp
     next.taskInst.resp      := PriorityMux(Seq(
       datHit -> io.rxDat.bits.Resp,
       rspHit -> Mux(reg.taskInst.channel === DAT | reg.taskInst.resp >= io.rxRsp.bits.Resp, reg.taskInst.resp, io.rxRsp.bits.Resp),
       true.B -> reg.taskInst.resp,
     ))
     HAssert.withEn(next.taskInst.resp =/= ChiResp.SD & next.taskInst.resp =/= ChiResp.SD_PD, rspHit | datHit)
+    // resp error
+    when(!reg.isERR) {
+      next.respErr          := Mux(datHit, io.rxDat.bits.RespErr, io.rxRsp.bits.RespErr)
+    }
   }
 
   // Release or alloc

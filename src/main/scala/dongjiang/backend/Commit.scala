@@ -143,6 +143,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     val NCBWrD0   = Bool()
     val NCBWrD1   = Bool()
   }))
+  val respErrReg  = RegInit(0.U(2.W))
 
   /*
    * Save Already Hit Message
@@ -179,6 +180,18 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   }
 
   /*
+   * Receive RespErr
+   */
+  val cmRespHit   = valid & io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID
+  when(io.cleanPoS.fire) {
+    respErrReg    := RespErr.NormalOkay
+  }.elsewhen(cmRespHit | XCBWrDataHit) {
+    when(!(respErrReg === RespErr.DataError | respErrReg === RespErr.NonDataError)) {
+      respErrReg  := Mux(io.cmResp.bits.isERR, io.cmResp.bits.respErr, io.rxDat.bits.RespErr)
+    }
+  }
+
+  /*
    * Request DataBuffer
    */
   io.reqDB.valid        := valid & flagReg.intl.s.reqDB
@@ -206,6 +219,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.dataTask.bits.txDat.TxnID    := taskReg.chi.txnID
   io.dataTask.bits.txDat.SrcID    := taskReg.chi.getNoC
   io.dataTask.bits.txDat.TgtID    := taskReg.chi.nodeId
+  io.dataTask.bits.txDat.RespErr  := respErrReg
   // other bits
   io.dataTask.bits.ds             := taskReg.ds
   io.dataTask.bits.hnTxnID        := io.hnTxnID
@@ -283,6 +297,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   io.txRsp.bits.FwdState    := taskReg.cmt.fwdResp
   io.txRsp.bits.Resp        := taskReg.cmt.resp
   io.txRsp.bits.QoS         := taskReg.qos
+  io.txRsp.bits.RespErr     := respErrReg
   HAssert.withEn(PopCount(flagReg.chi.s.asUInt) <= 1.U, valid)
 
   /*
@@ -343,7 +358,6 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
    */
   val allocHit                = io.alloc.fire & io.alloc.bits.hnTxnID === io.hnTxnID
   val cmTaskHit               = Cat(io.cmTaskVec.map(_.fire)).orR
-  val cmRespHit               = valid & io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID
   val decodeFire              = io.trdDecOut.fire | io.fthDecOut.fire
   // Alloc or Decode done
   when(allocHit | io.decListIn.valid) {

@@ -31,7 +31,7 @@ object WriteState {
 }
 
 class WriMes(implicit p: Parameters) extends DJBundle {
-  // TODO: WriteEvictOrEvict
+  // TODO: WriteEvictOrEvict to BBN
   // REQ To LAN:
   // CHI: Free --> SendReq --> WaitDBID --> DataTask --> WaitData --> RespCmt --> Free
   // REQ To BBN:
@@ -78,7 +78,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val reg   = RegInit((new WriMes with HasPackCMTask).Lit(_.state -> FREE, _.alrGetComp -> false.B))
+  val reg   = RegInit((new WriMes with HasPackCMTask with HasRespErr).Lit(_.state -> FREE, _.alrGetComp -> false.B))
   val next  = WireInit(reg)
 
   /*
@@ -150,6 +150,7 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   io.resp.bits.toRepl         := reg.task.fromRepl
   io.resp.bits.taskInst.valid := true.B
   io.resp.bits.qos            := reg.task.qos
+  io.resp.bits.respErr        := reg.respErr
 
   /*
    * Modify Ctrl Machine Table
@@ -160,13 +161,21 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   when(io.alloc.fire) {
     next.task             := io.alloc.bits
     next.alrGetComp       := false.B
+    next.respErr          := RespErr.NormalOkay
   }.elsewhen(dbidHit) {
     next.task.chi.txnID   := io.rxRsp.bits.DBID
     next.task.chi.nodeId  := io.rxRsp.bits.SrcID
     next.alrGetComp       := compHit | reg.alrGetComp
+    when(!reg.isERR) {
+      next.respErr        := io.rxRsp.bits.RespErr
+    }
     HAssert.withEn(!reg.alrGetComp, compHit)
   }.elsewhen(compHit) {
     next.alrGetComp       := compHit
+    next.respErr          := io.rxRsp.bits.RespErr
+    when(!reg.isERR) {
+      next.respErr        := io.rxRsp.bits.RespErr
+    }
     HAssert(!reg.alrGetComp)
   }
   HAssert.withEn(!reg.alrGetComp, compHit)
@@ -176,28 +185,28 @@ class WriteEntry(implicit p: Parameters) extends DJModule {
   val dataRespHit = io.dataResp.fire  & io.dataResp.bits.hnTxnID === reg.task.hnTxnID
   switch(reg.state) {
     is(FREE) {
-      when(io.alloc.fire)       { next.state := Mux(io.alloc.bits.chi.toBBN, CANNEST, SENDREQ) }
+      when(io.alloc.fire)     { next.state := Mux(io.alloc.bits.chi.toBBN, CANNEST, SENDREQ) }
     }
     is(CANNEST) {
-      when(updNestFire)         { next.state := SENDREQ }
+      when(updNestFire)       { next.state := SENDREQ }
     }
     is(SENDREQ) {
-      when(io.txReq.fire)       { next.state := WAITDBID }
+      when(io.txReq.fire)     { next.state := WAITDBID }
     }
     is(WAITDBID) {
-      when(dbidHit)             { next.state := DATATASK }
+      when(dbidHit)           { next.state := DATATASK }
     }
     is(DATATASK) {
-      when(io.dataTask.fire)    { next.state := WAITDATA }
+      when(io.dataTask.fire)  { next.state := WAITDATA }
     }
     is(WAITDATA) {
-      when(dataRespHit)         { next.state := Mux(reg.task.chi.toBBN, CANTNEST, RESPCMT) }
+      when(dataRespHit)       { next.state := Mux(reg.task.chi.toBBN, CANTNEST, RESPCMT) }
     }
     is(CANTNEST) {
-      when(updNestFire)         { next.state := RESPCMT }
+      when(updNestFire)       { next.state := RESPCMT }
     }
     is(RESPCMT) {
-      when(io.resp.fire)        { next.state := FREE }
+      when(io.resp.fire)      { next.state := FREE }
     }
   }
 

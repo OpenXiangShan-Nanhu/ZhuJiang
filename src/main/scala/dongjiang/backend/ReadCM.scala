@@ -75,7 +75,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val reg   = RegInit((new ReadState with HasPackCMTask with HasPackTaskInst).Lit(_.state -> FREE))
+  val reg   = RegInit((new ReadState with HasPackCMTask with HasPackTaskInst with HasRespErr).Lit(_.state -> FREE))
   val next  = WireInit(reg)
 
   /*
@@ -142,9 +142,11 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
     io.resp.bits.taskInst.opcode    := CompData
     io.resp.bits.taskInst.resp      := reg.taskInst.resp
     io.resp.bits.taskInst.fwdResp   := ChiResp.I
+    io.resp.bits.respErr            := reg.respErr
   }.otherwise {
     io.resp.bits.taskInst           := 0.U.asTypeOf(new TaskInst)
     io.resp.bits.taskInst.valid     := true.B
+    io.resp.bits.respErr            := RespErr.NormalOkay
   }
 
   /*
@@ -165,6 +167,7 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   when(io.alloc.fire) {
     next.task             := io.alloc.bits
     next.taskInst         := 0.U.asTypeOf(new TaskInst)
+    next.respErr          := RespErr.NormalOkay
   // Store Message
   }.elsewhen(recDataHit) {
     // chi
@@ -172,6 +175,13 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
     next.task.chi.txnID   := io.rxDat.bits.DBID
     // inst
     next.taskInst.resp    := io.rxDat.bits.Resp
+    // resp err
+    when(!reg.isERR) {
+      next.respErr        := io.rxDat.bits.RespErr
+    }
+    HAssert.withEn(next.isNDERR, reg.isWaitData1 & reg.isNDERR)
+    HAssert.withEn(!(reg.isOK   & next.isEXOK),  reg.isWaitData1)
+    HAssert.withEn(!(reg.isEXOK & next.isNDERR), reg.isWaitData1)
   }
 
   // Get Next State
