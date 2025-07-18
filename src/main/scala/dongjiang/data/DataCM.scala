@@ -187,7 +187,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     HAssert(reg.isAlloc)
     HAssert(!taskHit)
   }.elsewhen(io.release.fire) {
-    next.dataVec      := VecInit((reg.dataVec.asUInt & ~io.clean.bits.dataVec.asUInt).asBools)
+    next.dataVec      := VecInit((reg.dataVec.asUInt & ~io.release.bits.dataVec.asUInt).asBools)
   }
 
   // Get next wait read beat
