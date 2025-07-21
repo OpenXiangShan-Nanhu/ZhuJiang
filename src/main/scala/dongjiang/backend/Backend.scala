@@ -72,7 +72,6 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   val writeCM     = Module(new WriteCM())
   val readCM      = Module(new ReadCM())
   // val datalessCM  = Module(new DatalessCM()) // TODO
-  val txReqArb    = Module(new ArbiterGenerator(new ReqFlit(true), 2, true, true))
 
   /*
    * Connect Config
@@ -87,9 +86,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
    * Connect To CHI IO
    */
   val txRspVec              = if(hasBBN) Seq(commit.io.txRsp, readCM.io.txRsp.get, FastQueue(io.fastResp)) else Seq(commit.io.txRsp, FastQueue(io.fastResp))
-  txReqArb.io.in(0)         <> readCM.io.txReq
-  txReqArb.io.in(1)         <> writeCM.io.txReq
-  io.txReq                  <> txReqArb.io.out
+  io.txReq                  <> fastQosRRArb(Seq(readCM.io.txReq, writeCM.io.txReq))
   io.txSnp                  <> snoopCM.io.txSnp
   io.txRsp                  <> fastQosRRArb(txRspVec)
   io.rxRsp.ready            := true.B
@@ -187,7 +184,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   HAssert.withEn(replCM.io.writeDir.bits.llc.bits.hnIdx.asUInt === replCM.io.writeDir.bits.sf.bits.hnIdx.asUInt, replCM.io.writeDir.valid)
   HAssert.withEn(replCM.io.writeDir.bits.llc.bits.addr         === replCM.io.writeDir.bits.sf.bits.addr,         replCM.io.writeDir.valid)
   // result
-  io.txReq.bits.Addr              := Cat(io.getAddrVec(0).result.addr(addrBits-1, offsetBits), txReqArb.io.out.bits.Addr(offsetBits-1, 0))
+  io.txReq.bits.Addr              := io.getAddrVec(0).result.addr
   io.txSnp.bits.Addr              := io.getAddrVec(1).result.addr >> 3.U
   wDirQ.io.enq.bits.llc.bits.addr := io.getAddrVec(2).result.addr
   wDirQ.io.enq.bits.sf.bits.addr  := io.getAddrVec(2).result.addr

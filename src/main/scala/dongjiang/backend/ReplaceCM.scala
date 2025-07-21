@@ -267,6 +267,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.cmTaskVec(CMID.SNP).bits.chi.dataVec   := Seq(true.B, true.B)
   io.cmTaskVec(CMID.SNP).bits.chi.retToSrc  := true.B
   io.cmTaskVec(CMID.SNP).bits.chi.toLAN     := DontCare
+  io.cmTaskVec(CMID.SNP).bits.chi.size      := "b110".U
   io.cmTaskVec(CMID.SNP).bits.hnTxnID       := reg.repl.hnTxnID
   io.cmTaskVec(CMID.SNP).bits.snpVec        := reg.dir.sf.metaVec.map(_.state.asBool)
   io.cmTaskVec(CMID.SNP).bits.fromRepl      := true.B
@@ -285,6 +286,7 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   io.cmTaskVec(CMID.WRI).bits.chi.memAttr.cacheable := true.B
   io.cmTaskVec(CMID.WRI).bits.chi.memAttr.ewa       := true.B
   io.cmTaskVec(CMID.WRI).bits.chi.toLAN             := reg.repl.toLan
+  io.cmTaskVec(CMID.WRI).bits.chi.size              := "b110".U
   io.cmTaskVec(CMID.WRI).bits.hnTxnID               := reg.repl.hnTxnID
   io.cmTaskVec(CMID.WRI).bits.fromRepl              := true.B
   io.cmTaskVec(CMID.WRI).bits.ds                    := reg.ds

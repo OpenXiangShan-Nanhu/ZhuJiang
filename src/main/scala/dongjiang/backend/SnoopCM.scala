@@ -114,7 +114,7 @@ class SnoopEntry(implicit p: Parameters) extends DJModule {
   io.txSnp.bits             := DontCare
   io.txSnp.bits.RetToSrc    := snpIsLast & reg.task.chi.retToSrc
   io.txSnp.bits.DoNotGoToSD := true.B
-  io.txSnp.bits.Addr        := DontCare // remap in chi xbar
+  io.txSnp.bits.Addr        := DontCare
   io.txSnp.bits.Opcode      := Mux(reg.isPreSnp, SnpMakeInvalid, reg.task.chi.opcode)
   io.txSnp.bits.FwdTxnID    := reg.task.chi.txnID
   io.txSnp.bits.FwdNID      := reg.task.chi.nodeId

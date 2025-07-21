@@ -46,6 +46,7 @@ class ReqToChiTask(implicit p: Parameters) extends DJModule {
   task.chi.snoopMe    := req.SnoopMe
   task.chi.memAttr    := req.MemAttr.asTypeOf(task.chi.memAttr)
   task.chi.expCompAck := req.ExpCompAck
+  task.chi.size       := req.Size
   // Use in snoop
   task.chi.fwdNID     := DontCare
   task.chi.fwdTxnID   := DontCare
@@ -108,6 +109,7 @@ class SnpToChiTask(implicit p: Parameters) extends DJModule {
   task.chi.snoopMe    := DontCare
   task.chi.memAttr    := DontCare
   task.chi.expCompAck := DontCare
+  task.chi.size       := "b110".U
   // Use in snoop
   task.chi.fwdNID     := snp.FwdNID
   task.chi.fwdTxnID   := snp.FwdTxnID

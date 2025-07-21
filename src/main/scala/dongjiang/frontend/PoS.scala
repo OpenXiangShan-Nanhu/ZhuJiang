@@ -20,6 +20,7 @@ class PosState(implicit p: Parameters) extends DJBundle {
   val canNest = if(hasBBN) Some(Bool()) else None
   val tagVal  = Bool() // tag is valid
   val tag     = UInt(posTagBits.W)
+  val offset  = UInt(offsetBits.W)
 
   // def
   def one  : Bool = req ^ snp
@@ -82,8 +83,10 @@ class PosEntry(implicit p: Parameters) extends DJModule {
   io.state.snp    := stateReg.snp
   io.state.tagVal := stateReg.tagVal
   io.state.tag    := stateReg.tag
+  io.state.offset := stateReg.offset
   if(hasBBN) io.state.canNest.get := stateReg.canNest.get
-  io.state.Addr.catPoS(io.config.bankId, stateReg.tag, io.hnIdx.pos.set, io.hnIdx.dirBank)
+  io.state.Addr.catPoS(io.config.bankId, stateReg.tag, io.hnIdx.pos.set, io.hnIdx.dirBank, stateReg.offset)
+  HAssert.withEn(stateReg.offset === 0.U, io.state.snp)
 
   /*
    * Modify PoS tag
@@ -91,10 +94,13 @@ class PosEntry(implicit p: Parameters) extends DJModule {
   when(io.alloc.valid) {
     stateNext.tagVal  := io.alloc.bits.addrVal
     stateNext.tag     := io.alloc.bits.Addr.posTag
+    stateNext.offset  := io.alloc.bits.Addr.offset
   }.elsewhen(updTagHit) {
     stateNext.tagVal  := io.updTag.bits.addrVal
     stateNext.tag     := io.updTag.bits.Addr.posTag
+    stateNext.offset  := io.updTag.bits.Addr.offset
     HAssert(!stateReg.tagVal)
+    HAssert(io.updTag.bits.Addr.offset === 0.U)
   }
 
   /*

@@ -137,17 +137,6 @@ trait HasDataVec extends DJBundle { this: DJBundle =>
   def isZero      = PopCount(dataVec) === 0.U
   def isFullSize  = dataVec.asUInt.andR
   def isHalfSize  = !isZero & !isFullSize
-  def getSize     = Mux(isFullSize, 6.U, Mux(isHalfSize, 5.U, 0.U))
-  def getOffset   = {
-    val offset = Wire(UInt(offsetBits.W))
-    when(isFullSize | isZero) {
-      offset := 0.U
-    }.otherwise {
-      val beatIdx = PriorityEncoder(dataVec)
-      offset := beatIdx << beatSize
-    }
-    offset
-  }
 }
 
 /*
@@ -159,6 +148,7 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
   // REQ
   val txnID         = UInt(ChiTxnIdBits.W)
   val memAttr       = new MemAttr()
+  val size          = UInt(3.W)
   // SNP
   val fwdNID        = UInt(nodeIdBits.W)
   val fwdTxnID      = UInt(ChiFwdTxnIdBits.W)
