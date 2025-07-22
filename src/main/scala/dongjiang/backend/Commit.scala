@@ -264,6 +264,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   cmTask.chi.opcode               := taskReg.task.opcode
   cmTask.chi.expCompAck           := taskReg.task.expCompAck
   cmTask.chi.retToSrc             := taskReg.task.retToSrc
+  cmTask.chi.size                 := Mux(taskReg.task.snoop | taskReg.task.fullSize, "b110".U, taskReg.chi.size)
   // other
   cmTask.hnTxnID                  := io.hnTxnID
   cmTask.dataOp                   := taskReg.task.dataOp

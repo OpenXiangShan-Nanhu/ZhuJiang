@@ -110,6 +110,9 @@ class ReadEntry(implicit p: Parameters) extends DJModule {
   io.txReq.bits.SrcID           := reg.task.chi.getNoC
   io.txReq.bits.QoS             := reg.task.qos
 
+  HAssert.withEn(PopCount(reg.task.chi.dataVec) === 1.U, io.txReq.valid && io.txReq.bits.Size <= 5.U)
+  HAssert.withEn(PopCount(reg.task.chi.dataVec) === 2.U, io.txReq.valid && io.txReq.bits.Size === 6.U)
+
   /*
    * Send CompAck
    */
