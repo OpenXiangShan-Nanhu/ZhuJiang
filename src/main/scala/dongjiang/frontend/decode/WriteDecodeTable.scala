@@ -40,11 +40,11 @@ object Write_LAN {
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp)))),
     // I I SC -> I I I
-    (sfMiss | llcIs(SC))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(SC))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "merge", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I I UC -> I I I
-    (sfMiss | llcIs(UC))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UC))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "merge", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I I UD -> I I I
-    (sfMiss | llcIs(UD))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UD))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "merge", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (returnDBID | snpOth(SnpUnique) | retToSrc | needDB, Seq(
       (NCBWrData | datIs(SnpRespData) | respIs(I_PD))   -> second(tdop("send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I

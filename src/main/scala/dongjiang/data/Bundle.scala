@@ -22,6 +22,10 @@ trait HasDataOp { this: Bundle =>
   val read      = Bool() // data storage  -> data buffer
   val send      = Bool() // data buffer   -> chi tx data
   val save      = Bool() // data buffer   -> data storage
+  val merge     = Bool() // cant use fast data resp channel(DS to CHI)
+  def readToDB  =  repl |  read
+  def readToDS  =  repl |  save
+  def readToCHI =  repl |  send
   def onlySave  = !repl & !read & !send & save
   def isValid   =  repl |  read |  send | save
 }
@@ -68,7 +72,9 @@ class PackDataTask(implicit p: Parameters) extends DJBundle { val task = new Dat
  * HasOpBeat
  */
 trait HasBeatNum { this: DJBundle =>
-  val beatNum = UInt(log2Ceil(djparam.nrBeat).W)
+  val beatNum   = UInt(log2Ceil(djparam.nrBeat).W)
+  def getDataID = Cat(beatNum, 0.U(1.W))
+  require(djparam.nrBeat == 2)
 }
 
 /*
@@ -105,10 +111,12 @@ trait HasCritical { this: DJBundle =>
 class Critical(implicit p: Parameters) extends DJBundle with HasDCID
 
 /*
- * ReadDB / ReadDS
+ * ReadDB / ReadDS / WriteDS / DsResp
  */
-class ReadDB(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasQoS with HasCritical { val repl = Bool() }
-class ReadDS(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasQoS with HasCritical
+class ReadDB (implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasQoS with HasCritical { val repl  = Bool() }
+class ReadDS (implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasDBID with HasBeatNum with HasQoS with HasCritical { val toCHI = Bool() }
+class WriteDS(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDCID with HasBeatNum { val beat = UInt(BeatBits.W) }
+class DsResp (implicit p: Parameters) extends DJBundle with HasDBID  with HasDCID with HasBeatNum { val beat = UInt(BeatBits.W); val toCHI = Bool() }
 
 /*
  * PackDataFilt

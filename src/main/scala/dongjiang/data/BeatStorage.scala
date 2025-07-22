@@ -27,19 +27,13 @@ class Shift(implicit p: Parameters) extends DJBundle {
   def outResp    = read(0).asBool
 }
 
-class DsRead(implicit p: Parameters) extends DJBundle with HasDsIdx with HasDBID with HasDCID
-
-class DsWrite(implicit p: Parameters) extends DJBundle with HasDsIdx { val beat  = UInt(BeatBits.W) }
-
-class DsResp(implicit p: Parameters) extends DJBundle with HasDBID with HasDCID { val beat = UInt(BeatBits.W) }
-
 class BeatStorage(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
   val io = IO(new Bundle {
-    val read  = Flipped(Decoupled(new DsRead()))
-    val write = Flipped(Decoupled(new DsWrite()))
+    val read  = Flipped(Decoupled(new ReadDS()))
+    val write = Flipped(Decoupled(new WriteDS()))
     val resp  = Valid(new DsResp())
   })
 
@@ -59,8 +53,7 @@ class BeatStorage(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
     moduleName  = Some("HomeDatRam")
   ))
   SramPwrCtlBoring.addSink(array.io.pwctl)
-  val dcidPipe    = Module(new Pipe(UInt(dcIdBits.W), readDsLatency))
-  val dbidPipe    = Module(new Pipe(UInt(dbIdBits.W), readDsLatency))
+  val respPipe    = Module(new Pipe(new DCID with HasDBID with HasBeatNum { val toCHI = Bool() }, readDsLatency))
   val shiftReg    = RegInit(0.U.asTypeOf(new Shift))
   val rstDoneReg  = RegEnable(true.B, false.B, array.io.req.ready)
   HardwareAssertion.withEn(!(array.io.req.ready ^ io.write.ready), rstDoneReg) // Check Shift Reg logic
@@ -84,13 +77,12 @@ class BeatStorage(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
   shiftReg.recWri(io.write.fire)
   shiftReg.recRead(io.read.fire)
 
-  // dcidPipe
-  dcidPipe.io.enq.valid := io.read.fire
-  dcidPipe.io.enq.bits  := io.read.bits.dcid
-
-  // dbidPipe
-  dbidPipe.io.enq.valid := io.read.fire
-  dbidPipe.io.enq.bits  := io.read.bits.dbid
+  // respPipe
+  respPipe.io.enq.valid         := io.read.fire
+  respPipe.io.enq.bits.dcid     := io.read.bits.dcid
+  respPipe.io.enq.bits.dbid     := io.read.bits.dbid
+  respPipe.io.enq.bits.beatNum  := io.read.bits.beatNum
+  respPipe.io.enq.bits.toCHI    := io.read.bits.toCHI
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -98,13 +90,14 @@ class BeatStorage(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
 // ---------------------------------------------------------------------------------------------------------------------- //
 
   // Output
-  io.resp.valid     := shiftReg.outResp
-  io.resp.bits.beat := array.io.resp.bits.data.head
-  io.resp.bits.dcid := dcidPipe.io.deq.bits
-  io.resp.bits.dbid := dbidPipe.io.deq.bits
+  io.resp.valid         := shiftReg.outResp
+  io.resp.bits.beat     := array.io.resp.bits.data.head
+  io.resp.bits.dcid     := respPipe.io.deq.bits.dcid
+  io.resp.bits.dbid     := respPipe.io.deq.bits.dbid
+  io.resp.bits.beatNum  := respPipe.io.deq.bits.beatNum
+  io.resp.bits.toCHI    := respPipe.io.deq.bits.toCHI
 
-  HardwareAssertion.withEn(dcidPipe.io.deq.valid, shiftReg.outResp)
-  HardwareAssertion.withEn(dbidPipe.io.deq.valid, shiftReg.outResp)
+  HardwareAssertion.withEn(respPipe.io.deq.valid, shiftReg.outResp)
   HardwareAssertion.withEn(array.io.resp.valid, shiftReg.outResp)
 
   /*

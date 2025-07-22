@@ -36,26 +36,34 @@ trait HasCtrlMes { this: DJBundle =>
   // Clean:
   //    Alloc -> CLEAN -> Alloc/Free
 
-  val state     = UInt(CTRLSTATE.width.W)
-  val opBeat    = UInt(log2Ceil(djparam.nrBeat).W)    // The beat block being operate (repl/read/send/save)
-  val wRBeat    = UInt(log2Ceil(djparam.nrBeat+1).W)  // Wait read DS data to DB
-  val wSBeat    = UInt(log2Ceil(djparam.nrBeat+1).W)  // Wait read DB data to CHI
+  val state       = UInt(CTRLSTATE.width.W)
+  val critical    = Bool()
+  // send
+  val sReadVec    = UInt(djparam.nrBeat.W)
+  val sSendVec    = UInt(djparam.nrBeat.W)
+  val sSaveVec    = UInt(djparam.nrBeat.W)
+  // wait
+  val wReadVec    = UInt(djparam.nrBeat.W) // Wait read DS data to DB
+  val wSendVec    = UInt(djparam.nrBeat.W) // Wait read DB data to CHI
+  val wSaveVec    = UInt(djparam.nrBeat.W) // Wait read DB data to CHI
 
-  def isCritical= opBeat =/= 0.U
-  def waiting   = wRBeat.asUInt =/= 0.U
-  def waitall   = wRBeat.asUInt === 0.U
-  def sending   = wSBeat.asUInt =/= 0.U
-  def sendall   = wSBeat.asUInt === 0.U
+  def readBeat    = PriorityEncoder(sReadVec)
+  def saveBeat    = PriorityEncoder(sSaveVec)
+  def sendBeat    = PriorityEncoder(sSendVec)
 
-  def isFree    = state === FREE
-  def isValid   = !isFree
-  def isAlloc   = state === ALLOC
-  def isRepl    = state === REPL
-  def isRead    = state === READ
-  def isSend    = state === SEND
-  def isSave    = state === SAVE
-  def isResp    = state === RESP
-  def isClean   = state === CLEAN
+  def isReadAll   = wReadVec.asUInt === 0.U
+  def isSendAll   = wSendVec.asUInt === 0.U
+  def isSaveAll   = wSaveVec.asUInt === 0.U
+
+  def isFree      = state === FREE
+  def isValid     = !isFree
+  def isAlloc     = state === ALLOC
+  def isRepl      = state === REPL & sReadVec.asUInt =/= 0.U & sSaveVec.asUInt =/= 0.U
+  def isRead      = state === READ & sReadVec.asUInt =/= 0.U
+  def isSend      = state === SEND & sSendVec.asUInt =/= 0.U
+  def isSave      = state === SAVE & sSaveVec.asUInt =/= 0.U
+  def isResp      = state === RESP
+  def isClean     = state === CLEAN
 }
 
 // ----------------------------------------------------------------------------------------------------- //
@@ -79,9 +87,10 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     val readToDS    = Decoupled(new ReadDB)
     val readToCHI   = Decoupled(new ReadDB)
     // Other
-    val release     = Decoupled(new DBIDVec with HasDataVec) // broadcast signal
-    val dsWriDB     = Flipped(Valid(new DCID)) // broadcast signal
-    val txDatFire   = Flipped(Valid(new DCID)) // broadcast signal
+    val release     = Decoupled(new DBIDVec with HasDataVec)
+    val dsWriDB     = Flipped(Valid(new DCID with HasBeatNum)) // broadcast signal
+    val txDatFire   = Flipped(Valid(new DCID with HasBeatNum)) // broadcast signal
+    val dbWriDS     = Flipped(Valid(new DCID with HasBeatNum)) // broadcast signal
     val txDatBits   = Output(new DataFlit)
     // State
     val state       = Valid(new HnTxnID with HasDataVec with HasDBIDVec)
@@ -90,11 +99,7 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   /*
    * Reg and Wire declaration
    */
-  val reg = RegInit(new PackDataTask with HasCtrlMes with HasDataVec with HasDBIDVec {
-    def opBeatNum  = Mux(opBeat === 0.U, PriorityEncoder(task.dataVec), 1.U)
-    def willOpAll  = Mux(task.isFullSize, opBeat === 1.U, opBeat === 0.U)
-    def dbid       = dbidVec(opBeatNum)
-  }.Lit(_.state -> FREE))
+  val reg  = RegInit((new PackDataTask with HasCtrlMes with HasDataVec with HasDBIDVec).Lit(_.state -> FREE))
   val next = WireInit(reg)
   require(djparam.nrBeat == 2)
   HAssert.withEn(reg.dbidVec(0) =/= reg.dbidVec(1), reg.isValid & reg.isFullSize)
@@ -103,11 +108,6 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     * Connect io
    */
   io.txDatBits          := reg.task.txDat
-  io.txDatBits.DataID   := PriorityMux(Seq( // TODO: parameterization
-    reg.task.isFullSize -> Mux(reg.wSBeat === 2.U, "b00".U, "b10".U),
-    reg.task.dataVec(1) -> "b10".U,
-    reg.task.dataVec(0) -> "b00".U
-  ))
   io.state.valid        := reg.isValid
   io.state.bits.hnTxnID := reg.task.hnTxnID
   io.state.bits.dataVec := reg.dataVec
@@ -122,33 +122,43 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
    * Read DS / DB
    */
   io.readForRepl              := reg.isRepl
-  // from DS to DB
+  // [0] from DS to DB/CHI
   io.readToDB.valid           := reg.isRepl | reg.isRead
   io.readToDB.bits.ds         := reg.task.ds
   io.readToDB.bits.dcid       := io.dcid
-  io.readToDB.bits.dbid       := reg.dbid
-  io.readToDB.bits.beatNum    := reg.opBeatNum
-  io.readToDB.bits.critical   := reg.isCritical
+  io.readToDB.bits.dbid       := reg.dbidVec(reg.readBeat)
+  io.readToDB.bits.beatNum    := reg.readBeat
+  io.readToDB.bits.critical   := reg.critical
   io.readToDB.bits.qos        := reg.task.qos
-  // from DB to DS
-  io.readToDS.valid           := reg.isRepl | (reg.isSave & reg.waitall)
-  io.readToDS.bits.ds         := reg.task.ds
-  io.readToDS.bits.dcid       := io.dcid
-  io.readToDS.bits.dbid       := reg.dbid
-  io.readToDS.bits.beatNum    := reg.opBeatNum
-  io.readToDS.bits.critical   := reg.isCritical
-  io.readToDS.bits.repl       := reg.isRepl
-  io.readToDS.bits.qos  := reg.task.qos
-  // from DB to CHI
-  io.readToCHI.valid          := reg.isSend & reg.waitall
+  io.readToDB.bits.toCHI      := (reg.task.dataOp.repl | reg.task.dataOp.send) & !reg.task.dataOp.merge
+  HAssert.withEn(!reg.isReadAll, io.readToDB.valid)
+
+  // [1] from DB to CHI
+  io.readToCHI.valid          := reg.isSend
   io.readToCHI.bits.ds        := DontCare
   io.readToCHI.bits.dcid      := io.dcid
-  io.readToCHI.bits.dbid      := reg.dbid
-  io.readToCHI.bits.beatNum   := reg.opBeatNum
-  io.readToCHI.bits.critical  := reg.isCritical
+  io.readToCHI.bits.dbid      := reg.dbidVec(reg.sendBeat)
+  io.readToCHI.bits.beatNum   := reg.sendBeat
+  io.readToCHI.bits.critical  := reg.critical
   io.readToCHI.bits.repl      := false.B
   io.readToCHI.bits.qos       := reg.task.qos
-  HAssert.withEn(!(io.readToDB.fire ^ io.readToDS.fire), reg.isRepl)
+  HAssert.withEn(!reg.isSendAll, io.readToCHI.valid)
+
+  // [2] from DB to DS
+  io.readToDS.valid           := reg.isRepl | reg.isSave
+  io.readToDS.bits.ds         := reg.task.ds
+  io.readToDS.bits.dcid       := io.dcid
+  io.readToDS.bits.dbid       := reg.dbidVec(reg.saveBeat)
+  io.readToDS.bits.beatNum    := reg.saveBeat
+  io.readToDS.bits.critical   := reg.critical
+  io.readToDS.bits.repl       := reg.isRepl
+  io.readToDS.bits.qos        := reg.task.qos
+  HAssert.withEn(!reg.isSaveAll, io.readToDS.valid)
+
+  // Assert for replace
+  HAssert.withEn(!(io.readToDB.valid ^ io.readToDS.valid), reg.isRepl)
+  HAssert.withEn(!(io.readToDB.fire  ^ io.readToDS.fire),  reg.isRepl)
+  HAssert.withEn(!(reg.sReadVec ^ reg.sSaveVec).orR,       reg.isRepl)
 
   /*
    * Send Release to DBIDCtrl and DataBuffer
@@ -161,8 +171,9 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
   /*
    * Send response to Bankend
    */
-  io.resp.valid               := reg.isResp & reg.waitall & reg.sendall
+  io.resp.valid               := reg.isResp
   io.resp.bits.hnTxnID        := reg.task.hnTxnID
+  HAssert.withEn(reg.isReadAll & reg.isSendAll & reg.isSaveAll, io.resp.valid)
 
   /*
    * Modify Ctrl Machine
@@ -190,42 +201,64 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
     next.dataVec      := VecInit((reg.dataVec.asUInt & ~io.release.bits.dataVec.asUInt).asBools)
   }
 
-  // Get next wait read beat
-  val dsWriDBHit  = reg.isValid & io.dsWriDB.valid & io.dsWriDB.bits.dcid === io.dcid
-  when(io.alloc.fire) {
-    next.wRBeat   := 0.U
-  }.elsewhen(taskHit) {
-    next.wRBeat   := Mux(io.task.bits.dataOp.read | io.task.bits.dataOp.repl, PopCount(io.task.bits.dataVec), 0.U)
-    HAssert(reg.wRBeat === 0.U)
-  }.elsewhen(dsWriDBHit) {
-    next.wRBeat   := reg.wRBeat - 1.U
-    HAssert(reg.wRBeat > 0.U)
-    HAssert.withEn(reg.opBeat === 0.U, !(reg.isRead | reg.isRepl))
+  // Set next sXVec and wXVec
+  def setNextXXV(name: String, nsxv: UInt, nwxv: UInt, sxv: UInt, wxv: UInt, set: Bool, sFire: Bool, sBeat: UInt, wFire: Bool, wBeat: UInt) = {
+    // reset
+    when(io.alloc.fire) {
+      nsxv := 0.U
+      nwxv := 0.U
+    // set
+    }.elsewhen(taskHit & set) {
+      nsxv := io.task.bits.dataVec.asUInt
+      nwxv := io.task.bits.dataVec.asUInt
+      HAssert(sxv === 0.U, name)
+      HAssert(wxv === 0.U, name)
+    // modify
+    }.otherwise {
+      // sXVec
+      nsxv := PriorityMux(Seq(
+        (sFire & wFire) -> (sxv & ~(UIntToOH(sBeat) | UIntToOH(wBeat))),
+         sFire          -> (sxv & ~ UIntToOH(sBeat)),
+         wFire          -> (sxv & ~ UIntToOH(wBeat)),
+         true.B         ->  sxv
+      ))
+      HAssert.withEn(sxv(sBeat), sFire, name)
+      HAssert.withEn(sBeat =/= wBeat, sFire & wFire, name)
+      // wXVec
+      when(wFire) {
+        nwxv := wxv & ~ UIntToOH(wBeat)
+        HAssert(wxv(wBeat), name)
+      }
+    }
   }
 
-  // Get next wait send beat
-  val txDatHit    = reg.isValid & io.txDatFire.valid & io.txDatFire.bits.dcid === io.dcid
-  when(io.alloc.fire) {
-    next.wSBeat   := 0.U
-  }.elsewhen(taskHit) {
-    next.wSBeat   := Mux(io.task.bits.dataOp.send | io.task.bits.dataOp.repl, PopCount(io.task.bits.dataVec), 0.U)
-    HAssert(reg.wSBeat === 0.U)
-  }.elsewhen(txDatHit) {
-    next.wSBeat   := reg.wSBeat - 1.U
-    HAssert(reg.wSBeat > 0.U)
-    HAssert(reg.isSend | reg.isSave | reg.isResp)
-  }
+  // Read
+  val dsWriDBHit = reg.isValid & io.dsWriDB.valid & io.dsWriDB.bits.dcid === io.dcid
+  setNextXXV("read", next.sReadVec, next.wReadVec, reg.sReadVec, reg.wReadVec, io.task.bits.dataOp.readToDB,
+    io.readToDB.fire, io.readToDB.bits.beatNum, dsWriDBHit, io.dsWriDB.bits.beatNum)
 
-  // Get next opBeat
-  when(io.alloc.fire) {
-    next.opBeat   := 0.U
-  }.elsewhen(io.readToDB.fire | io.readToDS.fire | io.readToCHI.fire) {
-    next.opBeat   := reg.opBeat + reg.task.isFullSize
-    HAssert.withEn(next.opBeat === 0.U, next.state =/= reg.state)
-    HAssert.withEn(next.opBeat === 1.U, next.state === reg.state)
-    require(djparam.nrBeat == 2)
+  // Send
+  val txDatHit = reg.isValid & io.txDatFire.valid & io.txDatFire.bits.dcid === io.dcid
+  setNextXXV("send", next.sSendVec, next.wSendVec, reg.sSendVec, reg.wSendVec, io.task.bits.dataOp.readToCHI,
+    io.readToCHI.fire, io.readToCHI.bits.beatNum, txDatHit, io.txDatFire.bits.beatNum)
+
+  // Save
+  val dbWriDSHit = reg.isValid & io.dbWriDS.valid & io.dbWriDS.bits.dcid === io.dcid
+  setNextXXV("save", next.sSaveVec, next.wSaveVec, reg.sSaveVec, reg.wSaveVec, io.task.bits.dataOp.readToDS,
+    io.readToDS.fire, io.readToDS.bits.beatNum, dbWriDSHit, io.dbWriDS.bits.beatNum)
+
+  // Get next critical
+  when(io.alloc.fire | taskHit) {
+    next.critical := false.B
+    HAssert.withEn(!reg.critical, taskHit)
+  }.otherwise {
+    next.critical := PriorityMux(Seq(
+      io.readToDB.fire  -> (PopCount(reg.sReadVec) > 1.U),
+      io.readToCHI.fire -> (PopCount(reg.sSendVec) > 1.U),
+      io.readToDS.fire  -> (PopCount(reg.sSaveVec) > 1.U),
+      true.B            -> reg.critical
+    ))
   }
-  HAssert.withEn(reg.opBeat === 0.U, taskHit)
 
   // Get next hnTxnID
   val updHnTxnIDHit   = reg.isValid & io.updHnTxnID.valid & io.updHnTxnID.bits.before === reg.task.hnTxnID
@@ -256,26 +289,26 @@ class DataCtrlEntry(implicit p: Parameters) extends DJModule {
       }
     }
     is(REPL) {
-      when(io.readToDB.fire & reg.willOpAll) {
-        next.state := SEND
+      when(next.isReadAll & next.isSaveAll) {
+        next.state := Mux(next.isSendAll, RESP, SEND)
       }
     }
     is(READ) {
-      when(io.readToDB.fire & reg.willOpAll) {
+      when(next.isReadAll) {
         next.state := PriorityMux(Seq(
-          reg.task.dataOp.send -> SEND,
-          reg.task.dataOp.save -> SAVE,
-          true.B               -> RESP
+          (reg.task.dataOp.send & !next.isSendAll) -> SEND,
+          (reg.task.dataOp.save & !next.isSaveAll) -> SAVE,
+           true.B                                  -> RESP
         ))
       }
     }
     is(SEND) {
-      when(io.readToCHI.fire & reg.willOpAll) {
-        next.state := Mux(reg.task.dataOp.save, SAVE, RESP)
+      when(next.isSendAll) {
+        next.state := Mux(reg.task.dataOp.save & !next.isSaveAll, SAVE, RESP)
       }
     }
     is(SAVE) {
-      when(io.readToDS.fire & reg.willOpAll) {
+      when(next.isSaveAll) {
         next.state := RESP
       }
     }
@@ -341,9 +374,10 @@ class DataCM(implicit p: Parameters) extends DJModule {
       val dbid        = Output(UInt(dbIdBits.W))
     }
     // Other
-    val release       = Valid(new DBIDVec with HasDataVec) // broadcast signal
-    val dsWriDB       = Flipped(Valid(new DCID)) // broadcast signal
-    val txDatFire     = Flipped(Valid(new DCID)) // broadcast signal
+    val release       = Valid(new DBIDVec with HasDataVec)
+    val dsWriDB       = Flipped(Valid(new DCID with HasBeatNum)) // broadcast signal
+    val txDatFire     = Flipped(Valid(new DCID with HasBeatNum)) // broadcast signal
+    val dbWriDS       = Flipped(Valid(new DCID with HasBeatNum)) // broadcast signal
   })
   // HAssert is request DataBuffer, size can be zero
   HAssert.withEn(!io.reqDBIn.bits.isZero,   io.reqDBIn.valid)
@@ -403,6 +437,7 @@ class DataCM(implicit p: Parameters) extends DJModule {
   entries.foreach(_.io.clean      := io.clean)
   entries.foreach(_.io.dsWriDB    := io.dsWriDB)
   entries.foreach(_.io.txDatFire  := io.txDatFire)
+  entries.foreach(_.io.dbWriDS    := io.dbWriDS)
   HAssert.withEn(entries.map(e => e.io.state.valid & e.io.state.bits.hnTxnID === io.updHnTxnID.bits.before).reduce(_ | _), io.updHnTxnID.valid)
 
   /*
