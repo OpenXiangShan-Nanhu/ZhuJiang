@@ -184,8 +184,11 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   HAssert.withEn(replCM.io.writeDir.bits.llc.bits.hnIdx.asUInt === replCM.io.writeDir.bits.sf.bits.hnIdx.asUInt, replCM.io.writeDir.valid)
   HAssert.withEn(replCM.io.writeDir.bits.llc.bits.addr         === replCM.io.writeDir.bits.sf.bits.addr,         replCM.io.writeDir.valid)
   // result
-  io.txReq.bits.Addr              := io.getAddrVec(0).result.addr
-  io.txSnp.bits.Addr              := io.getAddrVec(1).result.addr >> 3.U
+  private val txReqSize = io.txReq.bits.Size
+  private val reqAddr   = io.getAddrVec(0).result.addr
+  require(dw == 256)
+  io.txReq.bits.Addr              := Mux(io.txReq.bits.MemAttr.asTypeOf(MemAttr()).cacheable, Mux(txReqSize === 6.U, Cat(reqAddr(reqAddr.getWidth - 1, 6), 0.U(6.W)), Cat(reqAddr(reqAddr.getWidth - 1, 5), 0.U(5.W))), io.getAddrVec(0).result.addr)
+  io.txSnp.bits.Addr              := (io.getAddrVec(1).result.addr >> 6.U) << 3.U
   wDirQ.io.enq.bits.llc.bits.addr := io.getAddrVec(2).result.addr
   wDirQ.io.enq.bits.sf.bits.addr  := io.getAddrVec(2).result.addr
 
