@@ -185,9 +185,11 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
   val cmRespHit   = valid & io.cmResp.fire & io.cmResp.bits.hnTxnID === io.hnTxnID
   when(io.cleanPoS.fire) {
     respErrReg    := RespErr.NormalOkay
-  }.elsewhen(cmRespHit | XCBWrDataHit) {
-    when(!(respErrReg === RespErr.DataError | respErrReg === RespErr.NonDataError)) {
-      respErrReg  := Mux(io.cmResp.bits.isERR, io.cmResp.bits.respErr, io.rxDat.bits.RespErr)
+  }.elsewhen(!(respErrReg === RespErr.DataError | respErrReg === RespErr.NonDataError)) {
+    when(cmRespHit & io.cmResp.bits.isERR) {
+      respErrReg  := io.cmResp.bits.respErr
+    }.elsewhen(XCBWrDataHit) {
+      respErrReg  := io.rxDat.bits.RespErr
     }
   }
 
