@@ -115,8 +115,27 @@ object HomeTop extends App {
 
 object DirectoryTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
-  (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new Directory(isTop = true)(config))
+  val nrDirBank = 2
+  val nrRNF = 4
+  (new XsStage).execute(firrtlOpts, firtoolOptsWithDebugInfo ++ Seq(
+    ChiselGeneratorAnnotation(() => new Directory(isTop = true)(config.alterPartial({
+      case HardwareAssertionKey => config(HardwareAssertionKey).copy(enable = false)
+      case ZJParametersKey => config(ZJParametersKey).copy(
+        djParamsOpt = Some(DJParam(
+          llcSizeInB = 8 * 1024 / nrRNF,
+          sfSizeInB = 8 * 2 * 1024 / nrRNF,
+          nrReqTaskBuf = 4 * nrDirBank, // 2 dirBank, each has 4 reqTaskBuf
+          nrSnpTaskBuf = 2,
+          nrPoS = 8 * nrDirBank, // posWays = if(hasLLC) min(llcWays, sfWays) else sfWays, posSets = nrPoS / posWays, posSets(for each bank) = posSets / nrDirBank
+          nrReadCM = 4,
+          dataBufSizeInByte = 16 * 32, // nrDataBuf = dataBufSizeInByte / BeatByte
+          nrDSBank = 2,
+          nrDirBank = nrDirBank,
+          llcWays = 4,
+          sfWays = 4,
+        ))
+      )
+    })))
   ))
 }
 
@@ -138,6 +157,46 @@ object FrontendTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
     ChiselGeneratorAnnotation(() => new Frontend(isTop = true)(config))
+  ))
+}
+
+object BlockTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
+    ChiselGeneratorAnnotation(() => new Block()(config))
+  ))
+}
+
+object TaskBufferTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  (new XsStage).execute(firrtlOpts, firtoolOpts ++ Seq(
+    ChiselGeneratorAnnotation(() => new TaskBuffer(4, true)(config))
+  ))
+}
+
+object PosTableTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  val nrDirBank = 2
+  val nrRNF = 4
+  (new XsStage).execute(firrtlOpts, firtoolOptsWithDebugInfo ++ Seq(
+    ChiselGeneratorAnnotation(() => new PosTable(isTop = true)(config.alterPartial({
+      case HardwareAssertionKey => config(HardwareAssertionKey).copy(enable = false)
+      case ZJParametersKey => config(ZJParametersKey).copy(
+        djParamsOpt = Some(DJParam(
+          llcSizeInB = 8 * 1024 / nrRNF,
+          sfSizeInB = 8 * 2 * 1024 / nrRNF,
+          nrReqTaskBuf = 4 * nrDirBank, // 2 dirBank, each has 4 reqTaskBuf
+          nrSnpTaskBuf = 2,
+          nrPoS = 8 * nrDirBank, // posWays = if(hasLLC) min(llcWays, sfWays) else sfWays, posSets = nrPoS / posWays, posSets(for each bank) = posSets / nrDirBank
+          nrReadCM = 4,
+          dataBufSizeInByte = 16 * 32, // nrDataBuf = dataBufSizeInByte / BeatByte
+          nrDSBank = 2,
+          nrDirBank = nrDirBank,
+          llcWays = 4,
+          sfWays = 4,
+        ))
+      )
+    })))
   ))
 }
 

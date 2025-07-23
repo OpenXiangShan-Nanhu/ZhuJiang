@@ -334,7 +334,8 @@ class PosSet(implicit p: Parameters) extends DJModule {
  * Entry*: Reserve for LLC Replace
  * Entry#: Reserve for Snoop Evict
  */
-class PosTable(implicit p: Parameters) extends DJModule {
+class PosTable(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
+  override def isTopModule: Boolean = isTop
   /*
    * IO declaration
    */
