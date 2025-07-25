@@ -86,7 +86,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
    * Connect To CHI IO
    */
   val txRspVec              = if(hasBBN) Seq(commit.io.txRsp, readCM.io.txRsp.get, FastQueue(io.fastResp)) else Seq(commit.io.txRsp, FastQueue(io.fastResp))
-  io.txReq                  <> fastQosRRArb(Seq(readCM.io.txReq, writeCM.io.txReq))
+  io.txReq                  <> FastQueue(fastQosRRArb(Seq(readCM.io.txReq, writeCM.io.txReq)))
   io.txSnp                  <> snoopCM.io.txSnp
   io.txRsp                  <> fastQosRRArb(txRspVec)
   io.rxRsp.ready            := true.B
@@ -184,13 +184,21 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   HAssert.withEn(replCM.io.writeDir.bits.llc.bits.hnIdx.asUInt === replCM.io.writeDir.bits.sf.bits.hnIdx.asUInt, replCM.io.writeDir.valid)
   HAssert.withEn(replCM.io.writeDir.bits.llc.bits.addr         === replCM.io.writeDir.bits.sf.bits.addr,         replCM.io.writeDir.valid)
   // result
-  private val txReqSize = io.txReq.bits.Size
-  private val reqAddr   = io.getAddrVec(0).result.addr
-  require(dw == 256)
-  io.txReq.bits.Addr              := Mux(io.txReq.bits.MemAttr.asTypeOf(MemAttr()).cacheable, Mux(txReqSize === 6.U, Cat(reqAddr(reqAddr.getWidth - 1, 6), 0.U(6.W)), Cat(reqAddr(reqAddr.getWidth - 1, 5), 0.U(5.W))), io.getAddrVec(0).result.addr)
+  // req
+  val txReqMemAttr          = io.txReq.bits.MemAttr.asTypeOf(MemAttr())
+  val txReqAddr             = io.getAddrVec(0).result.addr
+  val txReqSize             = io.txReq.bits.Size
+  io.txReq.bits.Addr        := PriorityMux(Seq(
+    !txReqMemAttr.cacheable -> txReqAddr,
+    (txReqSize === "b100".U)-> Cat(txReqAddr(addrBits-1, offsetBits),   0.U(offsetBits.W)),     // full size
+    true.B                  -> Cat(txReqAddr(addrBits-1, offsetBits-1), 0.U((offsetBits-1).W)), // half size
+  ))
+  require(djparam.nrBeat == 2)
+  // snp
   io.txSnp.bits.Addr              := (io.getAddrVec(1).result.addr >> 6.U) << 3.U
-  wDirQ.io.enq.bits.llc.bits.addr := io.getAddrVec(2).result.addr
-  wDirQ.io.enq.bits.sf.bits.addr  := io.getAddrVec(2).result.addr
+  // write dir
+  wDirQ.io.enq.bits.llc.bits.addr :=  io.getAddrVec(2).result.addr
+  wDirQ.io.enq.bits.sf.bits.addr  :=  io.getAddrVec(2).result.addr
 
   /*
    * HardwareAssertion placePipe
