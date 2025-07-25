@@ -190,7 +190,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   val txReqSize             = io.txReq.bits.Size
   io.txReq.bits.Addr        := PriorityMux(Seq(
     !txReqMemAttr.cacheable -> txReqAddr,
-    (txReqSize === "b100".U)-> Cat(txReqAddr(addrBits-1, offsetBits),   0.U(offsetBits.W)),     // full size
+    (txReqSize === "b110".U)-> Cat(txReqAddr(addrBits-1, offsetBits),   0.U(offsetBits.W)),     // full size
     true.B                  -> Cat(txReqAddr(addrBits-1, offsetBits-1), 0.U((offsetBits-1).W)), // half size
   ))
   require(djparam.nrBeat == 2)
