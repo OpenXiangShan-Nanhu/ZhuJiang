@@ -375,7 +375,7 @@ class CommitEntry(implicit p: Parameters) extends DJModule {
     val replLLC               = cmt.wriLLC & !taskReg.dir.llc.hit
      // task flag internal send
     flagNext.intl.s.decode    := stateNext.isFstTask | stateNext.isSecTask
-    flagNext.intl.s.reqDB     := (task.needDB | cmt.dataOp.isValid) & !alrReqDB
+    flagNext.intl.s.reqDB     := (task.needDB | cmt.dataOp.isValid) & !io.reqDB.fire & !alrReqDB
     flagNext.intl.s.cmTask    := task.opsIsValid
     flagNext.intl.s.dataTask  := Mux(cmt.dataOp.onlySave, !replLLC, cmt.dataOp.isValid) & !alrSendData
     flagNext.intl.s.wriDir    := cmt.isWriDir
