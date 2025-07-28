@@ -499,9 +499,9 @@ class DataCM(implicit p: Parameters) extends DJModule {
   // Read to CHI
   connectReadToX(VecInit(entries.map(_.io.readToCHI)), io.readToCHI)
   // HAssert
-  HAssert(!(io.readToDB.fire  ^ PopCount(entries.map(_.io.readToDB.fire))  === 1.U))
-  HAssert(!(io.readToDS.fire  ^ PopCount(entries.map(_.io.readToDS.fire))  === 1.U))
-  HAssert(!(io.readToCHI.fire ^ PopCount(entries.map(_.io.readToCHI.fire)) === 1.U))
+  HAssert(!(RegNext(io.readToDB.fire)  ^ (PopCount(entries.map(e => RegNext(e.io.readToDB.fire)))  === 1.U)))
+  HAssert(!(RegNext(io.readToDS.fire)  ^ (PopCount(entries.map(e => RegNext(e.io.readToDS.fire)))  === 1.U)))
+  HAssert(!(RegNext(io.readToCHI.fire) ^ (PopCount(entries.map(e => RegNext(e.io.readToCHI.fire))) === 1.U)))
 
   /*
    * HardwareAssertion placePipe
