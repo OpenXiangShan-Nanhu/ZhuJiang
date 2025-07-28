@@ -15,6 +15,7 @@ import xs.utils.sram.DualPortSramTemplate
 import zhujiang.utils.SramPwrCtlBoring
 import zhujiang.chi.DatOpcode._
 import zhujiang.chi.RspOpcode.Comp
+import chisel3.experimental.BundleLiterals._
 
 class DataBuffer(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
   /*
@@ -32,6 +33,7 @@ class DataBuffer(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
     val writeDS       = Decoupled(new WriteDS with HasBeatNum)
     val toCHI         = Decoupled(new PackDataFilt with HasDCID with HasBeatNum)
   })
+  val FullMask        = Fill(djparam.BeatByte, 1.U)
 
   /*
    * Module and Reg declaration
@@ -87,34 +89,43 @@ class DataBuffer(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
 
   /*
    * Receive data in
+   *
+   * Set Mask logic:
+   *  1. Data from DS  and it is replacing          -> FullMask
+   *  2. Data from DS  and it is not replacing      -> ~(mask already save)
+   *  3. Data from CHI and it is Read or Snoop Data -> ~(mask already save)
+   *  4. Data from CHI and it is Write Data         -> BE from CHI RxDat
    */
   // Set ready
   io.fromCHI.ready  := !io.dsResp.valid
 
   // Get write db message
-  val dbid      = Mux(io.dsResp.valid, io.dsResp.bits.dbid, io.fromCHI.bits.dbid)
-  val FullMask  = Fill(djparam.BeatByte, 1.U)
-  val mask      = maskRegVec(dbid)
-  val repl      = replRegVec(dbid)
+  val wriVal        = io.dsResp.valid | io.fromCHI.valid
+  val wDataVec      = Mux(io.dsResp.valid, io.dsResp.bits.beat, io.fromCHI.bits.dat.Data).asTypeOf(Vec(djparam.BeatByte, UInt(8.W)))
+  val dbid          = Mux(io.dsResp.valid, io.dsResp.bits.dbid, io.fromCHI.bits.dbid)
+  val dsWriReg      = RegNext(io.dsResp.valid)
+  val replReg       = RegNext(replRegVec(dbid))
+  val maskReg       = RegEnable(maskRegVec(dbid), wriVal)
+  val fromChiBEReg  = RegEnable(io.fromCHI.bits.dat.BE, io.fromCHI.valid)
+  val fromChiOp     = io.fromCHI.bits.dat.Opcode
+  val readOrSnpReg  = RegNext(fromChiOp === SnpRespDataFwded | fromChiOp === SnpRespData       | fromChiOp === CompData)
+  // val writeReg   = RegNext(fromChiOp === NCBWrDataCompAck | fromChiOp === CopyBackWriteData | fromChiOp === NonCopyBackWriteData)
 
-  // Save Data
-  val wDataVec                  = Mux(io.dsResp.valid, io.dsResp.bits.beat, io.fromCHI.bits.dat.Data).asTypeOf(Vec(djparam.BeatByte, UInt(8.W)))
-  datBuf.io.wreq.valid          := io.dsResp.valid | io.fromCHI.valid
-  datBuf.io.wreq.bits.addr      := dbid
-  datBuf.io.wreq.bits.mask.get  := Mux(io.dsResp.valid, Mux(repl, FullMask, ~mask), PriorityMux(Seq(
-  (io.fromCHI.bits.dat.Opcode === CompData             | io.fromCHI.bits.dat.Opcode === SnpRespData       | io.fromCHI.bits.dat.Opcode === SnpRespDataFwded) -> ~mask,
-  (io.fromCHI.bits.dat.Opcode === NonCopyBackWriteData | io.fromCHI.bits.dat.Opcode === CopyBackWriteData | io.fromCHI.bits.dat.Opcode === NCBWrDataCompAck) -> io.fromCHI.bits.dat.BE)))
-  datBuf.io.wreq.bits.data.zip(wDataVec).foreach { case(a, b) => a := b }
+  // Save data
+  datBuf.io.wreq.valid          := RegNext(wriVal)
+  datBuf.io.wreq.bits.addr      := RegEnable(dbid, wriVal)
+  datBuf.io.wreq.bits.mask.get  := Mux(dsWriReg, Mux(replReg, FullMask, ~maskReg), Mux(readOrSnpReg, ~maskReg, fromChiBEReg))
+  datBuf.io.wreq.bits.data.zip(wDataVec).foreach { case (a, b) => a := RegEnable(b, wriVal) }
 
   // HAssert
-  HAssert.withEn(io.fromCHI.bits.dat.Opcode === CompData | 
-                 io.fromCHI.bits.dat.Opcode === SnpRespData | 
-                 io.fromCHI.bits.dat.Opcode === SnpRespDataFwded | 
-                 io.fromCHI.bits.dat.Opcode === NonCopyBackWriteData | 
-                 io.fromCHI.bits.dat.Opcode === CopyBackWriteData |
-                 io.fromCHI.bits.dat.Opcode === NCBWrDataCompAck, io.fromCHI.fire)
-  HAssert.withEn(io.fromCHI.bits.dat.BE === FullMask, io.fromCHI.fire & io.fromCHI.bits.dat.Opcode === SnpRespData)
-  HAssert.withEn(io.fromCHI.bits.dat.BE === FullMask, io.fromCHI.fire & io.fromCHI.bits.dat.Opcode === SnpRespDataFwded)
+  HAssert.withEn(fromChiOp === CompData |
+                 fromChiOp === SnpRespData |
+                 fromChiOp === SnpRespDataFwded |
+                 fromChiOp === NonCopyBackWriteData |
+                 fromChiOp === CopyBackWriteData |
+                 fromChiOp === NCBWrDataCompAck, io.fromCHI.fire)
+  HAssert.withEn(io.fromCHI.bits.dat.BE === FullMask, io.fromCHI.fire & fromChiOp === SnpRespData)
+  HAssert.withEn(io.fromCHI.bits.dat.BE === FullMask, io.fromCHI.fire & fromChiOp === SnpRespDataFwded)
   /*
    * Modify mask
    * TODO: optimize clock gating
@@ -128,7 +139,7 @@ class DataBuffer(powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
     }.elsewhen(dsHit) {
       m := FullMask
     }.elsewhen(chiHit) {
-      m :=  Mux(io.fromCHI.bits.dat.Opcode === CompData | io.fromCHI.bits.dat.Opcode === SnpRespData | io.fromCHI.bits.dat.Opcode === SnpRespDataFwded, FullMask, m | io.fromCHI.bits.dat.BE)
+      m := Mux(fromChiOp === CompData | fromChiOp === SnpRespData | fromChiOp === SnpRespDataFwded, FullMask, m | io.fromCHI.bits.dat.BE)
     }
     HAssert(PopCount(Seq(cleanHit, dsHit, chiHit)) <= 1.U)
   }
