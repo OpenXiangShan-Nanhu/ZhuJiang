@@ -63,17 +63,22 @@ class Decode(times: String)(implicit p: Parameters) extends DJModule {
   require(times == "Third" | times == "Fourth")
 
   /*
+   * Input
+   */
+  val decValReg   = RegNext(io.decMesIn.valid)
+  val decMesReg   = RegEnable(io.decMesIn.bits, io.decMesIn.valid)
+
+  /*
    * Decode
    */
-  val decMes      = io.decMesIn.bits
-  val taskInst    = WireInit(decMes.taskInst)
-  taskInst.valid  := io.decMesIn.valid & decMes.taskInst.valid
-  HAssert.withEn(decMes.taskInst.valid, io.decMesIn.valid)
+  val taskInst    = WireInit(decMesReg.taskInst)
+  taskInst.valid  := decValReg & decMesReg.taskInst.valid
+  HAssert.withEn(decMesReg.taskInst.valid, decValReg)
   // decode
   val decList     = if(times == "Third") {
-    Decode.thirdDec(decMes.decList, taskInst, decMes.hnTxnID)
+    Decode.thirdDec(decMesReg.decList, taskInst, decMesReg.hnTxnID)
   } else {
-    Decode.fourthDec(decMes.decList, taskInst, decMes.hnTxnID)
+    Decode.fourthDec(decMesReg.decList, taskInst, decMesReg.hnTxnID)
   }
 
 
@@ -83,15 +88,15 @@ class Decode(times: String)(implicit p: Parameters) extends DJModule {
   val getRes            = Module(new GetDecRes())
   val taskCode          = if(times == "Third") getRes.io.secTaskCode else 0.U.asTypeOf(new TaskCode)
   val cmtCode           = getRes.io.commitCode
-  getRes.io.list.valid  := io.decMesIn.valid
+  getRes.io.list.valid  := decValReg
   getRes.io.list.bits   := decList
 
   /*
    * Output
    */
-  io.hnTxnIdOut.valid   := RegNext(io.decMesIn.valid)
-  io.hnTxnIdOut.bits    := RegEnable(decMes.hnTxnID,  io.decMesIn.valid)
-  io.decListOut         := RegEnable(decList,         io.decMesIn.valid)
-  io.taskCodeOut        := RegEnable(taskCode,        io.decMesIn.valid)
-  io.cmtCodeOut         := RegEnable(cmtCode,         io.decMesIn.valid)
+  io.hnTxnIdOut.valid   := RegNext(decValReg)
+  io.hnTxnIdOut.bits    := RegEnable(decMesReg.hnTxnID, decValReg)
+  io.decListOut         := RegEnable(decList,           decValReg)
+  io.taskCodeOut        := RegEnable(taskCode,          decValReg)
+  io.cmtCodeOut         := RegEnable(cmtCode,           decValReg)
 }
