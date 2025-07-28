@@ -104,6 +104,7 @@ class Block(implicit p: Parameters) extends DJModule {
   // Send Fast Resp To CHI
   io.fastResp_s1.valid        := validReg_s1 & shouldResp_s1 & !(block_s1.pos | block_s1.dir)
   io.fastResp_s1.bits         := DontCare
+  io.fastResp_s1.bits.QoS     := taskReg_s1.qos
   io.fastResp_s1.bits.SrcID   := taskReg_s1.chi.getNoC
   io.fastResp_s1.bits.TgtID   := taskReg_s1.chi.nodeId
   io.fastResp_s1.bits.TxnID   := taskReg_s1.chi.txnID
