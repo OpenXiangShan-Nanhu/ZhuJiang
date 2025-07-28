@@ -282,7 +282,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
     val rni        = DmaParams(node = node)
     this          := 0.U.asTypeOf(this)
     this.QoS      := c.qos
-    this.Addr     := c.addr
+    this.Addr     := Mux(c.double, Cat(c.addr(c.addr.getWidth - 1, rni.offset), 0.U(rni.offset.W)), c.addr)
     this.Opcode   := Mux(!c.memAttr.allocate & !c.memAttr.cacheable, ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
     this.SrcID    := rni.rniID.U
     this.Order    := "b11".U
@@ -296,7 +296,7 @@ class DmaReqFlit(implicit p : Parameters) extends ReqFlit {
   def wReqInit[T <: CHIWEntry](c : T, i : UInt, node: Node): ReqFlit = {
     val rni          = DmaParams(node = node)
     this            := 0.U.asTypeOf(this)
-    this.Addr       := c.addr
+    this.Addr       := Mux(c.double, Cat(c.addr(c.addr.getWidth - 1, rni.offset), 0.U(rni.offset.W)), c.addr)
     this.QoS        := c.qos
     this.Opcode     := Mux(!c.memAttr.allocate & !c.memAttr.cacheable, ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteUniquePtl)
     this.Size       := Mux(c.double, 6.U, c.size)

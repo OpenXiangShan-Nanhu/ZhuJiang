@@ -144,13 +144,16 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   txAwBdl                       := 0.U.asTypeOf(txAwBdl)
   private val specWrapModify     = uTailE.cache(1) & Burst.isWrap(uTailE.burst) & (uTailE.byteMask(rni.offset) ^  uTailE.byteMask(rni.offset - 1))
   private val lessWrapModify     = uTailE.cache(1) & Burst.isWrap(uTailE.burst) & !uTailE.byteMask(rni.offset - 1)
+  private val normalModify       = uTailE.cache(1)
   private val specWrapModifyAddr = Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset), 0.U(rni.offset.W))
   private val lessWrapModifyAddr = Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U((rni.offset - 1).W))
+  private val normalAddr         = Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U((rni.offset - 1).W))
   private val defaultAddr        = Cat(uTailE.preAddr, uTailE.exAddr)
 
   txAwBdl.addr       := PriorityMux(Seq(
     specWrapModify   -> specWrapModifyAddr,
     lessWrapModify   -> lessWrapModifyAddr,
+    normalModify     -> normalAddr,
     true.B           -> defaultAddr
   ))
   txAwBdl.qos        := uTailE.qos
