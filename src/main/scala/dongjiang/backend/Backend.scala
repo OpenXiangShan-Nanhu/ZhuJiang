@@ -125,7 +125,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
    */
   io.updHnTxnID             := replCM.io.updHnTxnID
   io.reqDB                  <> fastArb(Seq(replCM.io.reqDB, commit.io.reqDB))
-  io.dataTask               <> fastQosRRArb(Seq(commit.io.dataTask, replCM.io.dataTask, writeCM.io.dataTask))
+  io.dataTask               <> fastQosRRArb(Seq(FastQueue(commit.io.dataTask), FastQueue(replCM.io.dataTask), FastQueue(writeCM.io.dataTask)))
 
   /*
    * Connect Commit
@@ -157,21 +157,21 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   /*
    * Connect replCM
    */
-  snoopCM.io.alloc          <> FastQueue(fastQosRRArb(Seq(commit.io.cmTaskVec(CMID.SNP), replCM.io.cmTaskVec(CMID.SNP))))
+  snoopCM.io.alloc          <> fastQosRRArb(Seq(FastQueue(commit.io.cmTaskVec(CMID.SNP)), FastQueue(replCM.io.cmTaskVec(CMID.SNP))))
   snoopCM.io.rxRsp          := io.rxRsp
   snoopCM.io.rxDat          := io.rxDat
 
   /*
    * Connect writeCM
    */
-  writeCM.io.alloc          <> FastQueue(fastQosRRArb(Seq(commit.io.cmTaskVec(CMID.WRI), replCM.io.cmTaskVec(CMID.WRI))))
+  writeCM.io.alloc          <> fastQosRRArb(Seq(FastQueue(commit.io.cmTaskVec(CMID.WRI)), FastQueue(replCM.io.cmTaskVec(CMID.WRI))))
   writeCM.io.rxRsp          := io.rxRsp
   writeCM.io.dataResp       := io.dataResp
 
   /*
    * Connect readCM
    */
-  readCM.io.alloc           <> FastQueue(fastQosRRArb(Seq(commit.io.cmTaskVec(CMID.READ))))
+  readCM.io.alloc           <> fastQosRRArb(Seq(FastQueue(commit.io.cmTaskVec(CMID.READ))))
   readCM.io.rxDat           := io.rxDat
 
   /*
