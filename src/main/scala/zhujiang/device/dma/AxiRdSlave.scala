@@ -64,13 +64,15 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val rxArBdl   = WireInit(0.U.asTypeOf(new AxiRdEntry(isPipe = true, node = node)))
   private val txArBdl   = WireInit(0.U.asTypeOf(io.dAxiAr.bits))
   
-  private val uTailE    = uArEntrys(uTailPtr.value)
-  private val dTailE    = dArEntrys(dTailPtr.value)
+  private val uTailE       = uArEntrys(uTailPtr.value)
+  private val dTailE       = dArEntrys(dTailPtr.value)
+  private val reachPeak    = (uTailE.cnt.get + 1.U) === uTailE.num.get
+  private val reachBottom  = (uTailE.num.get === 0.U) & (uTailE.cnt.get === 63.U)
 
 /* 
  * Pointer Logic
  */
-  private val uTailPtrAdd   = io.dAxiAr.fire & ((uTailE.cnt.get + 1.U) === uTailE.num.get)
+  private val uTailPtrAdd   = io.dAxiAr.fire & (reachPeak | reachBottom)
   private val dTailPtrAdd   = dTailPtr =/= dHeadPtr & dArEntrys(dTailPtr.value).finish
 
   uHeadPtr   := Mux(rxArPipe.io.deq.fire, uHeadPtr + 1.U, uHeadPtr)
@@ -101,7 +103,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
         val nextAddr  = (uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size)) & uTailE.byteMask(rni.offset - 1, 0) | uTailE.exAddr(rni.offset - 1, 0) & ~uTailE.byteMask(rni.offset - 1, 0)
         e.id         := uTailE.id
         e.size       := 1.U(log2Ceil(dw/8).W) << uTailE.size
-        e.last       := (uTailE.cnt.get + 1.U) === uTailE.num.get
+        e.last       := reachBottom | reachPeak
         e.byteMask   := uTailE.byteMask(rni.offset - 1, 0)
         e.nextShift  := nextAddr
         e.beat       := Mux((uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1)) & uTailE.cache(1), 0.U, uTailE.exAddr(rni.offset - 1))

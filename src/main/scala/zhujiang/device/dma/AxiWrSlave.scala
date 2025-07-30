@@ -80,7 +80,9 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val fixWDataPtrAdd         = !dAwEntrys(wDataPtr.value).dontMerge & io.uAxiW.bits._last & Burst.isFix(dAwEntrys(wDataPtr.value).burst)
 
   private val wDataPtrAdd            = (fullWrapWDPtrAdd || fixWDataPtrAdd || noFullWrapWDPtrAdd) & io.uAxiW.fire
-  private val tailPtrAdd             = io.dAxiAw.fire & ((uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get)
+  private val reachPeak              = (uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get
+  private val reachBottom            = (uTailE.num.get === 0.U) & (uTailE.cnt.get === 63.U)   // 4096 / 64 = 64
+  private val tailPtrAdd             = io.dAxiAw.fire & (reachBottom | reachPeak)
   private val sDataPtrAdd            = io.dAxiW.fire & io.dAxiW.bits._last
 
   uHeadPtr   := Mux(rxAwPipe.io.deq.fire, uHeadPtr + 1.U, uHeadPtr)
@@ -129,7 +131,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
         e.burst        :=  uTailE.burst
         e.dontMerge    := !uTailE.cache(1)
         e.id           :=  uTailE.id
-        e.last         := (uTailE.cnt.get + 1.U) === uTailE.num.get
+        e.last         :=  reachBottom | reachPeak
         e.shift        :=  uTailE.exAddr(rni.offset - 1, 0)
         e.mask         :=  uTailE.byteMask(rni.offset - 1, 0)
         e.nextShift    :=  (uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size)) & uTailE.byteMask(rni.offset - 1, 0) | uTailE.exAddr(rni.offset - 1, 0) & ~uTailE.byteMask(rni.offset - 1, 0)
