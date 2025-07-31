@@ -9,7 +9,6 @@ import xs.utils.FastArbiter
 import zhujiang.axi._
 import zhujiang.chi._
 import xijiang.Node
-import zhujiang.chi.ReqOpcode.AtomicLoadUMIN
 
 
 object Burst {
@@ -49,10 +48,10 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
   val qos      = UInt(4.W)
   val id       = UInt(rni.idBits.W)
   val byteMask = UInt(rni.pageBits.W)
-  val len      = UInt(8.W)
-  val cnt      = if(!isPipe) Some(UInt(8.W))              else None
+  val len      = UInt(9.W)
+  val cnt      = if(!isPipe) Some(UInt(9.W))              else None
   val range    = if(isPipe)  Some(UInt(rni.pageBits.W))   else None
-  val num      = if(!isPipe) Some(UInt(8.W))              else None
+  val num      = if(!isPipe) Some(UInt(9.W))              else None
   val size     = UInt(3.W)
   val cache    = UInt(4.W)
   val burst    = UInt(2.W)
@@ -65,12 +64,12 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
   def pipeInit[T <: ARFlit](ar: T): AxiRdEntry = {
     this.preAddr    := ar.addr(raw - 1, rni.pageBits)
     this.exAddr     := ar.addr(rni.pageBits - 1, 0) >> ar.size << ar.size
-    this.endAddr    := ((ar.addr(rni.pageBits - 1, 0) >> ar.size) + (ar.len + 1.U)) << ar.size
+    this.endAddr    := ((ar.addr(rni.pageBits - 1, 0) >> ar.size) + (ar.len.asTypeOf(UInt(9.W)) + 1.U)) << ar.size
     this.qos        := ar.qos
     this.id         := ar.id
     this.byteMask   := wrapMask(ar.len, ar.size)
-    this.len        := ar.len + 1.U
-    this.range.get  := (ar.len + 1.U) << ar.size
+    this.len        := ar.len.asTypeOf(UInt(9.W)) + 1.U
+    this.range.get  := (ar.len.asTypeOf(UInt(9.W)) + 1.U) << ar.size
     this.size       := ar.size
     this.cache      := ar.cache
     this.burst      := ar.burst
@@ -117,9 +116,9 @@ class AxiWrEntry(isPipe : Boolean, node: Node)(implicit p: Parameters) extends Z
   val byteMask    = UInt(rni.pageBits.W)
   val qos         = UInt(4.W)
   val burst       = UInt(2.W)
-  val cnt         = if(!isPipe) Some(UInt(8.W))             else None
-  val num         = if(!isPipe) Some(UInt(8.W))             else None
-  val len         = if(isPipe)  Some(UInt(8.W))             else None
+  val cnt         = if(!isPipe) Some(UInt(9.W))             else None
+  val num         = if(!isPipe) Some(UInt(9.W))             else None
+  val len         = if(isPipe)  Some(UInt(9.W))             else None
   val range       = if(isPipe)  Some(UInt(rni.pageBits.W))  else None
   val size        = UInt(3.W)
   val cache       = UInt(4.W)
@@ -134,14 +133,14 @@ class AxiWrEntry(isPipe : Boolean, node: Node)(implicit p: Parameters) extends Z
   def pipeInit[T <: AWFlit](aw : T): AxiWrEntry = {
     this.preAddr        := aw.addr(raw - 1, rni.pageBits)
     this.exAddr         := aw.addr(rni.pageBits - 1, 0) >> aw.size << aw.size
-    this.endAddr        := ((aw.addr(rni.pageBits - 1, 0) >> aw.size) + (aw.len + 1.U)) << aw.size
-    this.range.get      := (aw.len + 1.U) << aw.size
+    this.endAddr        := ((aw.addr(rni.pageBits - 1, 0) >> aw.size) + (aw.len.asTypeOf(UInt(9.W)) + 1.U)) << aw.size
+    this.range.get      := (aw.len.asTypeOf(UInt(9.W)) + 1.U) << aw.size
     this.burst          := aw.burst
     this.qos            := aw.qos
     this.byteMask       := byteComp(aw.len, aw.size)
     this.id             := aw.id
     this.size           := aw.size
-    this.len.get        := aw.len + 1.U
+    this.len.get        := aw.len.asTypeOf(UInt(9.W)) + 1.U
     this.cache          := aw.cache
     this
   }
