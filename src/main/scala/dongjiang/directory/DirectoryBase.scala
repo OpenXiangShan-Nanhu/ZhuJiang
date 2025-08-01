@@ -381,6 +381,7 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
       val dontCare  = Cat(lock.valid, lock.valid)
       val state     = PriorityMux(Seq(
         unLockHit   -> Cat(lock.valid, false.B),
+        lock.valid  -> "b11".U,
         readMiss    -> "b00".U,
         readHit     -> "b01".U,
         write       -> dontCare,
