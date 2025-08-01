@@ -113,11 +113,10 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
         val notModify  = !uTailE.cache(1)
         val lastEntry  = (uTailE.cnt.get + 1.U) === uTailE.num.get
         val specWrap   = Burst.isWrap(uTailE.burst) & !uTailE.byteMask(rni.offset)
-        e.endShift    := Mux(!uTailE.cache(1), nextAddr, Mux((uTailE.cnt.get + 1.U) === uTailE.num.get, uTailE.endAddr(rni.offset - 1, 0), Mux(Burst.isWrap(uTailE.burst), uTailE.exAddr(rni.offset - 1, 0), 0.U)))
         e.endShift    := PriorityMux(Seq(
           notModify   -> nextAddr,
           specWrap    -> uTailE.exAddr(rni.offset - 1, 0),
-          true.B      -> Mux((uTailE.cnt.get + 1.U) === uTailE.num.get, uTailE.endAddr(rni.offset - 1, 0), 0.U)
+          true.B      -> Mux(reachPeak | reachBottom, uTailE.endAddr(rni.offset - 1, 0), 0.U)
         ))
       }.elsewhen(io.uAxiR.fire & dataCtrlQ.io.dataOut.bits.idx === i.U){
         e.outBeat   := Mux(e.byteMask.orR, e.nextShift(rni.offset - 1), e.outBeat)
