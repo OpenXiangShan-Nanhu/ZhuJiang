@@ -224,4 +224,5 @@ object DongJiangTop extends App {
       )
     })))
   ))
+  xs.utils.FileRegisters.write()
 }
