@@ -254,6 +254,8 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
 
     "bank_id_lo = " + bankId_lo,
     "bank_id_hi = " + bankId_hi,
+
+    "bank_bits = " + bankBits, 
   )
   FileRegisters.add(
     "generated-src",

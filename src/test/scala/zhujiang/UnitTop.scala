@@ -209,6 +209,7 @@ object DongJiangTop extends App {
     ChiselGeneratorAnnotation(() => new DongJiangTop(isReleaseRTL)(config.alterPartial({
       case HardwareAssertionKey => config(HardwareAssertionKey).copy(enable = false)
       case ZJParametersKey => config(ZJParametersKey).copy(
+        hnxBankOff = 6,
         djParamsOpt = Some(DJParam(
           llcSizeInB = 8 * 1024 / nrRNF,
           sfSizeInB = 8 * 2 * 1024 / nrRNF,
