@@ -251,6 +251,9 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
 
     "nr_llc_way = " + djparam.llcWays,
     "nr_sf_way = " + djparam.sfWays,
+
+    "bank_id_lo = " + bankId_lo,
+    "bank_id_hi = " + bankId_hi,
   )
   FileRegisters.add(
     "generated-src",
@@ -266,7 +269,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
 }
 
 // Top module for unit test only
-class DongJiangTop()(implicit p: Parameters) extends DJModule {
+class DongJiangTop(isReleaseRTL: Boolean)(implicit p: Parameters) extends DJModule {
   val nrPosWays = posWays - 2
   require(nrSnoopCM == 4, f"nrSnoopCM should be 4, but is ${nrSnoopCM}")
   require(nrPosWays == 2, f"nrPosWays should be 2, but is ${nrPosWays}")
@@ -289,10 +292,10 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   val rniNodes = zjParams.island.filter(_.nodeType == NodeType.RI)
   val hnfNodes = zjParams.island.filter(_.nodeType == NodeType.HF)
   val snNodes  = zjParams.island.filter(_.nodeType == NodeType.S)
-  val rnfIdSeq = rnfNodes.map(_.nodeId)
-  val rniIdSeq = rniNodes.map(_.nodeId)
-  val hnfIdSeq = hnfNodes.map(_.nodeId)
-  val snIdSeq  = snNodes.map(_.nodeId)
+  val rnfIdSeq = if(isReleaseRTL) Seq(0x00, 0x48, 0x50, 0xa8) else rnfNodes.map(_.nodeId)
+  val rniIdSeq = if(isReleaseRTL) Seq(0x70) else rniNodes.map(_.nodeId)
+  val hnfIdSeq = if(isReleaseRTL) Seq(0x10, 0x38, 0x98, 0x60) else hnfNodes.map(_.nodeId)
+  val snIdSeq  = if(isReleaseRTL) Seq(0x20, 0x28, 0x80) else snNodes.map(_.nodeId)
 
   def isToHNF(tgtID: UInt) = {
     Cat(hnfIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).orR
@@ -307,8 +310,8 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
     Cat(snIdSeq.map( id => id.U >> zjParams.nodeAidBits.U === tgtID >> zjParams.nodeAidBits.U)).orR
   }
 
-  val djNodeId = hnfNodes.head.nodeId
-  val snNodeId = snNodes.head.nodeId
+  val djNodeId = hnfIdSeq.head
+  val snNodeId = snIdSeq.head
   val dj = Module(new DongJiang(hnfNode))
   dj.io <> DontCare
 
@@ -384,8 +387,13 @@ class DongJiangTop()(implicit p: Parameters) extends DJModule {
   val snTxRspToHNF = io.sn.tx.resp.get.valid && isToHNF(snTxRspFlit.TgtID)
   djRxRsp.valid := rnfTxRspToHNF || snTxRspToHNF
   djRxRsp.bits := Mux(rnfTxRspToHNF, io.rnf.tx.resp.get.bits, io.sn.tx.resp.get.bits)
-  io.rnf.tx.resp.get.ready := djRxRsp.ready
-  io.sn.tx.resp.get.ready := djRxRsp.ready && !rnfTxRspToHNF
+  if(isReleaseRTL) {
+    io.rnf.tx.resp.get.ready := true.B /* Notice: Release version does not have txrsp.ready signal */
+    io.sn.tx.resp.get.ready := !rnfTxRspToHNF
+  } else {
+    io.rnf.tx.resp.get.ready := djRxRsp.ready
+    io.sn.tx.resp.get.ready := djRxRsp.ready && !rnfTxRspToHNF
+  }
 
   dontTouch(dj.io)
 }

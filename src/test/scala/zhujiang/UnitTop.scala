@@ -204,8 +204,9 @@ object DongJiangTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   val nrDirBank = 2
   val nrRNF = 4
+  val isReleaseRTL = sys.env.get("RELEASE").isDefined
   (new XsStage).execute(firrtlOpts, firtoolOptsWithDebugInfo ++ Seq(
-    ChiselGeneratorAnnotation(() => new DongJiangTop()(config.alterPartial({
+    ChiselGeneratorAnnotation(() => new DongJiangTop(isReleaseRTL)(config.alterPartial({
       case HardwareAssertionKey => config(HardwareAssertionKey).copy(enable = false)
       case ZJParametersKey => config(ZJParametersKey).copy(
         djParamsOpt = Some(DJParam(
