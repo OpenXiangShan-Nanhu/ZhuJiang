@@ -186,7 +186,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
                                   Mux(fromDCT(io.chiDat.bits.SrcID), Mux(chiEntries(dataTxnid).addr(rni.offset - 1), io.chiDat.bits.DataID === 2.U & io.chiDat.valid, io.chiDat.valid & io.chiDat.bits.DataID === 0.U), io.chiDat.valid))
   io.working                  := headPtr =/= tailPtr
   if(rni.readDMT){
-    io.chiTxRsp.get.valid         := !chiEntries(txRspPtr.value).haveSendAck.get & (txRspPtr =/= rxRspPtr) & chiEntries(txRspPtr.value).rcvDatComp & validVec(txRspPtr.value)
+    io.chiTxRsp.get.valid         := !chiEntries(txRspPtr.value).haveSendAck.get & chiEntries(txRspPtr.value).rcvDatComp & validVec(txRspPtr.value)
     io.chiTxRsp.get.bits          := txRspBdl
   } 
   io.chiDat.ready             := io.wrDB.ready
