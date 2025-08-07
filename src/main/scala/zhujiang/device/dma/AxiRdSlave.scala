@@ -151,7 +151,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 
   private val incrHalf     = Burst.isIncr(uTailE.burst) &  uTailE.exAddr(rni.offset - 1)
   private val wrapHalf     = Burst.isWrap(uTailE.burst) & (uTailE.exAddr(rni.offset - 1) & uTailE.byteMask(rni.offset) | !uTailE.byteMask(rni.offset - 1))
-  private val otherHalf    = (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits- 1, rni.offset)) & (uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U) & (uTailE.exAddr(rni.offset - 1, 0) =/= uTailE.endAddr(rni.offset - 1, 0))
+  private val otherHalf    = (uTailE.exAddr(rni.pageBits - 1, rni.offset) === uTailE.endAddr(rni.pageBits- 1, rni.offset)) & (uTailE.endAddr(rni.offset - 1, 0) <= "b100000".U) & (uTailE.endAddr > uTailE.exAddr)
   txArBdl.len             := Mux(!uTailE.cache(1) | incrHalf | wrapHalf | otherHalf | Burst.isFix(uTailE.burst), 0.U, 1.U)
 
   private val notMerFixLast = (dArEntrys(dataCtrlQ.io.dataOut.bits.idx).nextShift === dArEntrys(dataCtrlQ.io.dataOut.bits.idx).endShift) && (dArEntrys(dataCtrlQ.io.dataOut.bits.idx).merFixLen === 0.U)
