@@ -14,7 +14,7 @@ class StepRREncoder(size: Int, hasLock: Boolean = false, lockCnt: Int = 7) exten
   })
 
   val vipIdxReg = RegInit(0.U(log2Ceil(size).W))
-  val priIdx    = PriorityEncoder(io.inVec)
+  val priIdx    = PriorityEncoder(io.inVec) // TODO
   val lock      = WireInit(false.B)
 
   // Inc logic

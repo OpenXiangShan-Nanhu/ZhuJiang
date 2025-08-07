@@ -31,7 +31,7 @@ class ArbiterGenerator[T <: Bundle](gen:T, size:Int, rr:Boolean, qos: Boolean) e
     // high
     highVec   := VecInit(io.in.map(in => in.valid & in.bits.elements(qosName) === 0xF.U))
     if (rr) {
-      highId  := StepRREncoder(highVec, io.out.fire)
+      highId  := StepRREncoder(highVec, io.out.fire) // TODO
     } else {
       highId  := PriorityEncoder(highId)
     }

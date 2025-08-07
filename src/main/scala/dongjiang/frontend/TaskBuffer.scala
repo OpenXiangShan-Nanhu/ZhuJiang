@@ -173,6 +173,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   /*
    * Send Task & Req
    */
+  // TODO
   val taskVec_s0              = VecInit(entries.map(_.io.chiTask_s0))
   val cancelVec               = VecInit(entries.map(_.io.state).map(s => s.value === FREE | s.value === SLEEP | s.nid =/= 0.U))
   // select task by StepRREncoder to send in s0
