@@ -152,7 +152,7 @@ class PosEntry(implicit p: Parameters) extends DJModule {
   /*
    * Wakeup someone by addr
    */
-  io.wakeup.valid     := RegNext(cleanHit & stateReg.one & stateReg.tagVal)
+  io.wakeup.valid := RegNext(cleanHit & stateReg.one & stateReg.tagVal)
   io.wakeup.bits.Addr.catPoS(io.config.bankId, stateReg.tag, io.hnIdx.pos.set, io.hnIdx.dirBank)
 }
 
@@ -329,6 +329,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
  *  3. canNest: CHI SNP can nest CHI REQ with same addr
  *  4. tagVal : Indicates whether the saved tag is valid
  *  5. tag    : Part of the request address
+ *  6. offset :
  *
  * Special Entry:
  * Entry*: Reserve for LLC Replace

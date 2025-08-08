@@ -49,7 +49,7 @@ class Block(implicit p: Parameters) extends DJModule {
     val pos           = Bool()
     val dir           = Bool()
     val resp          = Bool()
-    def all = pos | dir | resp
+    def any = pos | dir | resp
   })
   dontTouch(block_s1)
 
@@ -67,12 +67,12 @@ class Block(implicit p: Parameters) extends DJModule {
   block_s1.pos        := io.posBlock_s1
   block_s1.dir        := taskReg_s1.chi.memAttr.cacheable & !io.readDir_s1.ready
   block_s1.resp       := blockByDB_s1 | (shouldResp_s1 & !io.fastResp_s1.ready)
-  io.retry_s1         := validReg_s1 & block_s1.all
+  io.retry_s1         := validReg_s1 & block_s1.any
 
   /*
    * Task Out
    */
-  io.task_s1.valid          := validReg_s1 & !block_s1.all
+  io.task_s1.valid          := validReg_s1 & !block_s1.any
   io.task_s1.bits.chi       := taskReg_s1.chi
   io.task_s1.bits.addr      := taskReg_s1.addr
   io.task_s1.bits.qos       := taskReg_s1.qos
