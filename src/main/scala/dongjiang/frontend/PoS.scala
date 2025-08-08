@@ -213,7 +213,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   HardwareAssertion.withEn(PopCount(matTagVec_s0) <= 1.U, io.alloc_s0.valid)
 
   // get free way
-  val useWay_s1       = Mux(allocReg_s1.valid, ~UIntToOH(allocWayReg_s1), Fill(posWays, 1.U))
+  val useWay_s1       = Mux(allocReg_s1.valid, ~UIntToOH(allocWayReg_s1), Fill(posWays, 1.U)) // TODO
   val freeVec_s0      = Cat(esVec.map(!_.valid).reverse) & useWay_s1
   val hasFree_s0      = freeVec_s0(djparam.posWays-3, 0).orR
   val freeWay_s0      = PriorityEncoder(freeVec_s0)
@@ -222,7 +222,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   val blockReq_s0     = Mux(hasMatTag, true.B, !hasFree_s0)
 
   // judge block snp
-  val canNest_s0      = if(hasBBN) hasMatTag & esVec(matTagWay_s0).canNest.get else false.B
+  val canNest_s0      = if(hasBBN) hasMatTag & esVec(matTagWay_s0).canNest.get else false.B // TODO
   val blockSnp_s0     = Mux(hasMatTag, !canNest_s0, !hasFree_s0)
 
   // judge block by s1
@@ -243,9 +243,9 @@ class PosSet(implicit p: Parameters) extends DJModule {
   /*
    * Retrun ack to TaskBuffer and Block
    */
-  io.sleep_s1               := RegNext(io.alloc_s0.valid & hasMatTag & !lockReg)
+  io.sleep_s1               := RegNext(io.alloc_s0.valid & hasMatTag)
   io.block_s1               := RegNext(io.alloc_s0.valid & block_s0) | io.reqPoS.req.valid
-  io.hnIdx_s1.valid         := RegNext(io.alloc_s0.valid) & !io.reqPoS.req.valid
+  io.hnIdx_s1.valid         := RegNext(io.alloc_s0.valid) & !io.reqPoS.req.valid // TODO: del it
   io.hnIdx_s1.bits.dirBank  := io.dirBank
   io.hnIdx_s1.bits.pos.set  := io.posSet
   io.hnIdx_s1.bits.pos.way  := allocWayReg_s1
@@ -269,7 +269,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
    */
   val freeVec    = Cat(esVec.map(!_.valid).reverse)
   val replSelWay = PriorityMux(Seq(
-    freeVec(djparam.posWays-3, 0).orR -> PriorityEncoder(freeVec),
+    freeVec(djparam.posWays-3, 0).orR -> PriorityEncoder(freeVec), // TODO
     io.reqPoS.req.bits.isReq          -> (posWays-2).U,
     io.reqPoS.req.bits.isSnp          -> (posWays-1).U
   ))
@@ -283,7 +283,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   entries.zipWithIndex.foreach { case(e, i) =>
     // hit
     val replReqHit  = io.reqPoS.req.fire & replSelWay === i.U
-    val allocHit    = allocReg_s1.valid  & !io.retry_s1 & allocWayReg_s1 === i.U
+    val allocHit    = allocReg_s1.valid  & !io.retry_s1 & allocWayReg_s1 === i.U // TODO
     replReqHit.suggestName(f"replReqHit_${i}")
     allocHit.suggestName(f"allocHit${i}")
     // connect
@@ -291,7 +291,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
     e.io.hnIdx.dirBank      := io.dirBank
     e.io.hnIdx.pos.set      := io.posSet
     e.io.hnIdx.pos.way      := i.U
-    e.io.alloc.valid        := replReqHit | allocHit
+    e.io.alloc.valid        := Mux(io.reqPoS.req.valid, replReqHit, allocHit)
     e.io.alloc.bits.addrVal := !io.reqPoS.req.valid
     e.io.alloc.bits.addr    := Mux(io.reqPoS.req.valid, 0.U, allocReg_s1.bits.addr)
     e.io.alloc.bits.channel := Mux(io.reqPoS.req.valid, io.reqPoS.req.bits.channel, allocReg_s1.bits.channel)
@@ -302,7 +302,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
       e.io.updNest.get      := io.updNest.get
     }
   }
-  io.wakeup                 := fastArb(entries.map(_.io.wakeup))
+  io.wakeup                 := fastArb(entries.map(_.io.wakeup)) // TODO
   //HAssert
   HAssert.withEn(!VecInit(esVec.map(es => es.valid & es.tagVal & es.addr === allocReg_s1.bits.addr)).asUInt.orR, allocReg_s1.valid)
   HAssert.withEn(!VecInit(esVec.map(es => es.valid & es.tagVal & es.addr === io.updTag.bits.addr)).asUInt.orR, io.updTag.valid & io.updTag.bits.addrVal)
