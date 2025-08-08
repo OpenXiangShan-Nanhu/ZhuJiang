@@ -198,7 +198,14 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   rdDBQueue.io.enq.bits       := rdDBQBdl
   rdDBQueue.io.deq.ready      := io.rdDB.ready & io.rdDB.bits.last
 
+/* 
+ * Assertion
+ */
   when(rcvIsRct){
     assert(rctTxnid === rxRspPtr.value, "ReadReceipt Txnid is error!")
   }
+
+  assert(rxRspPtr <= txReqPtr)
+  assert(txReqPtr <= reqDBPtr)
+  assert(reqDBPtr <= headPtr)
 }
