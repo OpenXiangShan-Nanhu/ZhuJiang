@@ -82,7 +82,7 @@ class SendReg(node: Node)(implicit p: Parameters) extends ZJModule {
   sendQueue.io.enq.bits.id     := RegEnable(io.dataIn.bits.id, io.dataIn.fire)
   sendQueue.io.enq.bits.idx    := RegEnable(io.dataIn.bits.idx, io.dataIn.fire)
   sendQueue.io.enq.bits.resp   := RegEnable(io.dataIn.bits.resp, io.dataIn.fire)
-  sendQueue.io.deq.ready       := ((io.ptr.nextShift === io.ptr.endShift) & (io.ptr.merFixLen === 0.U) || io.ptr.merFixLen === 1.U) && io.dataOut.fire
+  sendQueue.io.deq.ready       := ((io.ptr.nextShift === io.ptr.endShift) & (io.ptr.merFixLen === 0.U) || io.ptr.merFixLen === 1.U) && io.dataOut.ready
 
 
   io.dataIn.ready         := !mergeComp || sendQueue.io.enq.ready
