@@ -44,11 +44,11 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val arbRspOut   = Wire(chiWrMaster.io.chiTxRsp.cloneType)
   private val rxArQueue   = Module(new Queue(gen = new AxiBundle(axiParams).ar.bits, entries = 2, pipe = false, flow = false))
   private val rxAwQueue   = Module(new Queue(gen = new AxiBundle(axiParams).aw.bits, entries = 2, pipe = false, flow = false))
-  private val rxRspQueue  = Module(new Queue(gen = icn.rx.resp.get.bits.cloneType, entries = 2, pipe = false, flow = false))
+  private val rxRspPipe   = Pipe(icn.rx.resp.get.fire, icn.rx.resp.get.bits)
 
-  axi.ar               <> rxArQueue.io.enq
-  axi.aw               <> rxAwQueue.io.enq
-  icn.rx.resp.get      <> rxRspQueue.io.enq
+  axi.ar                <> rxArQueue.io.enq
+  axi.aw                <> rxAwQueue.io.enq
+  icn.rx.resp.get.ready := true.B
 
   axiRdSlave.io.dAxiAr <> chiRdMaster.io.axiAr
   axiRdSlave.io.dAxiR  <> rdDB.io.axiR
@@ -73,6 +73,15 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   wrDB.io.rdDB         <> chiWrMaster.io.rdDB
   wrDB.io.wrDB         <> chiWrMaster.io.wrDB
 
+  chiRdMaster.io.chiRxRsp.valid := rxRspPipe.valid
+  chiRdMaster.io.chiRxRsp.bits  := rxRspPipe.bits
+
+  chiWrMaster.io.chiRxRsp.valid := rxRspPipe.valid
+  chiWrMaster.io.chiRxRsp.bits  := rxRspPipe.bits
+  assert(chiRdMaster.io.chiRxRsp.ready, "if ready is false, please use Queue, Do not use Pipe")
+  assert(chiWrMaster.io.chiRxRsp.ready, "if ready is false, please use Queue, Do not use Pipe")
+
+
   FastArbiter(Seq(chiRdMaster.io.chiReq      , chiWrMaster.io.chiReq  ), arbReqOut)
   FastArbiter(Seq(chiRdMaster.io.chiTxRsp.get, chiWrMaster.io.chiTxRsp), arbRspOut)
 
@@ -86,7 +95,5 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   connIcn(icn.tx.resp.get        , arbRspOut      )
   connIcn(icn.tx.data.get        , wrDB.io.dData  )
   connIcn(chiRdMaster.io.chiDat  , icn.rx.data.get)
-  connIcn(chiRdMaster.io.chiRxRsp, rxRspQueue.io.deq)
-  connIcn(chiWrMaster.io.chiRxRsp, rxRspQueue.io.deq)
   MbistPipeline.PlaceMbistPipeline(1, "MbistPipelineRni", hasMbist)
 }

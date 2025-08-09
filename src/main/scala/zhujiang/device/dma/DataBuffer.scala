@@ -76,18 +76,15 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
     hasMbist = hasMbist
   ))
 
-  private val wrRamQ = Module(new Queue(new writeRdDataBuffer(bufferSize), entries = 2, flow = false, pipe = false))
+  private val wrRamPipe = Pipe(io.writeDataReq.fire, io.writeDataReq.bits)
   private val readRamStage1Pipe = Module(new Queue(new readRdDataBuffer(bufferSize, axiParams), entries = 1, pipe = false))
   private val readRamStage2Pipe = Module(new Queue(new respDataBuffer(bufferSize), entries = 2, pipe = false))
   private val rFlitBdl = WireInit(0.U.asTypeOf(new RFlit(axiParams)))
 
-  wrRamQ.io.deq.ready := dataRam.io.wreq.ready
 
-  wrRamQ.io.enq <> io.writeDataReq
-
-  dataRam.io.wreq.valid := wrRamQ.io.deq.valid
-  dataRam.io.wreq.bits.data(0) := wrRamQ.io.deq.bits.data
-  dataRam.io.wreq.bits.addr := wrRamQ.io.deq.bits.set
+  dataRam.io.wreq.valid := wrRamPipe.valid
+  dataRam.io.wreq.bits.data(0) := wrRamPipe.bits.data
+  dataRam.io.wreq.bits.addr := wrRamPipe.bits.set
 
   readRamStage1Pipe.io.enq.valid := io.readDataReq.valid
   readRamStage1Pipe.io.enq.bits.id := io.readDataReq.bits.id
@@ -117,8 +114,11 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   io.readDataReq.ready := readRamStage1Pipe.io.enq.ready
   io.readDataResp.valid := readRamStage2Pipe.io.deq.valid
   io.readDataResp.bits := rFlitBdl
+  io.writeDataReq.ready := true.B
   io.relSet.valid := readRamStage1Pipe.io.deq.fire
   io.relSet.bits := readRamStage1Pipe.io.deq.bits.set
+
+  assert(dataRam.io.wreq.ready, "if ready is false, please use Queue, Do not use Pipe")
 }
 
 class DataBufferForRead(node: Node)(implicit p: Parameters) extends ZJModule {
@@ -166,7 +166,7 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
 
   private val maskRam = RegInit(0.U.asTypeOf(Vec(bufferSize, UInt(bew.W))))
 
-  private val wrRamQ = Module(new Queue(new writeWrDataBuffer(bufferSize), entries = 2, flow = false, pipe = false))
+  private val wrRamPipe = Pipe(io.writeDataReq.fire, io.writeDataReq.bits)
   private val rdRamQ = Module(new Queue(new readWrDataBuffer(bufferSize), entries = 2, flow = false, pipe = false))
   private val readRamState1Pipe = Module(new Queue(new readWrDataBuffer(bufferSize), entries = 1, pipe = true))
   private val readRamStage2Pipe = Module(new Queue(new DataFlit, entries = 1, pipe = true))
@@ -174,22 +174,19 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
 
   maskRam.zipWithIndex.foreach {
     case (m, i) =>
-      when(wrRamQ.io.deq.fire & wrRamQ.io.deq.bits.set === i.U) {
-        m := wrRamQ.io.deq.bits.mask | m
+      when(wrRamPipe.valid & wrRamPipe.bits.set === i.U) {
+        m := wrRamPipe.bits.mask | m
       }.elsewhen(readRamState1Pipe.io.deq.fire & readRamState1Pipe.io.deq.bits.set === i.U) {
         m := 0.U
       }
   }
 
-  wrRamQ.io.deq.ready := dataRam.io.wreq.ready
-  wrRamQ.io.enq <> io.writeDataReq
+  wDataVec := wrRamPipe.bits.data.asTypeOf(wDataVec)
 
-  wDataVec := wrRamQ.io.deq.bits.data.asTypeOf(wDataVec)
-
-  dataRam.io.wreq.valid := wrRamQ.io.deq.valid
+  dataRam.io.wreq.valid := wrRamPipe.valid
   dataRam.io.wreq.bits.data := wDataVec
-  dataRam.io.wreq.bits.mask.get := wrRamQ.io.deq.bits.mask
-  dataRam.io.wreq.bits.addr := wrRamQ.io.deq.bits.set
+  dataRam.io.wreq.bits.mask.get := wrRamPipe.bits.mask
+  dataRam.io.wreq.bits.addr := wrRamPipe.bits.set
 
   dataRam.io.rreq.valid := rdRamQ.io.deq.valid & readRamState1Pipe.io.enq.ready
   dataRam.io.rreq.bits := rdRamQ.io.deq.bits.set
@@ -210,8 +207,11 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
   readRamStage2Pipe.io.enq.bits.TgtID := readRamState1Pipe.io.deq.bits.tgtId
 
   io.readDataResp <> readRamStage2Pipe.io.deq
+  io.writeDataReq.ready := true.B
   io.relSet.valid := readRamState1Pipe.io.deq.fire
   io.relSet.bits := readRamState1Pipe.io.deq.bits.set
+
+  assert(dataRam.io.wreq.ready, "if ready is false, please use Queue, Do not use Pipe")
 }
 
 class DataBufferForWrite(bufferSize: Int, ctrlSize: Int)(implicit p: Parameters) extends ZJModule {
