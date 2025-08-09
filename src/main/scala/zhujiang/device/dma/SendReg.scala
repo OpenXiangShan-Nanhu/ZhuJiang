@@ -56,6 +56,7 @@ class SendReg(node: Node)(implicit p: Parameters) extends ZJModule {
  */
   private val sendQueue = Module(new Queue(gen = new RBundle(node), entries = 2, pipe = false, flow = false))
   private val mergeData = RegInit(VecInit.fill(2){0.U(dw.W)})
+  private val mergeComp = RegInit(false.B)
 
   mergeData.zipWithIndex.foreach {
     case(e, i) => 
@@ -63,10 +64,20 @@ class SendReg(node: Node)(implicit p: Parameters) extends ZJModule {
         e   := io.dataIn.bits.data
       }
   }
+  private val dataComeComp = io.dataIn.fire & io.dataIn.bits.last
+  private val dataEnqSendQ = sendQueue.io.enq.fire
+
+  mergeComp := PriorityMux(Seq(
+    dataComeComp -> true.B,
+    dataEnqSendQ -> false.B,
+    true.B       -> mergeComp
+  ))
+
+
 /* 
  * IO Connection Logic
  */
-  sendQueue.io.enq.valid       := RegNext(io.dataIn.fire & io.dataIn.bits.last, false.B)
+  sendQueue.io.enq.valid       := mergeComp
   sendQueue.io.enq.bits.data   := mergeData
   sendQueue.io.enq.bits.id     := RegEnable(io.dataIn.bits.id, io.dataIn.fire)
   sendQueue.io.enq.bits.idx    := RegEnable(io.dataIn.bits.idx, io.dataIn.fire)
@@ -74,7 +85,7 @@ class SendReg(node: Node)(implicit p: Parameters) extends ZJModule {
   sendQueue.io.deq.ready       := ((io.ptr.nextShift === io.ptr.endShift) & (io.ptr.merFixLen === 0.U) || io.ptr.merFixLen === 1.U) && io.dataOut.fire
 
 
-  io.dataIn.ready         := sendQueue.io.enq.ready & !(sendQueue.io.deq.valid & !sendQueue.io.deq.ready) || !io.dataIn.bits.last
+  io.dataIn.ready         := !mergeComp || sendQueue.io.enq.ready
   io.dataOut.valid        := sendQueue.io.deq.valid
   io.dataOut.bits.data    := sendQueue.io.deq.bits.data(io.ptr.outBeat)
   io.dataOut.bits.id      := sendQueue.io.deq.bits.id
