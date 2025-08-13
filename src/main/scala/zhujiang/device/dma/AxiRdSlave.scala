@@ -131,14 +131,11 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 
   txArBdl                       := 0.U.asTypeOf(txArBdl)
   private val specWrapModify     = uTailE.cache(1) & (uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1))
-  private val lessWrapModify     = uTailE.cache(1) & Burst.isWrap(uTailE.burst)   & !uTailE.byteMask(rni.offset - 1)
   private val specWrapModifyAddr = Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset), 0.U(rni.offset.W))
-  private val lessWrapModifyAddr = Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U((rni.offset - 1).W))
   private val defaultNoMerAddr   = Cat(uTailE.preAddr, uTailE.exAddr)
   private val defaultMerAddr     = Cat(uTailE.preAddr, uTailE.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U((rni.offset - 1).W))
   txArBdl.addr      := PriorityMux(Seq(
     specWrapModify  -> specWrapModifyAddr,
-    lessWrapModify  -> lessWrapModifyAddr,
     uTailE.cache(1) -> defaultMerAddr,
     true.B          -> defaultNoMerAddr
   ))
