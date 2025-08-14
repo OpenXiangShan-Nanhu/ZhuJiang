@@ -17,6 +17,7 @@ import zhujiang.utils.SramPwrCtlBoring
 import dongjiang.directory.DIR._
 
 object DIR {
+  // TODO
   val D0 = 4
   val D1 = 3
   val D2 = 2
@@ -49,6 +50,7 @@ class Shift(implicit p: Parameters) extends DJBundle {
   def req           = read | write
   def tagMetaReady  = if(dirMuticycle > 1) !req(hi, lo).orR else true.B
   def replWillWrite = (repl & read).orR // when it is repl read, cant receive new req
+  // TODO: block (0, mc-2)with all; block (lat-mc, lat-1) with read&repl
 }
 
 class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) extends DJModule {
@@ -197,10 +199,11 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   // --------------------------- [D0]: Receive req and read/write SRAM / [D4]: Write SRAM  -------------------------------- //
   // ---------------------------------------------------------------------------------------------------------------------- //
   // sram read/write type                                                                                 // (read, write, repl)
-  val writeHit_d0 = io.write.fire &  io.write.bits.hit & shiftReg.tagMetaReady & !shiftReg.replWillWrite  // (0,    1,     0   ) -> read  repl / write repl (wriUpdRepl_d4)
-  val wriNoHit_d0 = io.write.fire & !io.write.bits.hit & shiftReg.tagMetaReady & !shiftReg.replWillWrite  // (1,    0,     1   ) -> read  repl / write repl (updTagMeta_d4)
-  val read_d0     = io.read.fire                       & shiftReg.tagMetaReady & !shiftReg.replWillWrite  // (1,    0,     0   ) -> read  repl / write repl when hit
-  val repl_d0     = shiftReg.updTagMeta_d4                                                                // (0,    1,     1   )
+  // TODO
+  val writeHit_d0 = io.write.fire &  io.write.bits.hit // (0,    1,     0   ) -> read  repl / write repl (wriUpdRepl_d4)
+  val wriNoHit_d0 = io.write.fire & !io.write.bits.hit // (1,    0,     1   ) -> read  repl / write repl (updTagMeta_d4)
+  val read_d0     = io.read.fire                       // (1,    0,     0   ) -> read  repl / write repl when hit
+  val repl_d0     = shiftReg.updTagMeta_d4             // (0,    1,     1   )
 
   // common
   val reqSet_d0 = Mux(repl_d0, req_d4.Addr.set, Mux(io.write.valid, io.write.bits.Addr.set, io.read.bits.Addr.set))
@@ -265,8 +268,8 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   val replSetMatch_d1_d4 = req_d4.Addr.set === reqSftReg(D1).Addr.set & replArray.io.wreq.fire
   val replSetMatch_d2_d4 = req_d4.Addr.set === reqSftReg(D2).Addr.set & replArray.io.wreq.fire
   replMes_d2          := PriorityMux(Seq(
-    RegNext(replSetMatch_d1_d4) -> RegEnable(newReplMesReg_d4, replSetMatch_d1_d4), // D4 -> D1 -> D2
     replSetMatch_d2_d4          -> newReplMesReg_d4,                                // D4 -> D2
+    RegNext(replSetMatch_d1_d4) -> RegEnable(newReplMesReg_d4, replSetMatch_d1_d4), // D4 -> D1 -> D2
     true.B                      -> replArray.io.rresp.bits(0)                       // Array -> D2
   ))
   val replRespNeedVal = shiftReg.read(D2) | (shiftReg.write(D2) & !shiftReg.repl(D2))
@@ -377,9 +380,9 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
       wriRepl.suggestName (f"unLockHit_${i}_${j}")
 
       // get state
+      // TODO: optmize it
       val dontCare  = Cat(lock.valid, lock.valid)
       val state     = PriorityMux(Seq(
-        unLockHit   -> Cat(lock.valid, false.B),
         readMiss    -> "b00".U,
         readHit     -> "b01".U,
         write       -> dontCare,
@@ -392,13 +395,14 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
       val (oldLock, newLock) = (state(1), state(0))
       oldLock.suggestName(f"oldLock_${i}_${j}")
       newLock.suggestName(f"newLock_${i}_${j}")
-      when(!oldLock & newLock) {
-        lockNext(i)(j).valid  := true.B
-        lockNext(i)(j).set    := reqSet_d3
-        lockNext(i)(j).way    := selWay_d3
-      }.elsewhen(!newLock) {
-        lockNext(i)(j).valid  := false.B
+      when(unLockHit) {
+        lockNext(i)(j).valid := false.B
+      }.elsewhen(reqHit & (!oldLock & newLock)) {
+        lockNext(i)(j).valid := true.B
+        lockNext(i)(j).set := reqSet_d3
+        lockNext(i)(j).way := selWay_d3
       }
+
 
       // HAssert
       HAssert(!(readMiss & readHit & readRepl & unLockHit), cf"Lock Table Index[${i.U}][${j.U}]")
