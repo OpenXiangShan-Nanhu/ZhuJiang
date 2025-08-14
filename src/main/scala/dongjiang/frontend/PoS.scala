@@ -243,9 +243,9 @@ class PosSet(implicit p: Parameters) extends DJModule {
   /*
    * Retrun ack to TaskBuffer and Block
    */
-  io.sleep_s1               := RegNext(io.alloc_s0.valid & hasMatTag & !lockReg)
+  io.sleep_s1               := RegNext(io.alloc_s0.valid & hasMatTag)
   io.block_s1               := RegNext(io.alloc_s0.valid & block_s0) | io.reqPoS.req.valid
-  io.hnIdx_s1.valid         := RegNext(io.alloc_s0.valid) & !io.reqPoS.req.valid
+  io.hnIdx_s1.valid         := RegNext(io.alloc_s0.valid) & !io.reqPoS.req.valid // TODO: del it
   io.hnIdx_s1.bits.dirBank  := io.dirBank
   io.hnIdx_s1.bits.pos.set  := io.posSet
   io.hnIdx_s1.bits.pos.way  := allocWayReg_s1
@@ -283,7 +283,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   entries.zipWithIndex.foreach { case(e, i) =>
     // hit
     val replReqHit  = io.reqPoS.req.fire & replSelWay === i.U
-    val allocHit    = allocReg_s1.valid  & !io.retry_s1 & allocWayReg_s1 === i.U
+    val allocHit    = allocReg_s1.valid  & !io.retry_s1 & allocWayReg_s1 === i.U // TODO: optimize hit logic
     replReqHit.suggestName(f"replReqHit_${i}")
     allocHit.suggestName(f"allocHit${i}")
     // connect
@@ -291,7 +291,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
     e.io.hnIdx.dirBank      := io.dirBank
     e.io.hnIdx.pos.set      := io.posSet
     e.io.hnIdx.pos.way      := i.U
-    e.io.alloc.valid        := replReqHit | allocHit
+    e.io.alloc.valid        := Mux(io.reqPoS.req.valid, replReqHit, allocHit)
     e.io.alloc.bits.addrVal := !io.reqPoS.req.valid
     e.io.alloc.bits.addr    := Mux(io.reqPoS.req.valid, 0.U, allocReg_s1.bits.addr)
     e.io.alloc.bits.channel := Mux(io.reqPoS.req.valid, io.reqPoS.req.bits.channel, allocReg_s1.bits.channel)
@@ -302,8 +302,9 @@ class PosSet(implicit p: Parameters) extends DJModule {
       e.io.updNest.get      := io.updNest.get
     }
   }
-  io.wakeup                 := fastArb(entries.map(_.io.wakeup))
+  io.wakeup                 := Mux1H(entries.map(_.io.wakeup.valid), entries.map(_.io.wakeup))
   //HAssert
+  HAssert(PopCount(entries.map(_.io.wakeup.valid)) <= 1.U)
   HAssert.withEn(!VecInit(esVec.map(es => es.valid & es.tagVal & es.addr === allocReg_s1.bits.addr)).asUInt.orR, allocReg_s1.valid)
   HAssert.withEn(!VecInit(esVec.map(es => es.valid & es.tagVal & es.addr === io.updTag.bits.addr)).asUInt.orR, io.updTag.valid & io.updTag.bits.addrVal)
 }
@@ -406,8 +407,8 @@ class PosTable(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
    */
   io.sleep_s1     := Cat(sets.map(_.io.sleep_s1)).orR
   io.block_s1     := Cat(sets.map(_.io.block_s1)).orR
-  io.hnIdx_s1     := fastArb(sets.map(_.io.hnIdx_s1)).bits
-  io.wakeup       := fastArb(sets.map(_.io.wakeup))
+  io.hnIdx_s1     := Mux1H(sets.map(_.io.hnIdx_s1.valid), sets.map(_.io.hnIdx_s1.bits))
+  io.wakeup       := Mux1H(sets.map(_.io.wakeup.valid), sets.map(_.io.wakeup))
   io.reqPoS.resp  := VecInit(sets.map(_.io.reqPoS.resp))(io.reqPoS.req.bits.pos.set)
   // HAssert
   HAssert(PopCount(sets.map(_.io.hnIdx_s1.valid)) <= 1.U)
