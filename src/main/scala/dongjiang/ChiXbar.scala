@@ -52,7 +52,6 @@ class ChiXbar(implicit p: Parameters) extends DJModule {
     // cBusy
     val cBusy     = Input(UInt(3.W))
   })
-  dontTouch(io)
   require(nrIcn <= 3)
   require(nrLanIcn <= 2)
 

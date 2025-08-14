@@ -22,7 +22,6 @@ class DBIDPool(implicit p: Parameters) extends DJModule {
     val deq0    = Decoupled(UInt(dbIdBits.W))
     val deq1    = Decoupled(UInt(dbIdBits.W))
   })
-  dontTouch(io)
   require(djparam.nrBeat == 2)
 
   val q0 = Module(new FastQueue(UInt(dbIdBits.W), djparam.nrDataBuf/2, false))

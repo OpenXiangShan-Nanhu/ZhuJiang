@@ -67,7 +67,6 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
     val resp      = Valid(new DirEntry(dirType) with HasHnTxnID { val toRepl = Bool() })
     val unlock    = Flipped(Valid(new PackHnIdx))
   })
-  dontTouch(io)
 
   require(readDirLatency == 4)
   require(dirMuticycle == 2)

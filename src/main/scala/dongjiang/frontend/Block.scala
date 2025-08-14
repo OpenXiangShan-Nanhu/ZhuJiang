@@ -34,7 +34,6 @@ class Block(implicit p: Parameters) extends DJModule {
     // Resp to RN: ReadReceipt, DBIDResp
     val fastResp_s1   = Decoupled(new RespFlit)
   })
-  dontTouch(io)
 
   /*
    * Reg and Wire declaration
