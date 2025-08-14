@@ -63,7 +63,7 @@ trait HasNodeId { this: DJBundle =>
       }
       // BBN
       val _bbn_nodeId = WireInit(0.U(nodeIdBits.W))
-      _bbn_nodeId := (metaId - nrCcNode.U) << bbnBBits // bbNBId will be remap in BBN Router
+      _bbn_nodeId := (metaId - nrCcNode.U) << bbnBBits // bbNBId will be remap in BBN Router // TODO: Consider the missing self
       // Set value
       this.fromLAN := _fromLAN
       this.nodeId := Mux(_fromLAN, _lan_nodeId, _bbn_nodeId)
