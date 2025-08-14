@@ -35,7 +35,7 @@ class TaskState(implicit p: Parameters) extends DJBundle {
 // ----------------------------------------------------------------------------------------------------- //
 // ------------------------------------------ Task Buffer Entry ---------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJModule {
+class TaskEntry(nidBits: Int, sort: Boolean, timeout: Int)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
@@ -55,14 +55,27 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
       val value     = UInt(TaskState.width.W)
       val release   = Bool()
       val nid       = UInt(nidBits.W)
+      val lock      = Bool()
     })
   })
 
   /*
    * Reg and Wire declaration
    */
-  val taskReg = RegInit((new TaskState with HasPackChi with HasAddr with HasQoS).Lit(_.state -> FREE))
-  val nidReg  = if(sort) Some(Reg(UInt(nidBits.W))) else None
+  val taskReg     = RegInit((new TaskState with HasPackChi with HasAddr with HasQoS).Lit(_.state -> FREE))
+  val nidReg      = if(sort) Some(Reg(UInt(nidBits.W))) else None
+  val retryNumReg = Reg(UInt(log2Ceil(timeout).W))
+  val timeoutReg  = RegNext(retryNumReg === (timeout-1).U)
+  require(isPow2(timeout))
+
+  /*
+   * Check retry timeout
+   */
+  when(taskReg.isFree) {
+    retryNumReg   := 0.U
+  }.elsewhen(!timeoutReg & taskReg.isWait & io.retry_s1) {
+    retryNumReg   := retryNumReg + 1.U
+  }
 
   /*
    * Receive ChiTask
@@ -98,6 +111,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
   io.state.addr     := taskReg.addr
   io.state.value    := taskReg.state
   io.state.nid      := nidReg.getOrElse(0.U)
+  io.state.lock     := (taskReg.isSend | taskReg.isWait) & timeoutReg
   HAssert(!(io.state.valid & io.state.release))
 
   /*
@@ -139,7 +153,7 @@ class TaskEntry(nidBits: Int, sort: Boolean)(implicit p: Parameters) extends DJM
 // ----------------------------------------------------------------------------------------------------- //
 // -------------------------------------------- Task Buffer -------------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
-class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends DJModule {
+class TaskBuffer(nrEntries: Int, sort: Boolean, timeout: Int = 8)(implicit p: Parameters) extends DJModule {
   /*
    * IO declaration
    */
@@ -160,8 +174,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   /*
    * Module and Wire declaration
    */
-  val entries       = Seq.fill(nrEntries) { Module(new TaskEntry(log2Ceil(nrEntries), sort)) }
-  val selRREncoder  = Module(new StepRREncoder(nrEntries, hasLock = true))
+  val entries       = Seq.fill(nrEntries) { Module(new TaskEntry(log2Ceil(nrEntries), sort, timeout)) }
   val debugVec      = WireInit(VecInit(entries.map(_.io.state)))
   dontTouch(debugVec)
 
@@ -171,19 +184,19 @@ class TaskBuffer(nrEntries: Int, sort: Boolean)(implicit p: Parameters) extends 
   Alloc(entries.map(_.io.chiTaskIn), io.chiTaskIn)
 
   /*
-   * Send Task & Req
+   * Send Task S0
    */
-  val taskVec_s0              = VecInit(entries.map(_.io.chiTask_s0))
-  val cancelVec               = VecInit(entries.map(_.io.state).map(s => s.value === FREE | s.value === SLEEP | s.nid =/= 0.U))
-  // select task by StepRREncoder to send in s0
-  selRREncoder.io.inVec       := VecInit(taskVec_s0.map(_.valid))
-  selRREncoder.io.enable      := cancelVec(selRREncoder.io.vipIdx)
-  val selId_s0                = selRREncoder.io.outIdx
-  taskVec_s0.zipWithIndex.foreach { case(t, i) => t.ready := io.chiTask_s0.ready & selId_s0 === i.U }
-  // connect
-  io.chiTask_s0.valid         := taskVec_s0(selId_s0).valid
-  io.chiTask_s0.bits          := taskVec_s0(selId_s0).bits
-  io.lockTask                 := selRREncoder.io.lock
+  val taskVec_s0    = VecInit(entries.map(_.io.chiTask_s0))
+  val lockVec       = VecInit(entries.map(_.io.state.lock))
+  val lockIdx       = PriorityEncoder(lockVec)
+  val hasLockReg    = RegNext(lockVec.asUInt.orR)
+  when(hasLockReg) {
+    taskVec_s0.foreach(_.ready := false.B)
+    io.chiTask_s0 <> taskVec_s0(lockIdx)
+  }.otherwise {
+    io.chiTask_s0 <> fastRRArb(taskVec_s0)
+  }
+  io.lockTask       := hasLockReg
 
   /*
    * Connect Ctrl Signals
