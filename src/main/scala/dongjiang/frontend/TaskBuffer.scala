@@ -71,9 +71,9 @@ class TaskEntry(nidBits: Int, sort: Boolean, timeout: Int)(implicit p: Parameter
   /*
    * Check retry timeout
    */
-  when(taskReg.isFree) {
+  when(io.chiTaskIn.fire) {
     retryNumReg   := 0.U
-  }.elsewhen(!timeoutReg & taskReg.isWait & io.retry_s1) {
+  }.elsewhen((retryNumReg < (timeout-1).U) & taskReg.isWait & io.retry_s1) {
     retryNumReg   := retryNumReg + 1.U
   }
 
