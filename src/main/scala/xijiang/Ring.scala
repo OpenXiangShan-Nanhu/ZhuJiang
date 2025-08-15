@@ -44,6 +44,7 @@ class Ring(implicit p: Parameters) extends ZJModule {
         resetDev.reset := reset
         r.icn.resetInject.get := resetDev.io.resetInject
         resetDev.io.resetState := r.icn.resetState.get
+        resetDev.io.dft := dfx_reset
         reset_state.get := resetDev.io.onReset
       }
       (None, n)
