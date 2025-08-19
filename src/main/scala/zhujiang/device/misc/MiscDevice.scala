@@ -1,7 +1,7 @@
 package zhujiang.device.misc
 
 import chisel3._
-import chisel3.util.{Arbiter, Cat, Decoupled, Queue, log2Ceil}
+import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xijiang.router.base.DeviceIcnBundle
@@ -9,8 +9,8 @@ import xs.utils.{DFTResetSignals, ResetGen}
 import xs.utils.debug.HardwareAssertionKey
 import xs.utils.mbist.MbistPipeline
 import xs.utils.queue.FastQueue
-import xs.utils.sram.{SinglePortSramTemplate, SpSramReq}
-import zhujiang.axi.{AxiBundle, AxiLiteParams, RFlit}
+import xs.utils.sram.{SinglePortSramTemplate, SpSramReq, SpSramResp}
+import zhujiang.axi._
 import zhujiang.chi.FlitHelper.extractHwaId
 import zhujiang.{ZJBundle, ZJModule}
 import zhujiang.chi.{NodeIdBundle, RingFlit}
@@ -24,6 +24,91 @@ class HwaCollectorEntry(implicit p:Parameters) extends ZJBundle {
   val vld = Bool()
   val src = UInt(niw.W)
   val id = UInt(p(HardwareAssertionKey).maxInfoBits.W)
+}
+
+class AxiLiteWrMachine(axiP:AxiParams)(implicit p:Parameters) extends Module {
+  private val hwaP = p(HardwareAssertionKey)
+  private val entryBits = (new HwaCollectorEntry).getWidth
+
+  val io = IO(new Bundle {
+    val aw = Flipped(Decoupled(new AWFlit(axiP)))
+    val w = Flipped(Decoupled(new WFlit(axiP)))
+    val b = Decoupled(new BFlit(axiP))
+    val req = Decoupled(new SpSramReq(UInt(entryBits.W), hwaP.hwaDevDepth, 1))
+  })
+  private val awvld = RegInit(false.B)
+  private val awbits = RegEnable(io.aw.bits, io.aw.fire)
+  private val wvld = RegInit(false.B)
+  private val wbits = RegEnable(io.w.bits, io.w.fire)
+  private val bvld = RegInit(false.B)
+
+  io.aw.ready := !awvld
+  io.w.ready := awvld && !wvld
+  io.b.valid := bvld
+  io.b.bits.user := awbits.user
+  io.b.bits.resp := 0.U
+  io.b.bits.id := awbits.id
+  when(io.b.fire) {
+    awvld := false.B
+  }.elsewhen(io.aw.fire) {
+    awvld := true.B
+  }
+  when(io.b.fire) {
+    wvld := false.B
+  }.elsewhen(io.w.fire) {
+    wvld := true.B
+  }
+  when(io.b.fire) {
+    bvld := false.B
+  }.elsewhen(io.req.fire) {
+    bvld := true.B
+  }
+  io.req.valid := awvld && wvld
+  io.req.bits.addr := awbits.addr.head(log2Ceil(hwaP.hwaDevDepth))
+  io.req.bits.data.foreach(_ := wbits.data)
+  io.req.bits.write := true.B
+}
+
+class AxiLiteRdMachine(axiP:AxiParams)(implicit p:Parameters) extends Module {
+  private val hwaP = p(HardwareAssertionKey)
+  private val entryBits = (new HwaCollectorEntry).getWidth
+  val io = IO(new Bundle {
+    val ar = Flipped(Decoupled(new AWFlit(axiP)))
+    val r = Decoupled(new RFlit(axiP))
+    val req = Decoupled(new SpSramReq(UInt(entryBits.W), hwaP.hwaDevDepth, 1))
+    val resp = Flipped(Valid(new SpSramResp(UInt(entryBits.W), 1)))
+  })
+  private val arvld = RegInit(false.B)
+  private val arbits = RegEnable(io.ar.bits, io.ar.fire)
+  private val rvld = RegInit(false.B)
+  private val rdata = RegEnable(io.resp.bits.data.head, io.resp.valid)
+  private val reqFired = RegInit(false.B)
+
+  io.ar.ready := !arvld
+  io.r.valid := rvld
+  io.r.bits.data := rdata
+  io.r.bits.id := arbits.id
+  io.r.bits.resp := 0.U
+  io.r.bits.user := arbits.user
+  when(io.r.fire) {
+    arvld := false.B
+  }.elsewhen(io.ar.fire) {
+    arvld := true.B
+  }
+  when(io.r.fire) {
+    rvld := false.B
+  }.elsewhen(io.resp.valid) {
+    rvld := true.B
+  }
+  when(io.r.fire) {
+    reqFired := false.B
+  }.elsewhen(io.req.fire) {
+    reqFired := true.B
+  }
+  io.req.valid := arvld && !reqFired
+  io.req.bits.addr := arbits.addr.head(log2Ceil(hwaP.hwaDevDepth))
+  io.req.bits.data.foreach(_ := DontCare)
+  io.req.bits.write := false.B
 }
 
 class HardwareAssertionDevice(implicit p:Parameters) extends ZJModule {
@@ -45,54 +130,34 @@ class HardwareAssertionDevice(implicit p:Parameters) extends ZJModule {
     suffix  = "_hwa",
     hasMbist = hasMbist
   ))
-  private val arb = Module(new Arbiter(new SpSramReq(UInt(entryBits.W), hwaP.hwaDevDepth, 1), 2))
-  private val rq = FastQueue(io.axi.ar)
+  private val wrm = Module(new AxiLiteWrMachine(axiP))
+  private val rdm = Module(new AxiLiteRdMachine(axiP))
+  private val arb = Module(new Arbiter(new SpSramReq(UInt(entryBits.W), hwaP.hwaDevDepth, 1), 3))
   private val wq = FastQueue(io.hwa)
   private val wcnt = RegInit(0.U(log2Ceil(hwaP.hwaDevDepth + 1).W))
-  private val oq = Module(new FastQueue(new RFlit(axiP), size = 2, deqDataNoX = false))
 
+  wrm.io.aw <> io.axi.aw
+  wrm.io.w <> io.axi.w
+  rdm.io.ar <> io.axi.ar
+  io.axi.b <> wrm.io.b
+  io.axi.r <> rdm.io.r
+  arb.io.in(0) <> wrm.io.req
+  arb.io.in(1) <> rdm.io.req
   ram.io.req <> arb.io.out
+  rdm.io.resp := ram.io.resp
 
-  io.axi.w.ready := true.B
-  io.axi.b.valid := io.axi.aw.valid
-  io.axi.aw.ready := io.axi.b.ready
-  io.axi.b.bits := DontCare
-  io.axi.b.bits.resp := "b10".U
-  io.axi.b.bits.id := io.axi.aw.bits.id
-
-  // Read S0
-  private val rp = arb.io.in.head
-  private val rvalid = RegInit(false.B)
-  private val rpipe = oq.io.enq.ready || !rvalid
-  rp.valid := rq.valid && rpipe
-  rp.bits.data := DontCare
-  rp.bits.write := false.B
-  rp.bits.addr := rq.bits.addr.head(log2Ceil(hwaP.hwaDevDepth))
-  rq.ready := rp.ready && rpipe
-  // Read S1
-  when(rpipe) {
-    rvalid := rp.fire
-  }
-  // Read S2
-  oq.io.enq.valid := rvalid
-  oq.io.enq.bits := DontCare
-  oq.io.enq.bits.data := ram.io.resp.bits.data.asUInt
-  oq.io.enq.bits.resp := "b00".U
-  // Read S3
-  io.axi.r <> oq.io.deq
-
-  private val wp = arb.io.in.last
+  private val wp = arb.io.in(2)
   private val wd = Wire(new HwaCollectorEntry)
   wd.id := wq.bits.id
   wd.src := wq.bits.src
   wd.vld := true.B
 
-  wp.valid := wq.valid && wcnt =/= hwaP.hwaDevDepth.U
-  wq.ready := wp.ready || wcnt === hwaP.hwaDevDepth.U
+  wp.valid := wq.valid && wcnt < hwaP.hwaDevDepth.U
+  wq.ready := wp.ready || wcnt >= hwaP.hwaDevDepth.U
   wp.bits.data.head := wd.asUInt
   wp.bits.addr := wcnt
   wp.bits.write := true.B
-  when(wp.fire && wcnt =/= hwaP.hwaDevDepth.U) {
+  when(wp.fire && wcnt < hwaP.hwaDevDepth.U) {
     wcnt := wcnt + 1.U
   }
   when(wq.fire) {
