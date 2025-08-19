@@ -64,8 +64,8 @@ class TaskEntry(nidBits: Int, sort: Boolean, timeout: Int)(implicit p: Parameter
    */
   val taskReg     = RegInit((new TaskState with HasPackChi with HasAddr with HasQoS).Lit(_.state -> FREE))
   val nidReg      = if(sort) Some(Reg(UInt(nidBits.W))) else None
-  val retryNumReg = Reg(UInt(log2Ceil(timeout).W))
-  val timeoutReg  = RegNext(retryNumReg === (timeout-1).U)
+  val retryNumReg = RegInit(0.U(log2Ceil(timeout).W))
+  val timeoutReg  = RegNext(retryNumReg === (timeout-1).U, false.B)
   require(isPow2(timeout))
 
   /*
@@ -189,7 +189,7 @@ class TaskBuffer(nrEntries: Int, sort: Boolean, timeout: Int = 8)(implicit p: Pa
   val taskVec_s0    = VecInit(entries.map(_.io.chiTask_s0))
   val lockVec       = VecInit(entries.map(_.io.state.lock))
   val lockIdx       = PriorityEncoder(lockVec)
-  val hasLockReg    = RegNext(lockVec.asUInt.orR)
+  val hasLockReg    = RegNext(lockVec.asUInt.orR, false.B)
   when(hasLockReg) {
     taskVec_s0.foreach(_.ready := false.B)
     io.chiTask_s0 <> taskVec_s0(lockIdx)
