@@ -40,7 +40,6 @@ class Directory(isTop: Boolean = false)(implicit p: Parameters) extends DJModule
    */
   val llcs  = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("llc", !isTop)))
   val sfs   = Seq.fill(djparam.nrDirBank)(Module(new DirectoryBase("sf",  !isTop)))
-  MbistPipeline.PlaceMbistPipeline(2, "HomeDirectory", hasMbist)
 
   /*
    * Connect llcs and sfs

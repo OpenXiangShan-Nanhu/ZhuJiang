@@ -9,6 +9,7 @@ import dongjiang.backend.UpdHnTxnID
 import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
+import xs.utils.mbist.MbistPipeline
 
 class DataBlock(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   override def isTopModule: Boolean = isTop
@@ -34,6 +35,7 @@ class DataBlock(isTop: Boolean = false)(implicit p: Parameters) extends DJModule
   val dataCM      = Module(new DataCM)
   val dbidCtrl    = Module(new DBIDCtrl)
   val datBuf      = Module(new DataBuffer(!isTop))
+  MbistPipeline.PlaceMbistPipeline(1, "HomeDataBlock", hasMbist)
 
   /*
    * Connect IO
