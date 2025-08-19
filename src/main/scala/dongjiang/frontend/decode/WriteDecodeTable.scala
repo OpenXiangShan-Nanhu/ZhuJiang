@@ -23,7 +23,11 @@ object Write_LAN {
     (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp))))
   ))
 
-  // WriteNoSnpPtl Without EWA
+  def writeNoSnpPtl_noEWA_RO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | isRO, Seq(
+    // I I I  -> I I I
+    (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp))))
+  ))
+
   def writeNoSnpPtl_noEWA_OWO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | isOWO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp))))
@@ -174,5 +178,5 @@ object Write_LAN {
   ))
 
   // writeNoSnpPtl ++ writeUniquePtl ++ writeBackFull ++ writeCleanFull ++ writeEvictOrEvict ++ writeCleanFull -> 9
-  def table: Seq[DecodeType] = Seq(writeNoSnpPtl_ewa_RO, writeNoSnpPtl_noEWA_OWO, writeNoSnpPtl_ewa_OWO, writeUniquePtl_noAlloc, writeUniquePtl_alloc, writeEvictOrEvict, writeBackFull_noAlloc, writeBackFull_alloc, writeCleanFull)
+  def table: Seq[DecodeType] = Seq(writeNoSnpPtl_ewa_RO, writeNoSnpPtl_noEWA_RO, writeNoSnpPtl_noEWA_OWO, writeNoSnpPtl_ewa_OWO, writeUniquePtl_noAlloc, writeUniquePtl_alloc, writeEvictOrEvict, writeBackFull_noAlloc, writeBackFull_alloc, writeCleanFull)
 }
