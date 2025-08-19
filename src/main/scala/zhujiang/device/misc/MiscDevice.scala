@@ -90,6 +90,7 @@ class AxiLiteRdMachine(axiP:AxiParams)(implicit p:Parameters) extends Module {
   io.r.bits.id := arbits.id
   io.r.bits.resp := 0.U
   io.r.bits.user := arbits.user
+  io.r.bits.last := true.B
   when(io.r.fire) {
     arvld := false.B
   }.elsewhen(io.ar.fire) {
