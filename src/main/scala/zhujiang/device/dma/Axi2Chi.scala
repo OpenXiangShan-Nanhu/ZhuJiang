@@ -37,6 +37,8 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val axiWrSlave  = Module(new AxiWrSlave(node))
   private val chiRdMaster = Module(new ChiRdMaster(node))
   private val chiWrMaster = Module(new ChiWrMaster(node))
+  private val axiArSplit  = Module(new AxiDevSpilt(node = node, write = false, read = true))
+  private val axiAwSplit  = Module(new AxiDevSpilt(node = node, write = true, read = false))
   private val rdDB        = Module(new DataBufferForRead(node))
   private val wrDB        = Module(new DataBufferForWrite(bufferSize = node.outstanding, ctrlSize = node.outstanding))
 
@@ -44,7 +46,9 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val arbRspOut   = Wire(chiWrMaster.io.chiTxRsp.cloneType)
   private val rxArQueue   = Module(new Queue(gen = new AxiBundle(axiParams).ar.bits, entries = 2, pipe = false, flow = false))
   private val rxAwQueue   = Module(new Queue(gen = new AxiBundle(axiParams).aw.bits, entries = 2, pipe = false, flow = false))
+  private val rxDatQueue  = Module(new Queue(gen = chiRdMaster.io.chiDat.bits.cloneType, entries = 2, pipe = false, flow = false))
   private val rxRspPipe   = Pipe(icn.rx.resp.get.fire, icn.rx.resp.get.bits)
+  private val rcvIsRct    = rxRspPipe.valid & rxRspPipe.bits.asTypeOf(chiRdMaster.io.chiRxRsp.bits).Opcode === RspOpcode.ReadReceipt
 
   axi.ar                <> rxArQueue.io.enq
   axi.aw                <> rxAwQueue.io.enq
@@ -52,15 +56,22 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
   axiRdSlave.io.dAxiAr <> chiRdMaster.io.axiAr
   axiRdSlave.io.dAxiR  <> rdDB.io.axiR
-  axiRdSlave.io.uAxiAr <> rxArQueue.io.deq
+  axiRdSlave.io.uAxiAr <> axiArSplit.io.dAxiAr.get
   axiRdSlave.io.uAxiR  <> axi.r
 
-  axiWrSlave.io.uAxiAw <> rxAwQueue.io.deq
+  axiArSplit.io.dAxiAr.get <> axiRdSlave.io.uAxiAr
+  axiArSplit.io.uAxiAr.get <> rxArQueue.io.deq
+  axiAwSplit.io.dAxiAw.get <> axiWrSlave.io.uAxiAw
+  axiAwSplit.io.uAxiAw.get <> rxAwQueue.io.deq
+
+
+
   axiWrSlave.io.uAxiW  <> axi.w
   axiWrSlave.io.uAxiB  <> axi.b
   axiWrSlave.io.dAxiAw <> chiWrMaster.io.axiAw
   axiWrSlave.io.dAxiW  <> chiWrMaster.io.axiW
   axiWrSlave.io.dAxiB  <> chiWrMaster.io.axiB
+  axiWrSlave.io.finish <> chiWrMaster.io.finish
   
 
   rdDB.io.alloc        <> chiRdMaster.io.reqDB
@@ -75,17 +86,21 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
   chiRdMaster.io.chiRxRsp.valid := rxRspPipe.valid
   chiRdMaster.io.chiRxRsp.bits  := rxRspPipe.bits
+  chiRdMaster.io.chiDat.valid   := rxDatQueue.io.deq.valid & !rcvIsRct
+  chiRdMaster.io.chiDat.bits    := rxDatQueue.io.deq.bits
 
   chiWrMaster.io.chiRxRsp.valid := rxRspPipe.valid
   chiWrMaster.io.chiRxRsp.bits  := rxRspPipe.bits
   assert(chiRdMaster.io.chiRxRsp.ready, "if ready is false, please use Queue, Do not use Pipe")
   assert(chiWrMaster.io.chiRxRsp.ready, "if ready is false, please use Queue, Do not use Pipe")
 
+  rxDatQueue.io.deq.ready       := !rcvIsRct && chiRdMaster.io.chiDat.ready
 
-  FastArbiter(Seq(chiRdMaster.io.chiReq      , chiWrMaster.io.chiReq  ), arbReqOut)
-  FastArbiter(Seq(chiRdMaster.io.chiTxRsp.get, chiWrMaster.io.chiTxRsp), arbRspOut)
 
-  working  := axiRdSlave.io.working || axiWrSlave.io.working || chiRdMaster.io.working || chiWrMaster.io.working
+  FastArbiter(Seq(chiRdMaster.io.chiReq  , chiWrMaster.io.chiReq  ), arbReqOut)
+  FastArbiter(Seq(chiRdMaster.io.chiTxRsp, chiWrMaster.io.chiTxRsp), arbRspOut)
+
+  working  := axiRdSlave.io.working || axiWrSlave.io.working || chiRdMaster.io.working || chiWrMaster.io.working || axiArSplit.io.working || axiAwSplit.io.working
 
   if(icn.tx.req.isDefined) {
     connIcn(icn.tx.req.get         , arbReqOut      )
@@ -94,6 +109,6 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   }
   connIcn(icn.tx.resp.get        , arbRspOut      )
   connIcn(icn.tx.data.get        , wrDB.io.dData  )
-  connIcn(chiRdMaster.io.chiDat  , icn.rx.data.get)
+  connIcn(rxDatQueue.io.enq      , icn.rx.data.get)
   MbistPipeline.PlaceMbistPipeline(1, "MbistPipelineRni", hasMbist)
 }

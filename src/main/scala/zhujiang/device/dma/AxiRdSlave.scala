@@ -4,17 +4,21 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import org.chipsalliance.cde.config.Parameters
+import chisel3.experimental.BundleLiterals._
 import zhujiang._
 import zhujiang.chi._
 import zhujiang.axi._
 import xs.utils.sram._
 import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
+import dongjiang.utils.StepRREncoder
 
 class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private val rni = DmaParams(node = node)
   private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
-  private val axiParamsUser = AxiParams(addrBits = axiParams.addrBits, idBits = log2Ceil(node.outstanding), userBits = axiParams.idBits, dataBits = axiParams.dataBits,
+  private val axiParamsUser = AxiParams(addrBits = axiParams.addrBits, idBits = log2Ceil(node.outstanding), userBits = axiParams.idBits + log2Ceil(rni.axiEntrySize), dataBits = axiParams.dataBits,
+    attr = axiParams.attr, lenBits = axiParams.lenBits, qosBits = axiParams.qosBits, regionBits = axiParams.regionBits)
+  private val axiParamsLast = AxiParams(addrBits = axiParams.addrBits, idBits = axiParams.idBits, userBits = 1, dataBits = axiParams.dataBits,
     attr = axiParams.attr, lenBits = axiParams.lenBits, qosBits = axiParams.qosBits, regionBits = axiParams.regionBits)
   require(axiParams.idBits >= log2Ceil(node.outstanding))
 
@@ -40,7 +44,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
  * IO Interface Define
  */
   val io = IO(new Bundle {
-    val uAxiAr   = Flipped(Decoupled(new ARFlit(axiParams)))
+    val uAxiAr   = Flipped(Decoupled(new ARFlit(axiParamsLast)))
     val uAxiR    = Decoupled(new RFlit(axiParams))
     val dAxiAr   = Decoupled(new ARFlit(axiParamsUser))
     val dAxiR    = Flipped(Decoupled(new RFlit(axiParamsUser)))
@@ -54,9 +58,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val uHeadPtr  = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
   private val uTailPtr  = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
 
-  private val dArEntrys = Reg(Vec(node.outstanding, new AxiRMstEntry(node)))
-  private val dHeadPtr  = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
-  private val dTailPtr  = RegInit(CirQChiEntryPtr(f = false.B, v = 0.U))
+  private val dArEntrys = RegInit(VecInit(Seq.fill(node.outstanding)((new AxiRMstEntry(node)).Lit(_.busy -> false.B))))
 
   private val rxArPipe  = Module(new Queue(gen = new AxiRdEntry(isPipe = true, node = node), entries = 2, pipe = false, flow = false))
   private val dataCtrlQ = Module(new SendReg(node))
@@ -65,7 +67,6 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val txArBdl   = WireInit(0.U.asTypeOf(io.dAxiAr.bits))
   
   private val uTailE       = uArEntrys(uTailPtr.value)
-  private val dTailE       = dArEntrys(dTailPtr.value)
   private val reachPeak    = (uTailE.cnt.get + 1.U) === uTailE.num.get
   private val reachBottom  = (uTailE.num.get === 0.U) & (uTailE.cnt.get === 63.U)
 
@@ -73,12 +74,14 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
  * Pointer Logic
  */
   private val uTailPtrAdd   = io.dAxiAr.fire & (reachPeak | reachBottom)
-  private val dTailPtrAdd   = dTailPtr =/= dHeadPtr & dArEntrys(dTailPtr.value).finish
+  private val freeVec       = dArEntrys.map(e => !e.busy)
+  private val validVec      = dArEntrys.map(e => e.busy)
+
+  private val selFree       = StepRREncoder(freeVec, io.dAxiAr.fire)
 
   uHeadPtr   := Mux(rxArPipe.io.deq.fire, uHeadPtr + 1.U, uHeadPtr)
   uTailPtr   := Mux(uTailPtrAdd         , uTailPtr + 1.U, uTailPtr)
-  dHeadPtr   := Mux(io.dAxiAr.fire      , dHeadPtr + 1.U, dHeadPtr)
-  dTailPtr   := Mux(dTailPtrAdd         , dTailPtr + 1.U, dTailPtr)
+
 
 /* 
  * Assign Logic
@@ -88,27 +91,22 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
       when(rxArPipe.io.deq.fire & uHeadPtr.value === i.U){
         e.entryInit(rxArPipe.io.deq.bits)
       }.elsewhen(io.dAxiAr.fire & uTailPtr.value === i.U){
-        val notModify      = !e.cache(1)
-        val modify         =  e.cache(1)
         e.cnt.get         := e.cnt.get + 1.U
-        e.exAddr          := PriorityMux(Seq(
-          notModify       -> (~e.byteMask & e.exAddr | (e.exAddr + (1.U((rni.offset).W) << e.size)) & e.byteMask),
-          modify          -> (Cat(e.exAddr(rni.pageBits - 1, rni.offset) + 1.U, 0.U(rni.offset.W)) & e.byteMask | ~e.byteMask & e.exAddr)
-        ))
+        e.exAddr          := Cat(e.exAddr(rni.pageBits - 1, rni.offset) + 1.U, 0.U(rni.offset.W)) & e.byteMask | ~e.byteMask & e.exAddr
       }
   }
   dArEntrys.zipWithIndex.foreach{
     case(e, i) =>
-      when(io.dAxiAr.fire & dHeadPtr.value === i.U) {
+      when(io.dAxiAr.fire & selFree === i.U) {
         val nextAddr  = (uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size)) & uTailE.byteMask(rni.offset - 1, 0) | uTailE.exAddr(rni.offset - 1, 0) & ~uTailE.byteMask(rni.offset - 1, 0)
         e.id         := uTailE.id
         e.size       := 1.U(log2Ceil(dw/8).W) << uTailE.size
-        e.last       := reachBottom | reachPeak
+        e.last       := (reachBottom | reachPeak) & uTailE.spLast
         e.byteMask   := uTailE.byteMask(rni.offset - 1, 0)
         e.nextShift  := nextAddr
         e.beat       := Mux((uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1)) & uTailE.cache(1), 0.U, uTailE.exAddr(rni.offset - 1))
         e.outBeat    := uTailE.exAddr(rni.offset - 1)
-        e.finish     := false.B
+        e.busy       := true.B
         val notModify  = !uTailE.cache(1)
         val lastEntry  = (uTailE.cnt.get + 1.U) === uTailE.num.get
         val specWrap   = Burst.isWrap(uTailE.burst) & !uTailE.byteMask(rni.offset)
@@ -120,7 +118,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
       }.elsewhen(io.uAxiR.fire & dataCtrlQ.io.dataOut.bits.idx === i.U){
         e.outBeat   := Mux(e.byteMask.orR, e.nextShift(rni.offset - 1), e.outBeat)
         e.nextShift := (e.nextShift + e.size) & e.byteMask | ~e.byteMask & e.nextShift
-        e.finish    := Mux((e.nextShift === e.endShift), true.B, e.finish)
+        e.busy      := Mux((e.nextShift === e.endShift), false.B, e.busy)
       }
       when(io.dAxiR.fire & io.dAxiR.bits.id === i.U){
         e.beat  := !e.beat
@@ -140,8 +138,8 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   txArBdl.qos       := uTailE.qos
   txArBdl.cache     := uTailE.cache
   txArBdl.burst     := Burst.INCR
-  txArBdl.user      := uTailE.id
-  txArBdl.id        := dHeadPtr.value
+  txArBdl.user      := Cat(uTailE.id, uTailPtr.value)
+  txArBdl.id        := selFree
   txArBdl.size      := Mux(!uTailE.cache(1), uTailE.size , log2Ceil(dw/8).U)
 
   private val incrHalf     = Burst.isIncr(uTailE.burst) &  uTailE.exAddr(rni.offset - 1)
@@ -159,10 +157,10 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   io.uAxiR.valid      := dataCtrlQ.io.dataOut.valid
 
   io.dAxiAr.bits      := txArBdl
-  io.dAxiAr.valid     := uHeadPtr =/= uTailPtr & !isFull(dHeadPtr, dTailPtr)
+  io.dAxiAr.valid     := uHeadPtr =/= uTailPtr & freeVec.reduce(_ | _)
   io.dAxiR.ready      := dataCtrlQ.io.dataIn.ready
 
-  io.working          := uHeadPtr =/= uTailPtr || dHeadPtr =/= dTailPtr || rxArPipe.io.count =/= 0.U
+  io.working          := uHeadPtr =/= uTailPtr || validVec.reduce(_ | _) || rxArPipe.io.count =/= 0.U
 
   dataCtrlQ.io.dataIn.valid       := io.dAxiR.valid
   dataCtrlQ.io.dataIn.bits.id     := dArEntrys(io.dAxiR.bits.id).id
@@ -180,4 +178,10 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   rxArPipe.io.enq.valid   := io.uAxiAr.valid
   rxArPipe.io.enq.bits    := rxArBdl.pipeInit(io.uAxiAr.bits)
   rxArPipe.io.deq.ready   := !isFull(uHeadPtr, uTailPtr)
+
+
+  when(io.dAxiAr.fire) {
+    assert(io.dAxiAr.bits.user(log2Ceil(rni.axiEntrySize) - 1, 0) === uTailPtr.value)
+    assert(io.dAxiAr.bits.user(io.dAxiAr.bits.user.getWidth - 1, log2Ceil(rni.axiEntrySize)) === uTailE.id)
+  }
 }
