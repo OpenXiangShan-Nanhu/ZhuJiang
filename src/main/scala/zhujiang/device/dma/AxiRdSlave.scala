@@ -160,7 +160,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   io.dAxiAr.valid     := uHeadPtr =/= uTailPtr & freeVec.reduce(_ | _)
   io.dAxiR.ready      := dataCtrlQ.io.dataIn.ready
 
-  io.working          := uHeadPtr =/= uTailPtr || validVec.reduce(_ | _) || rxArPipe.io.count =/= 0.U
+  io.working          := RegNext(uHeadPtr =/= uTailPtr || validVec.reduce(_ | _) || rxArPipe.io.count =/= 0.U)
 
   dataCtrlQ.io.dataIn.valid       := io.dAxiR.valid
   dataCtrlQ.io.dataIn.bits.id     := dArEntrys(io.dAxiR.bits.id).id

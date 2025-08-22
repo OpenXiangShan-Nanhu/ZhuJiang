@@ -70,6 +70,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val rcvIsDBID  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.DBIDResp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp) & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
   private val rcvIsComp  = io.chiRxRsp.fire & (io.chiRxRsp.bits.Opcode === RspOpcode.Comp | io.chiRxRsp.bits.Opcode === RspOpcode.CompDBIDResp) & io.chiRxRsp.bits.TxnID(io.chiRxRsp.bits.TxnID.getWidth - 1)
   private val rspTxnid   = io.chiRxRsp.bits.TxnID(log2Ceil(node.outstanding) - 1, 0)
+  private val bTransid   = io.axiB.bits.id(log2Ceil(node.outstanding) - 1, 0)
   private val txIsAck    = io.chiTxRsp.fire
   private val addrInTag  = io.axiAw.bits.addr(rni.matchSet - 1, rni.offset)
   private val rdDBPtrMod = io.rdDB.fire && ((rdDBQueue.io.deq.bits.fullSize && rdDBSitePtr === 0.U) || (rdDBSitePtr === 1.U))
@@ -91,7 +92,8 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val sendAckVec      = chiEntries.map(c => (c.state === ChiWState.SENDACK) && c.ackNid === 0.U)
   private val sendDataVec     = chiEntries.map(c => (c.state === ChiWState.SENDDAT))
   private val finishVec       = chiEntries.map(c => (c.state === ChiWState.FINISH)  && c.haveRcvComp && c.haveSendB)
-  private val sendBVec        = chiEntries.map(c => c.haveRcvComp && c.rcvDataComp && !c.haveSendB && c.isValid)
+  private val sendBVec        = chiEntries.map(c => c.haveRcvComp && c.rcvDataComp && !c.haveSendB && c.isValid && (c.bNid === 0.U))
+  private val sameAWIdVec     = chiEntries.map(c => !c.haveSendB && (c.awId === io.axiAw.bits.user(userArid_hi, userArid_lo) && c.isValid))
 
 
   private val sendReqValid   = sendReqVec.reduce(_ | _)
@@ -111,6 +113,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val dbidTxnidPipe   = Pipe(rcvIsDBID, rspTxnid)
   private val compTxnidPipe   = Pipe(rcvIsComp, rspTxnid)
   private val finishPipe      = Pipe(finishValid, selFinish)
+  private val bidPipe         = Pipe(sendBValid, selSendB)
 
 /* 
  * Assign logic
@@ -119,7 +122,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
     when(io.axiAw.fire & (io.axiAw.bits.id === i.U)) {
       assert(chiEntries(i).isFree)
       assert(io.reqDB.ready === true.B)
-      chiEntries(i).awMesInit(io.axiAw.bits, PopCount(blockReqVec), PopCount(blockAckVec), io.respDB.bits)
+      chiEntries(i).awMesInit(io.axiAw.bits, PopCount(blockReqVec), PopCount(blockAckVec), PopCount(sameAWIdVec), io.respDB.bits)
     }.elsewhen(validVec(i)) {
       chiEntries(i) := chiEntriesNext(i)
     }
@@ -160,6 +163,9 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
     }
     when(io.axiB.fire && selSendB === i.U) {
       en.haveSendB   := true.B
+    }
+    when(bidPipe.valid && (chiEntries(bidPipe.bits).awId === e.awId) && (e.bNid =/= 0.U)) {
+      en.bNid        := e.bNid - 1.U
     }
     when(e.state === ChiWState.WAITDATA) {
       en.state       := Mux(e.rcvDataComp, ChiWState.SENDACK, e.state)
@@ -209,7 +215,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   io.rdDB.valid     := rdDBQueue.io.deq.valid
   io.chiTxRsp.bits  := txAckBdl
   io.chiTxRsp.valid := sendAckValid
-  io.working        := validVec.reduce(_ | _)
+  io.working        := RegNext(validVec.reduce(_ | _))
 
 
   rdDBQueue.io.enq.bits  := toDBQBdl
@@ -226,6 +232,9 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
 
   when(io.axiW.fire && !io.axiW.bits.last.asBool) {
     assert(chiEntries(io.axiW.bits.user).fullSize)
+  }
+  when(io.axiB.fire) {
+    assert(chiEntries(bTransid).bNid === 0.U)
   }
 
 }

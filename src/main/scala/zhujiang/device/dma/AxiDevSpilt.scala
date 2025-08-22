@@ -100,7 +100,7 @@ class AxiDevSpilt(node: Node, write: Boolean, read: Boolean)(implicit p: Paramet
     io.dAxiAw.get.bits       := dAxiAXWire
   }
 
-  io.working               := headPtr =/= tailPtr
+  io.working               := RegNext(headPtr =/= tailPtr)
   
 /* 
  * Assertion

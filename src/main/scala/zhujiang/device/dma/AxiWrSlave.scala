@@ -110,7 +110,6 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val reachPeak              = (uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get
   private val reachBottom            = (uTailE.num.get === 0.U) & (uTailE.cnt.get === 63.U)   // 4096 / 64 = 64
   private val tailPtrAdd             = io.dAxiAw.fire & (reachBottom | reachPeak)
-//   private val sDataPtrAdd            = io.dAxiW.fire & io.dAxiW.bits._last
 
 
 /* 
@@ -219,7 +218,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   io.dAxiW.valid     := merComReg =/= 0.U
   io.dAxiB.ready     := bIdQueue.io.enq.ready
 
-  io.working         := uHeadPtr =/= uTailPtr || dAwWorking || rxAwPipe.io.count =/= 0.U
+  io.working         := RegNext(uHeadPtr =/= uTailPtr || dAwWorking || rxAwPipe.io.count =/= 0.U)
 
   mergeReg.io.dataIn.valid         := io.uAxiW.fire
   mergeReg.io.dataIn.bits.fixMerge := !dAwEntrys(wIdQueue.io.deq.bits).dontMerge & Burst.isFix(dAwEntrys(wIdQueue.io.deq.bits).burst)

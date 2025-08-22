@@ -422,6 +422,7 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val size           = UInt(3.W)
   val reqNid         = UInt(log2Ceil(node.outstanding).W)
   val ackNid         = UInt(log2Ceil(node.outstanding).W)
+  val bNid           = UInt(log2Ceil(node.outstanding).W)
   val memAttr        = new MemAttr
   val tgtid          = UInt(niw.W)
   val addr           = UInt(raw.W)
@@ -437,7 +438,7 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   def isFree         = state === ChiWState.FREE
   def isToOrder      = (state === ChiWState.SENDREQ) || (state === ChiWState.WAITDBID)
 
-  def awMesInit[T <: AWFlit, U <: DataBufferAlloc](aw : T, reqNid: UInt, ackNid: UInt, resp: U): CHIWEntry = {
+  def awMesInit[T <: AWFlit, U <: DataBufferAlloc](aw : T, reqNid: UInt, ackNid: UInt, bNid: UInt, resp: U): CHIWEntry = {
     this           := 0.U.asTypeOf(this)
     this.fullSize  := aw.len(0).asBool
     this.qos       := aw.qos
@@ -446,6 +447,7 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
     this.size      := aw.size
     this.reqNid    := reqNid
     this.ackNid    := ackNid
+    this.bNid      := bNid
     this.addr      := aw.addr
     this.dbSite1   := resp.buf(0)
     this.dbSite2   := resp.buf(1)

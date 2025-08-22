@@ -188,7 +188,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   io.chiRxRsp.ready            := true.B
   io.chiTxRsp.valid            := sendAckVec.reduce(_ | _)
   io.chiTxRsp.bits             := txRspBdl
-  io.working                   := validVec.reduce(_ | _)
+  io.working                   := RegNext(validVec.reduce(_ | _))
   io.chiDat.ready              := io.wrDB.ready
   io.rdDB.valid                := rdDBQueue.io.deq.valid
   io.rdDB.bits                 := txDatBdl
