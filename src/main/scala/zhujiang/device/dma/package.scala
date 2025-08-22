@@ -250,10 +250,10 @@ class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
     this.qos               := b.qos
     this.fullSize          := b.len(0).asBool
     this.addr              := b.addr
-    this.memAttr.allocate  := b.cache(3) & b.cache(0)
+    this.memAttr.allocate  := b.cache(2)
     this.memAttr.cacheable := b.cache(3) | b.cache(2)
-    this.memAttr.device    := !b.cache(3) & !b.cache(2) & !b.cache(1)
-    this.memAttr.ewa       := (b.cache(3) | b.cache(2)) & b.cache(0)
+    this.memAttr.device    := !b.cache(1)
+    this.memAttr.ewa       := b.cache(0)
     this.dbSite1           := resp.buf(0)
     this.dbSite2           := resp.buf(1)
     this.reqNid            := reqNid
@@ -451,10 +451,10 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
     this.addr      := aw.addr
     this.dbSite1   := resp.buf(0)
     this.dbSite2   := resp.buf(1)
-    this.memAttr.allocate  := aw.cache(2) & aw.cache(0)
+    this.memAttr.allocate  := aw.cache(3)
     this.memAttr.cacheable := aw.cache(3) | aw.cache(2)
-    this.memAttr.device    := !aw.cache(3) & !aw.cache(2) & !aw.cache(1)
-    this.memAttr.ewa       := (aw.cache(3) | aw.cache(2)) | (aw.cache(1) & aw.cache(0))
+    this.memAttr.device    := !aw.cache(1)
+    this.memAttr.ewa       := aw.cache(0)
     this.state             := ChiWState.SENDREQ
     this
   }
