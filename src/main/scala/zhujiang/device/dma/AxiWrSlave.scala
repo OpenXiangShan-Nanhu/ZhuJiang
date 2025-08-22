@@ -100,13 +100,13 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 /* 
  * Merge Logic
  */
-  private val nextShiftHintCompValid = !dAwEntrys(wDataPtr).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wDataPtr).burst) & !dAwEntrys(wDataPtr).specWrap
-  private val nextShiftHintLastValid = !dAwEntrys(wDataPtr).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wDataPtr).burst) & !dAwEntrys(wDataPtr).specWrap
-  private val noMergeDeq             = dAwEntrys(wDataPtr).dontMerge
-  private val mergeDeq               = io.uAxiW.bits._last || nextShiftHintLastValid && !dAwEntrys(wDataPtr).fullWrap
+  private val nextShiftHintCompValid = !dAwEntrys(wIdQueue.io.deq.bits).nextShift(log2Ceil(dw/8) - 1, 0).orR & !Burst.isFix(dAwEntrys(wIdQueue.io.deq.bits).burst) & !dAwEntrys(wIdQueue.io.deq.bits).specWrap
+  private val nextShiftHintLastValid = !dAwEntrys(wIdQueue.io.deq.bits).nextShift(rni.offset - 1, 0).orR     & !Burst.isFix(dAwEntrys(wIdQueue.io.deq.bits).burst) & !dAwEntrys(wIdQueue.io.deq.bits).specWrap
+  private val noMergeDeq             = dAwEntrys(wIdQueue.io.deq.bits).dontMerge
+  private val mergeDeq               = io.uAxiW.bits._last || nextShiftHintLastValid && !dAwEntrys(wIdQueue.io.deq.bits).fullWrap
 
-  // private val wDataPtrDeq            = (mergeDeq || noMergeDeq) & io.uAxiW.fire
-  private val wDataPtrDeq            = io.dAxiW.bits._last && io.dAxiW.fire
+  private val wDataPtrDeq            = (mergeDeq || noMergeDeq) & io.uAxiW.fire
+  private val sDataPtrDeq            = io.dAxiW.fire && io.dAxiW.bits._last
   private val reachPeak              = (uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get
   private val reachBottom            = (uTailE.num.get === 0.U) & (uTailE.cnt.get === 63.U)   // 4096 / 64 = 64
   private val tailPtrAdd             = io.dAxiAw.fire & (reachBottom | reachPeak)
@@ -116,7 +116,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 /* 
  * Pointer movement logic
  */
-  wDataPtrValid     := Mux(wIdQueue.io.deq.fire, true.B, Mux(wDataPtrDeq, false.B, wDataPtrValid))
+  wDataPtrValid     := Mux(wIdQueue.io.deq.fire, true.B, Mux(sDataPtrDeq, false.B, wDataPtrValid))
   wDataPtr          := Mux(wIdQueue.io.deq.fire, wIdQueue.io.deq.bits, wDataPtr)
   uHeadPtr          := Mux(rxAwPipe.io.deq.fire, uHeadPtr + 1.U, uHeadPtr)
   uTailPtr          := Mux(tailPtrAdd          , uTailPtr + 1.U, uTailPtr)
@@ -124,16 +124,16 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 
   //Merge Data Reg Logic
   private val dSendLast     = io.dAxiW.bits._last & io.dAxiW.fire
-  private val dShodLast     = io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wDataPtr).dontMerge | io.uAxiW.bits._last)
+  private val dShodLast     = io.uAxiW.fire & (nextShiftHintLastValid | dAwEntrys(wIdQueue.io.deq.bits).dontMerge | io.uAxiW.bits._last)
   mergeLastReg             := PriorityMux(Seq(
     (dShodLast & !dSendLast) -> (!mergeLastReg),
     (!dShodLast & dSendLast) -> (!mergeLastReg),
     true.B                   -> mergeLastReg
   ))
   private val dSendComp     = io.dAxiW.fire
-  private val dShodComp     = io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wDataPtr).dontMerge | io.uAxiW.bits._last)
-  private val specShodComp  = dAwEntrys(wDataPtr).fullWrap & dShodComp
-  private val normShodComp  = !dAwEntrys(wDataPtr).fullWrap & dShodComp
+  private val dShodComp     = io.uAxiW.fire & (nextShiftHintCompValid | dAwEntrys(wIdQueue.io.deq.bits).dontMerge | io.uAxiW.bits._last)
+  private val specShodComp  = dAwEntrys(wIdQueue.io.deq.bits).fullWrap & dShodComp
+  private val normShodComp  = !dAwEntrys(wIdQueue.io.deq.bits).fullWrap & dShodComp
   merComReg                := PriorityMux(Seq(
     (dSendComp & !normShodComp) -> (merComReg - 1.U),
     (!dSendComp & normShodComp) -> (merComReg + 1.U),
@@ -164,7 +164,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
         e.busy         := true.B
         e.specWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & !uTailE.byteMask(rni.offset)
         e.fullWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & (uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1))
-      }.elsewhen(io.uAxiW.fire & (wDataPtr === i.U)) {
+      }.elsewhen(io.uAxiW.fire & (wIdQueue.io.deq.bits === i.U)) {
         e.shift     := e.nextShift
         e.nextShift := (e.nextShift + e.size) & e.mask | e.nextShift & ~e.mask
       }
@@ -194,7 +194,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   txAwBdl.cache  := uTailE.cache
   txAwBdl.burst  := Burst.INCR
   txAwBdl.id     := selFree
-  txAwBdl.user   := Cat(uTailE.id, uHeadPtr.value)
+  txAwBdl.user   := Cat(uTailE.id, uTailPtr.value)
 
   private val incrOffset        = uTailE.exAddr(rni.offset - 1) & Burst.isIncr(uTailE.burst)
   private val wrapOffset        = Burst.isWrap(uTailE.burst) & (uTailE.exAddr(rni.offset - 1) & uTailE.byteMask(rni.offset) | !uTailE.byteMask(rni.offset - 1))
@@ -205,26 +205,26 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 //  * IO Connection Logic
 //  */
   io.uAxiAw.ready    := rxAwPipe.io.enq.ready
-  io.uAxiW.ready     := wDataPtrValid && io.dAxiW.ready
+  io.uAxiW.ready     := wIdQueue.io.deq.valid && io.dAxiW.ready
   io.uAxiB.bits      := 0.U.asTypeOf(io.uAxiB.bits)
   io.uAxiB.bits.id   := bIdQueue.io.deq.bits
   io.uAxiB.valid     := bIdQueue.io.deq.valid
-  io.dAxiAw.valid    := uHeadPtr =/= uTailPtr & freeValid
+  io.dAxiAw.valid    := uHeadPtr =/= uTailPtr & freeValid && wIdQueue.io.enq.ready
   io.dAxiAw.bits     := txAwBdl
   io.dAxiW.bits      := 0.U.asTypeOf(io.dAxiW.bits)
   io.dAxiW.bits.data := mergeReg.io.dataOut.bits.data
   io.dAxiW.bits.strb := mergeReg.io.dataOut.bits.strb
   io.dAxiW.bits.last := mergeLastReg & (merComReg === 1.U)
-  io.dAxiW.bits.user := wDataPtr
+  io.dAxiW.bits.user := Mux(!wDataPtrValid, wIdQueue.io.deq.bits, wDataPtr)
   io.dAxiW.valid     := merComReg =/= 0.U
   io.dAxiB.ready     := bIdQueue.io.enq.ready
 
   io.working         := uHeadPtr =/= uTailPtr || dAwWorking || rxAwPipe.io.count =/= 0.U
 
   mergeReg.io.dataIn.valid         := io.uAxiW.fire
-  mergeReg.io.dataIn.bits.fixMerge := !dAwEntrys(wDataPtr).dontMerge & Burst.isFix(dAwEntrys(wDataPtr).burst)
+  mergeReg.io.dataIn.bits.fixMerge := !dAwEntrys(wIdQueue.io.deq.bits).dontMerge & Burst.isFix(dAwEntrys(wIdQueue.io.deq.bits).burst)
   mergeReg.io.dataIn.bits.strb     := io.uAxiW.bits.strb
-  mergeReg.io.dataIn.bits.beat     := dAwEntrys(wDataPtr).shift(rni.offset - 1)
+  mergeReg.io.dataIn.bits.beat     := dAwEntrys(wIdQueue.io.deq.bits).shift(rni.offset - 1)
   mergeReg.io.dataIn.bits.data     := io.uAxiW.bits.data
   mergeReg.io.dataOut.ready        := merComReg =/= 0.U & io.dAxiW.ready
 
@@ -237,9 +237,9 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   rxAwPipe.io.enq.valid   := io.uAxiAw.valid
   rxAwPipe.io.deq.ready   := !isFull(uHeadPtr, uTailPtr)
 
-  wIdQueue.io.enq.valid      := io.dAxiAw.valid
+  wIdQueue.io.enq.valid      := io.dAxiAw.fire
   wIdQueue.io.enq.bits       := selFree
-  wIdQueue.io.deq.ready      := !wDataPtrValid || wDataPtrDeq
+  wIdQueue.io.deq.ready      := wDataPtrDeq
   
 /* 
  * Assertion
@@ -255,5 +255,8 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 
   when(dSendComp & !normShodComp){
     assert(merComReg =/= 0.U)
+  }
+  when(io.uAxiW.fire) {
+    assert(wIdQueue.io.deq.valid)
   }
 }
