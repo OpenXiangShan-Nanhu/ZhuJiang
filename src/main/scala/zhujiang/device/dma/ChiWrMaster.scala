@@ -87,7 +87,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val sendReqVec = chiEntries.map(c => (c.state === ChiWState.SENDREQ) && c.reqNid === 0.U)
 
   private val blockReqVec     = chiEntries.map(c => (c.awId  === io.axiAw.bits.user(userArid_hi, userArid_lo)) && (c.eId =/= io.axiAw.bits.user(userEid_hi, 0)) && c.isToOrder)
-  private val blockAckVec     = chiEntries.map(c => (c.awId  === io.axiAw.bits.user(userArid_hi, userArid_lo)) && (c.eId =/= io.axiAw.bits.user(userEid_hi, 0)) && !c.haveRcvComp)
+  private val blockAckVec     = chiEntries.map(c => (c.awId  === io.axiAw.bits.user(userArid_hi, userArid_lo)) && (c.eId =/= io.axiAw.bits.user(userEid_hi, 0)) && !c.haveRcvComp && c.isValid)
   private val waitDataVec     = chiEntries.map(c => c.isValid && !c.rcvDataComp)
   private val sendAckVec      = chiEntries.map(c => (c.state === ChiWState.SENDACK) && c.ackNid === 0.U)
   private val sendDataVec     = chiEntries.map(c => (c.state === ChiWState.SENDDAT))
