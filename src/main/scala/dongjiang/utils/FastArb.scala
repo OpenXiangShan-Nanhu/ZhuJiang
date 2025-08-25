@@ -2,6 +2,7 @@ package dongjiang.utils
 
 import chisel3._
 import chisel3.util._
+import xs.utils.arb._
 
 trait HasQoS { this: Bundle => val qos = UInt(4.W) }
 
@@ -10,40 +11,58 @@ class ArbiterGenerator[T <: Bundle](gen:T, size:Int, rr:Boolean, qos: Boolean) e
     val in  = Vec(size, Flipped(Decoupled(gen)))
     val out = Decoupled(gen)
   })
+  dontTouch(io)
+
+  // qos
   val qosName = if(gen.elements.contains("qos")) "qos" else "QoS"
   val rrName  = if(rr)  "RR"  else ""
   override val desiredName = "Hn" + (if(qos) qosName.toUpperCase else "") + rrName + "Arbiter"
   if(qos) require(gen.elements.contains(qosName))
-  // define ids
-  val selId   = Wire(UInt(log2Ceil(size).W))
-  val lowId   = Wire(UInt(log2Ceil(size).W))
-  val highId  = WireInit(0.U(log2Ceil(size).W))
-  val lowVec  = VecInit(io.in.map(in => in.valid))
-  val highVec = WireInit(VecInit(Seq.fill(size) { false.B }))
-  // low
+
+  // define
+  val lowVec  = WireInit(io.in)
+  val highVec = WireInit(0.U.asTypeOf(Vec(size, Flipped(Decoupled(gen)))))
+  val low     = WireInit(0.U.asTypeOf(Decoupled(gen)))
+  val high    = WireInit(0.U.asTypeOf(Decoupled(gen)))
+  val hasHigh = WireInit(false.B)
+
+  // low priority
   if(rr) {
-    lowId     := StepRREncoder(lowVec,  io.out.fire & !highVec.asUInt.orR)
+    low       <> VipArbiter(lowVec)
   } else {
-    lowId     := PriorityEncoder(lowVec)
+    val arb   = Module(new Arbiter(gen, size))
+    arb.io.in <> lowVec
+    low       <> arb.io.out
   }
-  // QoS
+
+  // high priority
   if(qos) {
-    // high
-    highVec   := VecInit(io.in.map(in => in.valid & in.bits.elements(qosName) === 0xF.U))
-    if (rr) {
-      highId  := StepRREncoder(highVec, io.out.fire)
-    } else {
-      highId  := PriorityEncoder(highId)
+    highVec.zip(io.in).foreach { case(h, in) =>
+      h.valid   := in.valid & in.bits.elements(qosName) === 0xF.U
+      h.bits    := in.bits
     }
-    selId     := Mux(highVec.asUInt.orR, highId, lowId)
-  // no QoS
-  } else {
-    selId     := lowId
+    hasHigh     := highVec.map(_.valid).reduce(_ | _)
+    if (rr) {
+      high      <> VipArbiter(highVec)
+    } else {
+      val arb   = Module(new Arbiter(gen, size))
+      arb.io.in <> highVec
+      high      <> arb.io.out
+    }
   }
-  // Output
-  io.in.zipWithIndex.foreach { case (in, i) => in.ready := io.out.ready & selId === i.U }
-  io.out.valid  := io.in.map(_.valid).reduce(_ | _)
-  io.out.bits   := io.in(selId).bits
+
+  // output
+  when(hasHigh) {
+    io.out      <> high
+    low.ready   := false.B
+  }.otherwise {
+    io.out      <> low
+    high.ready  := false.B
+  }
+  io.in.zip(lowVec.zip(highVec)).foreach { case(in, (l, h)) =>
+    in.ready    := l.ready | h.ready
+  }
+  assert(PopCount(io.in.map(_.fire)) === io.out.fire)
 }
 
 class FastArbFactory(rr: Boolean, qos: Boolean) {
