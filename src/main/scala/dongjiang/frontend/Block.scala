@@ -113,9 +113,6 @@ class Block(implicit p: Parameters) extends DJModule {
     sReceiptReg_s1            -> ReadReceipt,
     sDBIDReg_s1               -> DBIDResp
   ))
-  HardwareAssertion.withEn(taskReg_s1.chi.isRO | taskReg_s1.chi.isOWO | taskReg_s1.chi.memAttr.ewa, validReg_s1 && taskReg_s1.chi.isWrite)
-  HardwareAssertion.withEn(taskReg_s1.chi.isRO | taskReg_s1.chi.isEO  | taskReg_s1.chi.noOrder,     validReg_s1 && taskReg_s1.chi.isRead)
-  HardwareAssertion.withEn(taskReg_s1.chi.noOrder, validReg_s1 && (taskReg_s1.chi.isDataless | taskReg_s1.chi.isCombinedWrite | taskReg_s1.chi.isAtomic))
 
   /*
    * HardwareAssertion placePipe

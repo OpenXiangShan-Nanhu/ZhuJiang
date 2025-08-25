@@ -166,9 +166,10 @@ trait HasChi { this: DJBundle with HasNodeId with HasChiChannel with HasChiOp
     inst.toLAN      := toLAN
     inst.opcode     := opcode
     inst.expCompAck := expCompAck
-    inst.allocate   := Mux(isWrite, memAttr.allocate, false.B)
-    inst.ewa        := Mux(isWrite, memAttr.ewa,      false.B)
+    inst.allocate   := !isDataless & !isSnp & memAttr.allocate
+    inst.ewa        := !isDataless & !isSnp & memAttr.ewa
     inst.order      := order
+    inst.fullSize   := !isDataless & memAttr.cacheable & !isSnp & isFullSize
     inst
   }
 }

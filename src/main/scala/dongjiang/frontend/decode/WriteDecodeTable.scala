@@ -17,48 +17,50 @@ import chisel3._
 import chisel3.util._
 
 object Write_LAN {
-  // WriteNoSnpPtl With EWA
-  def writeNoSnpPtl_ewa_RO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | isRO, Seq(
-    // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp))))
-  ))
-
-  def writeNoSnpPtl_noEWA_RO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | isRO, Seq(
+  // WriteNoSnpPtl Without EWA(from Core)
+  def writeNoSnpPtl_noEWA_EO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | isEO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp))))
   ))
 
+  // WriteNoSnpPtl Without EWA(from Core)
   def writeNoSnpPtl_noEWA_OWO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | isOWO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp))))
   ))
 
-  // WriteNoSnpPtl With EWA
+  // WriteNoSnpPtl With EWA(from Core)
   def writeNoSnpPtl_ewa_OWO: DecodeType = (fromLAN | toLAN | reqIs(WriteNoSnpPtl) | ewa | isOWO, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp))))
   ))
 
-  // WriteUniquePtl Without Allocate
-  def writeUniquePtl_noAlloc: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | ewa | isOWO, Seq(
+  // ReadNoSnp
+  def writeNoSnpPtlTable: Seq[DecodeType] = Seq(writeNoSnpPtl_noEWA_EO, writeNoSnpPtl_noEWA_OWO, writeNoSnpPtl_ewa_OWO)
+
+  // WriteUniquePtl Without EWA
+  def writeUniquePtl_noEWA: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | isOWO, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp)))),
+    (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp)))),
     // I I SC -> I I I
-    (sfMiss | llcIs(SC))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "merge", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(SC))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "merge", "send", "fullSize") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I I UC -> I I I
-    (sfMiss | llcIs(UC))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "merge", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UC))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "merge", "send", "fullSize") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I I UD -> I I I
-    (sfMiss | llcIs(UD))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "merge", "send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriLLC(I)))),
+    (sfMiss | llcIs(UD))  -> (returnDBID, Seq(NCBWrData -> second(tdop("read", "merge", "send", "fullSize") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriLLC(I)))),
     // I V I
     (srcMiss | othHit | llcIs(I)) -> (returnDBID | snpOth(SnpUnique) | retToSrc | needDB, Seq(
-      (NCBWrData | datIs(SnpRespData) | respIs(I_PD))   -> second(tdop("send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
-      (NCBWrData | datIs(SnpRespData) | respIs(I))      -> second(tdop("send", "fullSize") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false)), // I I I
-      (NCBWrData | rspIs(SnpResp)     | respIs(I))      -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp) | wriSNP(false))              // I I I
+      (NCBWrData | datIs(SnpRespData) | respIs(I_PD))   -> second(tdop("send", "fullSize") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)), // I I I
+      (NCBWrData | datIs(SnpRespData) | respIs(I))      -> second(tdop("send", "fullSize") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false)), // I I I
+      (NCBWrData | rspIs(SnpResp)     | respIs(I))      -> second(tdop("send") | write(WriteNoSnpPtl), waitSecDone | cmtRsp(Comp) | wriSNP(false))              // I I I
     ))
   ))
+  def writeUniquePtl_noEWA_allocate: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | isOWO | allocate, writeUniquePtl_noEWA._2)
+  def writeUniquePtl_noEWA_fullSize: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | isOWO | isFullSize, writeUniquePtl_noEWA._2)
+  def writeUniquePtl_noEWA_allocate_fullSize: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | isOWO | allocate | isFullSize, writeUniquePtl_noEWA._2)
 
-  // WriteUniquePtl With Allocate
-  def writeUniquePtl_alloc: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | allocate | ewa | isOWO, Seq(
+  // WriteUniquePtl With EWA Without Allocate
+  def writeUniquePtl_ewa_noAllocate: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | isOWO | ewa, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(tdop("send") | write(WriteNoSnpPtl), cmtRsp(Comp)))),
     // I I SC -> I I UD
@@ -74,9 +76,33 @@ object Write_LAN {
       (NCBWrData | rspIs(SnpResp)     | respIs(I))      -> second(tdop("send") | write(WriteNoSnpPtl),  cmtRsp(Comp) | wriSNP(false))    // I I I
     ))
   ))
+  def writeUniquePtl_ewa_noAllocate_fullSize: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | isOWO | ewa | isFullSize, writeUniquePtl_ewa_noAllocate._2)
+
+  // WriteUniquePtl With EWA With Allocate
+  def writeUniquePtl_ewa_allocate:          DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | isOWO | ewa | allocate, writeUniquePtl_ewa_noAllocate._2)
+  def writeUniquePtl_ewa_allocate_fullSize: DecodeType = (fromLAN | toLAN | reqIs(WriteUniquePtl) | isOWO | ewa | allocate | isFullSize, Seq(
+    // I I I  -> I I UD
+    (sfMiss | llcIs(I))   -> (returnDBID, Seq(NCBWrData -> second(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), waitSecDone | cdop("save") | cmtRsp(Comp) | wriLLC(UD)))),
+    // I I SC -> I I UD
+    (sfMiss | llcIs(SC))  -> first(returnDBID, NCBWrData, cdop("read", "save") | cmtRsp(Comp) | wriLLC(UD)),
+    // I I UC -> I I UD
+    (sfMiss | llcIs(UC))  -> first(returnDBID, NCBWrData, cdop("read", "save") | cmtRsp(Comp) | wriLLC(UD)),
+    // I I UD -> I I UD
+    (sfMiss | llcIs(UD))  -> first(returnDBID, NCBWrData, cdop("read", "save") | cmtRsp(Comp) | wriLLC(UD)),
+    // I V I
+    (srcMiss | othHit | llcIs(I)) -> (returnDBID | snpOth(SnpUnique) | retToSrc | needDB, Seq(
+      (NCBWrData | datIs(SnpRespData) | respIs(I_PD))   -> second(cdop("save") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
+      (NCBWrData | datIs(SnpRespData) | respIs(I))      -> second(cdop("save") | cmtRsp(Comp) | wriSNP(false) | wriLLC(UD)), // I I UD
+      (NCBWrData | rspIs(SnpResp)     | respIs(I))      -> second(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), waitSecDone | cdop("save") | cmtRsp(Comp) |  wriSNP(false) | wriLLC(UD))    // I I UD
+    ))
+  ))
+
+  // WriteUniquePtl
+  def writeUniquePtlTable: Seq[DecodeType] = Seq(writeUniquePtl_noEWA, writeUniquePtl_noEWA_allocate, writeUniquePtl_noEWA_fullSize, writeUniquePtl_noEWA_allocate_fullSize,
+    writeUniquePtl_ewa_noAllocate, writeUniquePtl_ewa_noAllocate_fullSize, writeUniquePtl_ewa_allocate, writeUniquePtl_ewa_allocate_fullSize)
 
   // WriteBackFull Without Allocate
-  def writeBackFull_noAlloc: DecodeType = (fromLAN | toLAN | reqIs(WriteBackFull) | ewa | noOrder, Seq(
+  def writeBackFull_noAlloc: DecodeType = (fromLAN | toLAN | reqIs(WriteBackFull) | ewa | noOrder | isFullSize, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> first(returnDBID, CBRespIs(I), noCmt),
     // I I SC -> I I SC
@@ -102,7 +128,7 @@ object Write_LAN {
   ))
 
   // WriteBackFull With Allocate
-  def writeBackFull_alloc: DecodeType = (fromLAN | toLAN | reqIs(WriteBackFull) | allocate | ewa | noOrder, Seq(
+  def writeBackFull_alloc: DecodeType = (fromLAN | toLAN | reqIs(WriteBackFull) | allocate | ewa | noOrder | isFullSize, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))   -> first(returnDBID, CBRespIs(I), noCmt),
     // I I SC -> I I SC
@@ -129,7 +155,7 @@ object Write_LAN {
 
 
   // WriteEvictOrEvict
-  def writeEvictOrEvict: DecodeType = (fromLAN | toLAN | reqIs(WriteEvictOrEvict) | expCompAck | allocate | ewa | noOrder, Seq(
+  def writeEvictOrEvict: DecodeType = (fromLAN | toLAN | reqIs(WriteEvictOrEvict) | expCompAck | allocate | ewa | noOrder | isFullSize, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))  -> first(cmtRsp(Comp)),
     // I I SC -> I I SC
@@ -152,7 +178,7 @@ object Write_LAN {
   ))
 
   // WriteCleanFull
-  def writeCleanFull: DecodeType = (fromLAN | toLAN | reqIs(WriteCleanFull) | ewa | noOrder, Seq(
+  def writeCleanFull: DecodeType = (fromLAN | toLAN | reqIs(WriteCleanFull) | ewa | noOrder | isFullSize, Seq(
     // I I I  -> I I I
     (sfMiss | llcIs(I))  -> first(returnDBID, CBRespIs(I), noCmt),
     // I I SC -> I I SC
@@ -178,5 +204,5 @@ object Write_LAN {
   ))
 
   // writeNoSnpPtl ++ writeUniquePtl ++ writeBackFull ++ writeCleanFull ++ writeEvictOrEvict ++ writeCleanFull -> 9
-  def table: Seq[DecodeType] = Seq(writeNoSnpPtl_ewa_RO, writeNoSnpPtl_noEWA_RO, writeNoSnpPtl_noEWA_OWO, writeNoSnpPtl_ewa_OWO, writeUniquePtl_noAlloc, writeUniquePtl_alloc, writeEvictOrEvict, writeBackFull_noAlloc, writeBackFull_alloc, writeCleanFull)
+  def table: Seq[DecodeType] = writeNoSnpPtlTable ++ writeUniquePtlTable ++ Seq(writeEvictOrEvict, writeBackFull_noAlloc, writeBackFull_alloc, writeCleanFull)
 }

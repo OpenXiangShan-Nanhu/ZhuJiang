@@ -51,9 +51,10 @@ class ChiInst extends Bundle  {
   val toLAN       = Bool() // true -> LAN; false -> BBN
   val opcode      = UInt(ReqOpcode.width.max(SnpOpcode.width).W)
   val expCompAck  = Bool()
-  val allocate    = Bool() // Only use in write, ignore it in others
-  val ewa         = Bool() // Only use in write, ignore it in others
+  val allocate    = Bool() // must be false in dataless / snoop
+  val ewa         = Bool() // must be false in dataless / snoop
   val order       = UInt(Order.width.W) // TODO: Looks like there's no need to check the order in ChiInst.
+  val fullSize    = Bool() // must be false in !cacheable / dataless / snoop
 
   override def toPrintable: Printable = {
     var pa = cf""
@@ -240,10 +241,11 @@ object Inst {
   def expCompAck        : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.expCompAck    := true.B;  temp.asUInt }
   def allocate          : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.allocate      := true.B;  temp.asUInt }
   def ewa               : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.ewa           := true.B;  temp.asUInt }
-  def noOrder           : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.order         := Order.None;              temp.asUInt }
-  def isEO              : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.order         := Order.EndpointOrder;     temp.asUInt }
-  def isRO              : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.order         := Order.RequestOrder;      temp.asUInt }
-  def isOWO             : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.order         := Order.OWO;               temp.asUInt | expCompAck }
+  def noOrder           : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.order         := Order.None;          temp.asUInt }
+  def isEO              : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.order         := Order.EndpointOrder; temp.asUInt }
+  def isRO              : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.order         := Order.RequestOrder;  temp.asUInt }
+  def isOWO             : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.order         := Order.OWO;           temp.asUInt | expCompAck }
+  def isFullSize        : UInt = { val temp = WireInit(0.U.asTypeOf(new ChiInst())); temp.fullSize      := true.B;              temp.asUInt }
 
   // State Inst
   def stateValid        : UInt = { val temp = WireInit(0.U.asTypeOf(new StateInst())); temp.valid       := true.B;      temp.asUInt }
