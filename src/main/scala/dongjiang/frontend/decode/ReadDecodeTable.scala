@@ -79,8 +79,8 @@ object Read_LAN_DCT_DMT {
       (rspIs(SnpRespFwded)      | respIs(UD)    | fwdIs(I))   -> second(noCmt),                                                   // I UD  I
       (datIs(SnpRespDataFwded)  | respIs(SC_PD) | fwdIs(I))   -> second(tdop("send", "fullSize")| write(WriteNoSnpFull), noCmt),  // I SC  I
       (datIs(SnpRespDataFwded)  | respIs(I_PD)  | fwdIs(I))   -> second(cdop("save") | wriSNP(false) | wriLLC(UD)),               // I  I UD
-      (rspIs(SnpResp)           | respIs(SC))                 -> second(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I)), // I SC  I
-      (rspIs(SnpResp)           | respIs(I))                  -> second(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send") | cmtDat(CompData) | respIs(I) | wriSNP(false)), // I  I  I
+      (rspIs(SnpResp)           | respIs(SC))                 -> second(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), waitSecDone | cdop("send") | cmtDat(CompData) | respIs(I)), // I SC  I
+      (rspIs(SnpResp)           | respIs(I))                  -> second(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), waitSecDone | cdop("send") | cmtDat(CompData) | respIs(I) | wriSNP(false)), // I  I  I
     )),
   ))
   def readOnce_allocate_ewa_fullSize: DecodeType = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | isEO | allocate | ewa | isFullSize, readOnce_allocate_fullSize._2)
