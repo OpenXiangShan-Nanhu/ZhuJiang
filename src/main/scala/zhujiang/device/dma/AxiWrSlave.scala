@@ -15,29 +15,16 @@ import dongjiang.utils.StepRREncoder
 import firrtl2.flattenType
 
 class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
-  private val rni = DmaParams(node = node)
-  private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
-  private val axiParamsUser = AxiParams(addrBits = axiParams.addrBits, idBits = log2Ceil(node.outstanding), userBits = axiParams.idBits + log2Ceil(rni.axiEntrySize), dataBits = axiParams.dataBits,
-    attr = axiParams.attr, lenBits = axiParams.lenBits, qosBits = axiParams.qosBits, regionBits = axiParams.regionBits)
-  private val axiParamsLast  = AxiParams(addrBits = axiParams.addrBits, idBits = axiParams.idBits, userBits = 1, dataBits = axiParams.dataBits,
-    attr = axiParams.attr, lenBits = axiParams.lenBits, qosBits = axiParams.qosBits, regionBits = axiParams.regionBits)
-  private val axiWParamsUser = AxiParams(addrBits = axiParams.addrBits, idBits = log2Ceil(node.outstanding), userBits = log2Ceil(node.outstanding), dataBits = axiParams.dataBits,
-    attr = axiParams.attr, lenBits = axiParams.lenBits, qosBits = axiParams.qosBits, regionBits = axiParams.regionBits)
-  require(axiParams.idBits >= log2Ceil(node.outstanding))
+  private val rni             = DmaParams(node = node)
+  private val axiParams       = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
+  private val axiParamsUser   = axiParams.copy(idBits = log2Ceil(node.outstanding), userBits = axiParams.idBits + log2Ceil(node.outstanding))
+  private val axiParamsLast   = axiParams.copy(userBits = 1)
+  private val axiWParamsUser  = axiParams.copy(userBits = log2Ceil(node.outstanding))
 
   private class CirQAxiEntryPtr extends CircularQueuePtr[CirQAxiEntryPtr](rni.axiEntrySize)
   private object CirQAxiEntryPtr {
   def apply(f: Bool, v: UInt): CirQAxiEntryPtr = {
         val ptr = Wire(new CirQAxiEntryPtr)
-        ptr.flag := f
-        ptr.value := v
-        ptr
-    }
-  }
-  private class CirQChiEntryPtr extends CircularQueuePtr[CirQChiEntryPtr](node.outstanding)
-  private object CirQChiEntryPtr {
-  def apply(f: Bool, v: UInt): CirQChiEntryPtr = {
-        val ptr = Wire(new CirQChiEntryPtr)
         ptr.flag := f
         ptr.value := v
         ptr
@@ -53,7 +40,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
     val dAxiAw  = Decoupled(new AWFlit(axiParamsUser))
     val dAxiW   = Decoupled(new WFlit(axiWParamsUser))
     val dAxiB   = Flipped(Decoupled(new BFlit(axiParams)))
-    val finish  = Flipped(Valid(UInt(log2Ceil(node.outstanding).W)))
+    val finish  = Flipped(Valid(new Finish(node)))
     val working = Output(Bool())
   })
 
@@ -63,11 +50,12 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val uAwEntrys      = Reg(Vec(rni.axiEntrySize, new AxiWrEntry(isPipe = false, node = node)))
   private val uHeadPtr       = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
   private val uTailPtr       = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
-  private val dAwEntrys      = RegInit(VecInit(Seq.fill(node.outstanding)((new AxiWMstEntry(node)).Lit(_.busy -> false.B))))
+  private val dAwEntrys      = RegInit(VecInit(Seq.fill(node.outstanding)((new AxiWMstEntry(node)).Lit(_.valid -> false.B))))
+  private val streamFree     = RegInit(VecInit(Seq.fill(node.outstanding)(true.B)))
 
 // Vec declare
-  private val freeVec        = dAwEntrys.map(e => !e.busy)
-  private val validVec       = dAwEntrys.map(e => e.busy)
+  private val freeVec        = dAwEntrys.map(e => !e.valid)
+  private val validVec       = dAwEntrys.map(e => e.valid)
 
 
 // Judge whether it is valid
@@ -75,7 +63,8 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val dAwWorking     = validVec.reduce(_ | _)
 
 // Sellect from Vec
-  private val selFree        = StepRREncoder(freeVec, io.dAxiAw.fire)
+  private val selFree        = PriorityEncoder(freeVec)
+  private val freeStream     = PriorityEncoder(streamFree)
 
 // SubModule declare
   private val rxAwPipe       = Module(new Queue(gen = new AxiWrEntry(isPipe = true, node = node), entries = 2, pipe = false, flow = false))
@@ -93,9 +82,6 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val rxAwBdl        = WireInit(0.U.asTypeOf(new AxiWrEntry(isPipe = true, node = node)))
   private val txAwBdl        = WireInit(0.U.asTypeOf(new AWFlit(axiParamsUser)))
   private val uTailE         = uAwEntrys(uTailPtr.value)
-  private val userArid_hi    = io.dAxiAw.bits.user.getWidth - 1
-  private val userArid_lo    = log2Ceil(rni.axiEntrySize)
-  private val userEid_hi     = log2Ceil(rni.axiEntrySize) - 1
 
 /* 
  * Merge Logic
@@ -107,7 +93,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 
   private val wDataPtrDeq            = (mergeDeq || noMergeDeq) & io.uAxiW.fire
   private val sDataPtrDeq            = io.dAxiW.fire && io.dAxiW.bits._last
-  private val reachPeak              = (uAwEntrys(uTailPtr.value).cnt.get + 1.U) === uAwEntrys(uTailPtr.value).num.get
+  private val reachPeak              = (uTailE.cnt.get + 1.U) === uTailE.num.get
   private val reachBottom            = (uTailE.num.get === 0.U) & (uTailE.cnt.get === 63.U)   // 4096 / 64 = 64
   private val tailPtrAdd             = io.dAxiAw.fire & (reachBottom | reachPeak)
 
@@ -143,7 +129,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   uAwEntrys.zipWithIndex.foreach {
     case(e, i) =>
       when(rxAwPipe.io.deq.fire & (uHeadPtr.value === i.U)){
-        e.entryInit(rxAwPipe.io.deq.bits)
+        e.entryInit(rxAwPipe.io.deq.bits, freeStream)
       }.elsewhen((uTailPtr.value === i.U) & io.dAxiAw.fire){
         e.cnt.get         := e.cnt.get + 1.U
         e.exAddr          := Cat(e.exAddr(rni.pageBits - 1, rni.offset) + 1.U, 0.U(rni.offset.W)) & e.byteMask | ~e.byteMask & e.exAddr
@@ -160,17 +146,26 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
         e.mask         :=  uTailE.byteMask(rni.offset - 1, 0)
         e.nextShift    :=  (uTailE.exAddr(rni.offset - 1, 0) + (1.U(rni.offset.W) << uTailE.size)) & uTailE.byteMask(rni.offset - 1, 0) | uTailE.exAddr(rni.offset - 1, 0) & ~uTailE.byteMask(rni.offset - 1, 0)
         e.size         :=  1.U(6.W) << uTailE.size
-        e.busy         := true.B
+        e.valid        := true.B
         e.specWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & !uTailE.byteMask(rni.offset)
         e.fullWrap     :=  Burst.isWrap(uTailE.burst) & uTailE.cache(1) & (uTailE.byteMask(rni.offset) ^ uTailE.byteMask(rni.offset - 1))
       }.elsewhen(io.uAxiW.fire & (wIdQueue.io.deq.bits === i.U)) {
         e.shift     := e.nextShift
         e.nextShift := (e.nextShift + e.size) & e.mask | e.nextShift & ~e.mask
       }
-      when(io.finish.valid && io.finish.bits === i.U) {
-        assert(e.busy)
-        e.busy         := false.B
+      when(io.finish.valid && io.finish.bits.idx === i.U) {
+        assert(e.valid)
+        e.valid         := false.B
       }
+  }
+
+  when(io.finish.valid && (dAwEntrys(io.finish.bits.idx).dontMerge || dAwEntrys(io.finish.bits.idx).last)) {
+    assert(!streamFree(io.finish.bits.streamID))
+    streamFree(io.finish.bits.streamID) := true.B
+  }
+  when(rxAwPipe.io.deq.fire){
+    assert(streamFree(freeStream))
+    streamFree(freeStream) := false.B
   }
   txAwBdl                       := 0.U.asTypeOf(txAwBdl)
   private val specWrapModify     = uTailE.cache(1) & Burst.isWrap(uTailE.burst) & (uTailE.byteMask(rni.offset) ^  uTailE.byteMask(rni.offset - 1))
@@ -193,7 +188,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   txAwBdl.cache  := uTailE.cache
   txAwBdl.burst  := Burst.INCR
   txAwBdl.id     := selFree
-  txAwBdl.user   := Cat(uTailE.id, uTailPtr.value)
+  txAwBdl.user   := Cat(uTailE.id, uTailE.streamId)
 
   private val incrOffset        = uTailE.exAddr(rni.offset - 1) & Burst.isIncr(uTailE.burst)
   private val wrapOffset        = Burst.isWrap(uTailE.burst) & (uTailE.exAddr(rni.offset - 1) & uTailE.byteMask(rni.offset) | !uTailE.byteMask(rni.offset - 1))
@@ -204,7 +199,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 //  * IO Connection Logic
 //  */
   io.uAxiAw.ready    := rxAwPipe.io.enq.ready
-  io.uAxiW.ready     := wIdQueue.io.deq.valid && io.dAxiW.ready
+  io.uAxiW.ready     := wIdQueue.io.deq.valid && io.dAxiW.ready && (merComReg =/= 2.U)
   io.uAxiB.bits      := 0.U.asTypeOf(io.uAxiB.bits)
   io.uAxiB.bits.id   := bIdQueue.io.deq.bits
   io.uAxiB.valid     := bIdQueue.io.deq.valid
@@ -234,7 +229,7 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
 
   rxAwPipe.io.enq.bits    := rxAwBdl.pipeInit(io.uAxiAw.bits)
   rxAwPipe.io.enq.valid   := io.uAxiAw.valid
-  rxAwPipe.io.deq.ready   := !isFull(uHeadPtr, uTailPtr)
+  rxAwPipe.io.deq.ready   := !isFull(uHeadPtr, uTailPtr) && streamFree.reduce(_ | _)
 
   wIdQueue.io.enq.valid      := io.dAxiAw.fire
   wIdQueue.io.enq.bits       := selFree
@@ -257,5 +252,8 @@ class AxiWrSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   }
   when(io.uAxiW.fire) {
     assert(wIdQueue.io.deq.valid)
+  }
+  when(io.dAxiAw.fire) {
+    assert(!streamFree(io.dAxiAw.bits.user(log2Ceil(node.outstanding) - 1, 0)))
   }
 }

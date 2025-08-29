@@ -37,8 +37,8 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val axiWrSlave  = Module(new AxiWrSlave(node))
   private val chiRdMaster = Module(new ChiRdMaster(node))
   private val chiWrMaster = Module(new ChiWrMaster(node))
-  private val axiArSplit  = Module(new AxiDevSpilt(node = node, write = false, read = true))
-  private val axiAwSplit  = Module(new AxiDevSpilt(node = node, write = true, read = false))
+  private val axiArSplit  = Module(new AxiDevSpilt(node = node))
+  private val axiAwSplit  = Module(new AxiDevSpilt(node = node))
   private val rdDB        = Module(new DataBufferForRead(node))
   private val wrDB        = Module(new DataBufferForWrite(bufferSize = node.outstanding, ctrlSize = node.outstanding))
 
@@ -55,14 +55,15 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   icn.rx.resp.get.ready := true.B
 
   axiRdSlave.io.dAxiAr <> chiRdMaster.io.axiAr
+  axiRdSlave.io.finish <> chiRdMaster.io.finish
   axiRdSlave.io.dAxiR  <> rdDB.io.axiR
-  axiRdSlave.io.uAxiAr <> axiArSplit.io.dAxiAr.get
+  axiRdSlave.io.uAxiAr <> axiArSplit.io.dAxiAx
   axiRdSlave.io.uAxiR  <> axi.r
 
-  axiArSplit.io.dAxiAr.get <> axiRdSlave.io.uAxiAr
-  axiArSplit.io.uAxiAr.get <> rxArQueue.io.deq
-  axiAwSplit.io.dAxiAw.get <> axiWrSlave.io.uAxiAw
-  axiAwSplit.io.uAxiAw.get <> rxAwQueue.io.deq
+  axiArSplit.io.dAxiAx <> axiRdSlave.io.uAxiAr
+  axiArSplit.io.uAxiAx <> rxArQueue.io.deq
+  axiAwSplit.io.dAxiAx <> axiWrSlave.io.uAxiAw
+  axiAwSplit.io.uAxiAx <> rxAwQueue.io.deq
 
 
 
@@ -86,7 +87,7 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
   chiRdMaster.io.chiRxRsp.valid := rxRspPipe.valid
   chiRdMaster.io.chiRxRsp.bits  := rxRspPipe.bits
-  chiRdMaster.io.chiDat.valid   := rxDatQueue.io.deq.valid & !rcvIsRct
+  chiRdMaster.io.chiDat.valid   := rxDatQueue.io.deq.valid
   chiRdMaster.io.chiDat.bits    := rxDatQueue.io.deq.bits
 
   chiWrMaster.io.chiRxRsp.valid := rxRspPipe.valid
@@ -94,13 +95,13 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   assert(chiRdMaster.io.chiRxRsp.ready, "if ready is false, please use Queue, Do not use Pipe")
   assert(chiWrMaster.io.chiRxRsp.ready, "if ready is false, please use Queue, Do not use Pipe")
 
-  rxDatQueue.io.deq.ready       := !rcvIsRct && chiRdMaster.io.chiDat.ready
+  rxDatQueue.io.deq.ready       := chiRdMaster.io.chiDat.ready
 
 
   FastArbiter(Seq(chiRdMaster.io.chiReq  , chiWrMaster.io.chiReq  ), arbReqOut)
   FastArbiter(Seq(chiRdMaster.io.chiTxRsp, chiWrMaster.io.chiTxRsp), arbRspOut)
 
-  working  := axiRdSlave.io.working || axiWrSlave.io.working || chiRdMaster.io.working || chiWrMaster.io.working || axiArSplit.io.working || axiAwSplit.io.working
+  working  := axiRdSlave.io.working || axiWrSlave.io.working || chiWrMaster.io.working || axiArSplit.io.working || axiAwSplit.io.working
 
   if(icn.tx.req.isDefined) {
     connIcn(icn.tx.req.get         , arbReqOut      )

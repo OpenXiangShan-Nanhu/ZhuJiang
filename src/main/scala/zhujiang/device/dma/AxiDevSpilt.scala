@@ -14,12 +14,10 @@ import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
 import dongjiang.utils.StepRREncoder
 
 
-class AxiDevSpilt(node: Node, write: Boolean, read: Boolean)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
-  require(write ^ read)
+class AxiDevSpilt(node: Node)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private val rni           = DmaParams(node = node)
   private val axiParams     = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
-  private val axiParamsLast = AxiParams(addrBits = axiParams.addrBits, idBits = axiParams.idBits, userBits = 1, dataBits = axiParams.dataBits,
-    attr = axiParams.attr, lenBits = axiParams.lenBits, qosBits = axiParams.qosBits, regionBits = axiParams.regionBits)
+  private val axiParamsLast = axiParams.copy(userBits = 1)
 
   private class CirQAxiEntryPtr extends CircularQueuePtr[CirQAxiEntryPtr](rni.axiEntrySize)
   private object CirQAxiEntryPtr {
@@ -34,10 +32,8 @@ class AxiDevSpilt(node: Node, write: Boolean, read: Boolean)(implicit p: Paramet
  * IO Interface Define
  */
   val io = IO(new Bundle {
-    val uAxiAr   = if(read)  Some(Flipped(Decoupled(new ARFlit(axiParams)))) else None
-    val uAxiAw   = if(write) Some(Flipped(Decoupled(new AWFlit(axiParams)))) else None
-    val dAxiAr   = if(read)  Some(Decoupled(new ARFlit(axiParamsLast)))      else None
-    val dAxiAw   = if(write) Some(Decoupled(new ARFlit(axiParamsLast)))      else None
+    val uAxiAx   = Flipped(Decoupled(new AXFlit(axiParams)))
+    val dAxiAx   = Decoupled(new AXFlit(axiParamsLast))
     val working  = Output(Bool())
   })
 
@@ -49,16 +45,14 @@ class AxiDevSpilt(node: Node, write: Boolean, read: Boolean)(implicit p: Paramet
   private val tailPtr    = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
 
   //Wire declare
-  private val dAxiAXWire  = if(read) WireInit(0.U.asTypeOf(io.dAxiAr.get.bits)) else WireInit(0.U.asTypeOf(io.dAxiAw.get.bits))
-  private val uAxiAX      = if(read) Some(io.uAxiAr.get.bits)                   else Some(io.uAxiAw.get.bits)
-  private val entryInit   = if(read) Some(io.uAxiAr.get.fire)                   else Some(io.uAxiAw.get.fire)
-  private val entryMod    = if(read) Some(io.dAxiAr.get.fire)                   else Some(io.dAxiAw.get.fire)
+  private val dAxiAXWire  = WireInit(0.U.asTypeOf(io.dAxiAx.bits))
+  private val entryInit   = io.uAxiAx.fire
+  private val entryMod    = io.dAxiAx.fire
 
   // pointer movement logic 
   private val tailE       = axiEntries(tailPtr.value)
-  private val headPtrAdd  = if(write) io.uAxiAw.get.fire else io.uAxiAr.get.fire
-  private val tailPtrAdd  = if(write) io.dAxiAw.get.fire & (axiEntries(tailPtr.value).len === 0.U || axiEntries(tailPtr.value).cache(1)) else 
-    io.dAxiAr.get.fire & (axiEntries(tailPtr.value).len === 0.U || axiEntries(tailPtr.value).cache(1))
+  private val headPtrAdd  = io.uAxiAx.fire
+  private val tailPtrAdd  = io.dAxiAx.fire & (tailE.len === 0.U || tailE.cache(1)) 
 
   headPtr                := Mux(headPtrAdd, headPtr + 1.U, headPtr)
   tailPtr                := Mux(tailPtrAdd, tailPtr + 1.U, tailPtr)
@@ -69,9 +63,9 @@ class AxiDevSpilt(node: Node, write: Boolean, read: Boolean)(implicit p: Paramet
  */
   axiEntries.zipWithIndex.foreach {
     case(e, i) =>
-      when(entryInit.get && (headPtr.value === i.U)){
-        e.entryInit(uAxiAX.get)
-      }.elsewhen(entryMod.get && (tailPtr.value === i.U)) {
+      when(entryInit && (headPtr.value === i.U)){
+        e.entryInit(io.uAxiAx.bits)
+      }.elsewhen(entryMod && (tailPtr.value === i.U)) {
         e.exAddr  := (~e.byteMask & e.exAddr | (e.exAddr + (1.U((rni.offset).W) << e.size)) & e.byteMask)
         e.len     := e.len - 1.U
       }
@@ -89,30 +83,16 @@ class AxiDevSpilt(node: Node, write: Boolean, read: Boolean)(implicit p: Paramet
 /* 
  * IO Connection
  */
-  if(read) {
-    io.uAxiAr.get.ready      := !isFull(headPtr, tailPtr)
-    io.dAxiAr.get.valid      := !isEmpty(headPtr, tailPtr)
-    io.dAxiAr.get.bits       := dAxiAXWire
-  }
-  if(write) {
-    io.uAxiAw.get.ready      := !isFull(headPtr, tailPtr)
-    io.dAxiAw.get.valid      := !isEmpty(headPtr, tailPtr)
-    io.dAxiAw.get.bits       := dAxiAXWire
-  }
+  io.uAxiAx.ready      := !isFull(headPtr, tailPtr)
+  io.dAxiAx.valid      := !isEmpty(headPtr, tailPtr)
+  io.dAxiAx.bits       := dAxiAXWire
 
   io.working               := RegNext(headPtr =/= tailPtr)
   
 /* 
  * Assertion
  */
-  if(read) {
-    when(io.dAxiAr.get.fire && !io.dAxiAr.get.bits.cache(1)){
-      assert(io.dAxiAr.get.bits.len === 0.U)
-    }
-  }
-  if(write) {
-    when(io.dAxiAw.get.fire && !io.dAxiAw.get.bits.cache(1)){
-      assert(io.dAxiAw.get.bits.len === 0.U)
-    }
+  when(io.dAxiAx.fire && !io.dAxiAx.bits.cache(1)){
+    assert(io.dAxiAx.bits.len === 0.U)
   }
 }

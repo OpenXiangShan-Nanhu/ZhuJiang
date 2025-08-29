@@ -29,7 +29,7 @@ object Burst {
 }
 
 case class DmaParams(
-  axiEntrySize  : Int = 8,
+  axiEntrySize  : Int = 2,
   readDMT       : Boolean = true,
   rniID         : Int = 1,
   node          : Node,
@@ -38,13 +38,19 @@ case class DmaParams(
   cacheBytes    : Int = 64
 ){
   lazy val pageBits  = 12
-  lazy val idBits    = node.axiDevParams.get.extPortParams.getOrElse(AxiParams()).idBits
-  lazy val cacheBits = node.axiDevParams.get.extPortParams.getOrElse(AxiParams()).cacheBits
-  lazy val qosBits   = node.axiDevParams.get.extPortParams.getOrElse(AxiParams()).qosBits
-  lazy val sizeBits  = node.axiDevParams.get.extPortParams.getOrElse(AxiParams()).sizeBits
-  lazy val lenBits   = node.axiDevParams.get.extPortParams.getOrElse(AxiParams()).lenBits
+  lazy val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
+  lazy val idBits    = axiParams.idBits
+  lazy val cacheBits = axiParams.cacheBits
+  lazy val qosBits   = axiParams.qosBits
+  lazy val sizeBits  = axiParams.sizeBits
+  lazy val lenBits   = axiParams.lenBits
   lazy val cntBits   = log2Ceil(4096 / cacheBytes) + 1
 
+}
+class Finish(node : Node)(implicit P: Parameters) extends ZJBundle {
+  private val rni = DmaParams(node = node)
+  val streamID = UInt(log2Ceil(node.outstanding).W)
+  val idx      = UInt(log2Ceil(node.outstanding).W)
 }
 
 
@@ -57,9 +63,10 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
   val id       = UInt(rni.idBits.W)
   val byteMask = UInt(rni.pageBits.W)
   val len      = UInt(9.W)
-  val cnt      = if(!isPipe) Some(UInt(rni.cntBits.W))              else None
-  val range    = if(isPipe)  Some(UInt(rni.pageBits.W))   else None
-  val num      = if(!isPipe) Some(UInt(rni.cntBits.W))              else None
+  val cnt      = if(!isPipe) Some(UInt(rni.cntBits.W))                else None
+  val range    = if(isPipe)  Some(UInt(rni.pageBits.W))               else None
+  val num      = if(!isPipe) Some(UInt(rni.cntBits.W))                else None
+  val streamID = if(!isPipe) Some(UInt(log2Ceil(node.outstanding).W)) else None
   val size     = UInt(3.W)
   val cache    = UInt(4.W)
   val burst    = UInt(2.W)
@@ -73,35 +80,35 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
   def pipeInit[T <: ARFlit](ar: T): AxiRdEntry = {
     this.preAddr    := ar.addr(raw - 1, rni.pageBits)
     this.exAddr     := ar.addr(rni.pageBits - 1, 0)
-    this.endAddr    := ((ar.addr(rni.pageBits - 1, 0) >> ar.size) + (ar.len.asTypeOf(UInt(9.W)) + 1.U)) << ar.size
+    this.endAddr    := this.exAddr + this.range.get
     this.qos        := ar.qos
     this.id         := ar.id
     this.byteMask   := wrapMask(ar.len, ar.size)
-    this.len        := ar.len.asTypeOf(UInt(9.W)) + 1.U
-    this.range.get  := (ar.len.asTypeOf(UInt(9.W)) + 1.U) << ar.size
+    this.len        := ar.len +& 1.U(1.W)
+    this.range.get  := (ar.len +& 1.U(1.W)) << ar.size
     this.size       := ar.size
     this.cache      := ar.cache
     this.burst      := ar.burst
     this.spLast     := ar.user.asBool
+    assert(this.range.get <= 4096.U)
+    assert(this.size <= 5.U)
     this
   }
-  def getNum(modify: Bool, range: UInt, endAddr: UInt, exAddr: UInt, len: UInt, burst: UInt): UInt = {
-     val canNotMerge   = !modify
-     val fixMerge      = Burst.isFix(burst)  & modify
-     val wrapMerge     = Burst.isWrap(burst) & modify
-     val incrMerge     = Burst.isIncr(burst) & modify
+  def getNum(range: UInt, endAddr: UInt, exAddr: UInt, len: UInt, burst: UInt): UInt = {
+     val fixMerge      = Burst.isFix(burst)
+     val wrapMerge     = Burst.isWrap(burst)
+     val incrMerge     = Burst.isIncr(burst)
      //number compute
      val wrapMergeNum  = Mux(range(rni.pageBits - 1, rni.offset + 1).orR, Mux(exAddr(rni.offset - 1, 0).orR, range(rni.pageBits - 1, rni.offset) + 1.U, range(rni.pageBits - 1, rni.offset)), 1.U)
-     val incrMergeNum  = endAddr(rni.pageBits - 1, rni.offset) + endAddr(rni.offset - 1, 0).orR - exAddr(rni.pageBits - 1, rni.offset)
+     val incrMergeNum  = endAddr(rni.pageBits - 1, rni.offset) - exAddr(rni.pageBits - 1, rni.offset) + endAddr(rni.offset - 1, 0).orR 
      val fixMergeNum   = 1.U
      PriorityMux(Seq(
-      canNotMerge     -> len,
       fixMerge        -> fixMergeNum,
       wrapMerge       -> wrapMergeNum,
       incrMerge       -> incrMergeNum
      ))
   }  
-  def entryInit[T <: AxiRdEntry](info: T): AxiRdEntry = {
+  def entryInit[T <: AxiRdEntry](info: T, streamId: UInt): AxiRdEntry = {
     this.preAddr      := info.preAddr
     this.exAddr       := Mux(Burst.isFix(info.burst) & info.cache(1), Cat(info.exAddr(rni.pageBits - 1, rni.offset - 1), 0.U((rni.offset - 1).W)), info.exAddr)
     this.endAddr      := Mux(Burst.isWrap(info.burst), info.exAddr, Mux(Burst.isFix(info.burst) & info.cache(1), Cat(info.exAddr(rni.pageBits - 1, rni.offset - 1), info.len(rni.offset - 2, 0)), info.endAddr))
@@ -109,12 +116,13 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
     this.id           := info.id
     this.byteMask     := Mux(Burst.isWrap(info.burst), info.byteMask, Mux(Burst.isIncr(info.burst), 0xFFF.U, Mux(Burst.isFix(info.burst) & info.cache(1), 0x1F.U, 0.U)))
     this.cnt.get      := 0.U
-    this.num.get      := getNum(info.cache(1).asBool, info.range.get, info.endAddr, info.exAddr, info.len, info.burst)
+    this.num.get      := Mux(info.cache(1), getNum(info.range.get, info.endAddr, info.exAddr, info.len, info.burst), 1.U)
     this.size         := Mux(Burst.isFix(info.burst) & info.cache(1), 0.U, info.size)
     this.len          := info.len
     this.cache        := info.cache
     this.burst        := info.burst
     this.spLast       := info.spLast
+    this.streamID.get := streamId
     this
   }
 }
@@ -134,6 +142,7 @@ class AxiWrEntry(isPipe : Boolean, node: Node)(implicit p: Parameters) extends Z
   val size        = UInt(3.W)
   val cache       = UInt(4.W)
   val id          = UInt(rni.idBits.W)
+  val streamId    = UInt(log2Ceil(node.outstanding).W)
   val spLast      = Bool()
 
   def byteComp(len:UInt, size:UInt) = {
@@ -145,40 +154,38 @@ class AxiWrEntry(isPipe : Boolean, node: Node)(implicit p: Parameters) extends Z
   def pipeInit[T <: AWFlit](aw : T): AxiWrEntry = {
     this.preAddr        := aw.addr(raw - 1, rni.pageBits)
     this.exAddr         := aw.addr(rni.pageBits - 1, 0)
-    this.endAddr        := ((aw.addr(rni.pageBits - 1, 0) >> aw.size) + (aw.len.asTypeOf(UInt(9.W)) + 1.U)) << aw.size
-    this.range.get      := (aw.len.asTypeOf(UInt(9.W)) + 1.U) << aw.size
+    this.endAddr        := this.range.get + this.exAddr
+    this.range.get      := (aw.len +& 1.U(1.W)) << aw.size
     this.burst          := aw.burst
     this.qos            := aw.qos
     this.byteMask       := byteComp(aw.len, aw.size)
     this.id             := aw.id
     this.size           := aw.size
-    this.len.get        := aw.len.asTypeOf(UInt(9.W)) + 1.U
+    this.len.get        := aw.len +& 1.U(1.W)
     this.cache          := aw.cache
     this.spLast         := aw.user.asBool
     this
   }
-  def getNum(modify: Bool, exAddr: UInt, len: UInt, burst: UInt, range: UInt, endAddr: UInt): UInt = {
-     val canNotMerge   = !modify
-     val fixMerge      = Burst.isFix(burst)  & modify
-     val wrapMerge     = Burst.isWrap(burst) & modify
-     val incrMerge     = Burst.isIncr(burst) & modify
+  def getNum(exAddr: UInt, len: UInt, burst: UInt, range: UInt, endAddr: UInt): UInt = {
+     val fixMerge      = Burst.isFix(burst)
+     val wrapMerge     = Burst.isWrap(burst)
+     val incrMerge     = Burst.isIncr(burst)
      //number compute
      val wrapMergeNum  = Mux(range(rni.pageBits - 1, rni.offset + 1).orR, Mux(exAddr(rni.offset - 1, 0).orR, range(rni.pageBits - 1, rni.offset) + 1.U, range(rni.pageBits - 1, rni.offset)), 1.U)
      val incrMergeNum  = endAddr(rni.pageBits - 1, rni.offset) + endAddr(rni.offset - 1, 0).orR - exAddr(rni.pageBits - 1, rni.offset)
      val fixMergeNum   = 1.U
      PriorityMux(Seq(
-      canNotMerge     -> len,
       fixMerge        -> fixMergeNum,
       wrapMerge       -> wrapMergeNum,
       incrMerge       -> incrMergeNum
      ))
   }
-  def entryInit[T <: AxiWrEntry](info : T): AxiWrEntry = {
+  def entryInit[T <: AxiWrEntry](info : T, streamId: UInt): AxiWrEntry = {
     this.preAddr        := info.preAddr
     this.exAddr         := info.exAddr
     this.endAddr        := Mux(Burst.isWrap(info.burst), info.exAddr, info.endAddr)
     this.qos            := info.qos
-    this.num.get        := getNum(info.cache(1), info.exAddr, info.len.get, info.burst, info.range.get, info.endAddr)
+    this.num.get        := Mux(info.cache(1), getNum(info.exAddr, info.len.get, info.burst, info.range.get, info.endAddr), 1.U)
     this.burst          := info.burst
     this.cnt.get        := 0.U
     this.byteMask       := Mux(Burst.isIncr(info.burst), 0xFFF.U, Mux(Burst.isWrap(info.burst), info.byteMask, 0.U))
@@ -186,6 +193,7 @@ class AxiWrEntry(isPipe : Boolean, node: Node)(implicit p: Parameters) extends Z
     this.cache          := info.cache
     this.id             := info.id
     this.spLast         := info.spLast
+    this.streamId       := streamId
     this
   }
 }
@@ -200,24 +208,25 @@ class AxiRMstEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val size        = UInt(6.W)
   val beat        = UInt(1.W)
   val outBeat     = UInt(1.W)
-  val busy        = Bool()
+  val noMerge     = Bool()
+  val valid       = Bool()
+  val subValid    = Bool()
 }
 
-object ChiRState {
-  val width       = 3
-  val FREE        = 0x0.U
-  val SENDREQ     = 0x1.U
-  val WAITRCT     = 0x2.U
-  val WAITDATA    = 0x3.U
-  val SENDACK     = 0x4.U
-  val SENDDAT     = 0x5.U
+class RdState extends Bundle {
+  val sendReq       = Bool()
+  val rcvData0      = Bool()
+  val rcvData1      = Bool()
+  val rcvDataCmp    = Bool()
+  val rcvRct        = Bool()
+  val sendData      = Bool()
+  val sendAck       = Bool()
 }
-
 
 class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
   private val rni   = DmaParams(node = node)
   val arId          = UInt(rni.idBits.W)
-  val eId           = UInt(log2Ceil(rni.axiEntrySize).W)
+  val eId           = UInt(log2Ceil(node.outstanding).W)
   val size          = UInt(3.W)
   val qos           = UInt(4.W)
   val fullSize      = Bool()
@@ -229,23 +238,23 @@ class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
   val dbSite1       = UInt(log2Ceil(node.outstanding).W)
   val dbSite2       = UInt(log2Ceil(node.outstanding).W)
   val respErr       = UInt(2.W)
-  val haveSendData  = Bool()
   val reqNid        = UInt(log2Ceil(node.outstanding).W)
   val ackNid        = UInt(log2Ceil(node.outstanding).W)
-  val state         = UInt(ChiRState.width.W)
-  val rcvData0      = Bool()
-  val rcvData1      = Bool()
+  val state         = new RdState
+  val valid         = Bool()
+  val complete      = Bool()
 
 
-  def isFree        = state === ChiRState.FREE
-  def isValid       = !isFree
-  def isToOrder     = (state === ChiRState.SENDREQ) || (state === ChiRState.WAITRCT)
-  def isWaitRct     = state === ChiRState.WAITRCT
+  def isToOrder     = valid && !state.rcvRct
+  def shodSendReq   = valid && !state.sendReq
+  def shodSendData  = valid && state.rcvDataCmp && !state.sendData
+  def shodSendAck   = valid && !state.sendAck && state.rcvDataCmp
+  def allTaskComp   = valid && state.rcvRct & state.sendAck & state.sendData
 
   def arToChi[T <: ARFlit, U <: DataBufferAlloc](b: T, reqNid: UInt, ackNid: UInt, resp: U): CHIRdEntry = {
     this                   := 0.U.asTypeOf(this)
-    this.arId              := b.user(b.user.getWidth - 1, log2Ceil(rni.axiEntrySize))
-    this.eId               := b.user(log2Ceil(rni.axiEntrySize) - 1, 0)
+    this.arId              := b.user(b.user.getWidth - 1, log2Ceil(node.outstanding))
+    this.eId               := b.user(log2Ceil(node.outstanding) - 1, 0)
     this.size              := b.size
     this.qos               := b.qos
     this.fullSize          := b.len(0).asBool
@@ -258,7 +267,8 @@ class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
     this.dbSite2           := resp.buf(1)
     this.reqNid            := reqNid
     this.ackNid            := ackNid
-    this.state             := ChiRState.SENDREQ
+    this.state.sendAck     := Mux(!b.cache(1), true.B, false.B)
+    this.valid             := true.B
     this
   }
 }
@@ -271,12 +281,14 @@ class readRdDataBuffer(outstanding: Int, axiParams: AxiParams)(implicit p: Param
   val id       = UInt(log2Ceil(outstanding).W)
   val resp     = UInt(2.W)
   val originId = UInt(axiParams.idBits.W)
+  val streamId = UInt(log2Ceil(outstanding).W)
   val last     = Bool()
 
   def SetBdl[T <: RdDBEntry](c: T, i: UInt): readRdDataBuffer = {
     this.id       := c.idx
     this.originId := c.arID
     this.resp     := c.respErr
+    this.streamId := c.streamId
     this.set      := Mux(i === 1.U, c.dbSite2, c.dbSite1)
     this.last     := Mux(c.double & i === 0.U, false.B, true.B)
     this
@@ -301,6 +313,7 @@ class writeWrDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBund
 class respDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   val data     = UInt(dw.W)
   val id       = UInt(log2Ceil(outstanding).W)
+  val streamId = UInt(log2Ceil(outstanding).W)
   val resp     = UInt(2.W)
   val last     = Bool()
 }
@@ -367,7 +380,7 @@ class AxiWMstEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val dontMerge = Bool()
   val specWrap  = Bool()
   val fullWrap  = Bool()
-  val busy      = Bool()
+  val valid     = Bool()
 }
 
 
@@ -403,20 +416,20 @@ class AxiOriEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   }
 }
 
-object ChiWState {
-  val width    = 3
-  val FREE     = 0x0.U
-  val SENDREQ  = 0x1.U
-  val WAITDBID = 0x2.U
-  val WAITDATA = 0x3.U
-  val SENDACK  = 0x4.U
-  val SENDDAT  = 0x5.U
-  val FINISH   = 0x6.U
+class WrState extends Bundle {
+  val sendReq     = Bool()
+  val rcvDBID     = Bool()
+  val rcvComp     = Bool()
+  val rcvDataCmp  = Bool()
+  val sendData    = Bool()
+  val sendAck     = Bool()
+  val sendBResp   = Bool()
 }
+
 class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   private val rni    = DmaParams(node = node)
   val awId           = UInt(log2Ceil(node.outstanding).W)
-  val eId            = UInt(log2Ceil(rni.axiEntrySize).W)
+  val eId            = UInt(log2Ceil(node.outstanding).W)
   val qos            = UInt(4.W)
   val fullSize       = Bool()
   val size           = UInt(3.W)
@@ -429,21 +442,23 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val dbid           = UInt(12.W)
   val dbSite1        = UInt(log2Ceil(node.outstanding).W)
   val dbSite2        = UInt(log2Ceil(node.outstanding).W)
-  val haveRcvComp    = Bool()
-  val haveSendB      = Bool()
-  val rcvDataComp    = Bool()
-  val state          = UInt(ChiWState.width.W)
+  val state          = new WrState
+  val valid          = Bool()
+  val complete       = Bool()
 
-  def isValid        = state =/= ChiWState.FREE
-  def isFree         = state === ChiWState.FREE
-  def isToOrder      = (state === ChiWState.SENDREQ) || (state === ChiWState.WAITDBID)
+  def isToOrder      = valid && !state.rcvDBID
+  def isWaitData     = valid && !state.rcvDataCmp
+  def isSendAck      = valid && (state.rcvComp || state.rcvDBID) && !state.sendAck
+  def isSendData     = valid && state.rcvDataCmp && !state.sendData && state.rcvDBID
+  def isSendBResp    = valid && state.rcvComp && state.rcvDataCmp && !state.sendBResp
+  def allTaskComp    = state.sendAck && state.sendData && state.sendBResp
 
   def awMesInit[T <: AWFlit, U <: DataBufferAlloc](aw : T, reqNid: UInt, ackNid: UInt, bNid: UInt, resp: U): CHIWEntry = {
     this           := 0.U.asTypeOf(this)
     this.fullSize  := aw.len(0).asBool
     this.qos       := aw.qos
-    this.awId      := aw.user(aw.user.getWidth - 1, log2Ceil(rni.axiEntrySize))
-    this.eId       := aw.user(log2Ceil(rni.axiEntrySize) - 1, 0)
+    this.awId      := aw.user(aw.user.getWidth - 1, log2Ceil(node.outstanding))
+    this.eId       := aw.user(log2Ceil(node.outstanding) - 1, 0)
     this.size      := aw.size
     this.reqNid    := reqNid
     this.ackNid    := ackNid
@@ -455,7 +470,7 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
     this.memAttr.cacheable := aw.cache(3) | aw.cache(2)
     this.memAttr.device    := !aw.cache(1)
     this.memAttr.ewa       := aw.cache(0)
-    this.state             := ChiWState.SENDREQ
+    this.valid             := true.B
     this
   }
 }
@@ -468,14 +483,16 @@ class RdDBEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val dbSite1       = UInt(log2Ceil(node.outstanding).W)
   val dbSite2       = UInt(log2Ceil(node.outstanding).W)
   val respErr       = UInt(2.W)
+  val streamId      = UInt(log2Ceil(node.outstanding).W)
 
   def rdDBInit[T <: CHIRdEntry](b: T, i: UInt): RdDBEntry = {
-    this.arID    := b.arId
-    this.idx     := i
-    this.double  := b.fullSize
-    this.dbSite1 := b.dbSite1
-    this.dbSite2 := b.dbSite2
-    this.respErr := b.respErr
+    this.arID     := b.arId
+    this.idx      := i
+    this.double   := b.fullSize
+    this.dbSite1  := b.dbSite1
+    this.dbSite2  := b.dbSite2
+    this.respErr  := b.respErr
+    this.streamId := b.eId
     this
   }
 }

@@ -17,9 +17,7 @@ import freechips.rocketchip.util.DataToAugmentedData
 class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   private val rni = DmaParams(node = node)
   private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
-  private val axiParamsUser = AxiParams(addrBits = axiParams.addrBits, idBits = axiParams.idBits, userBits = axiParams.idBits + log2Ceil(rni.axiEntrySize), dataBits = axiParams.dataBits,
-    attr = axiParams.attr, lenBits = axiParams.lenBits, qosBits = axiParams.qosBits, regionBits = axiParams.regionBits)
-  require(axiParams.idBits >= log2Ceil(node.outstanding))
+  private val axiParamsUser = axiParams.copy(userBits = axiParams.idBits + log2Ceil(node.outstanding), idBits = log2Ceil(node.outstanding))
 
   val io = IO(new Bundle {
     val axiAr    = Flipped(Decoupled(new ARFlit(axiParamsUser)))
@@ -31,13 +29,13 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
     val chiDat   = Flipped(Decoupled(new DataFlit))
     val wrDB     = Decoupled(new writeRdDataBuffer(node.outstanding))
     val rdDB     = Decoupled(new readRdDataBuffer(node.outstanding, axiParams))
-    val working  = Output(Bool())
+    val finish   = Valid(UInt(log2Ceil(node.outstanding).W))
   })
 
 /* 
  * Reg/Wire Define
  */
-  private val chiEntries     = RegInit(VecInit(Seq.fill(node.outstanding)((new CHIRdEntry(node)).Lit(_.state -> ChiRState.FREE))))
+  private val chiEntries     = RegInit(VecInit(Seq.fill(node.outstanding)((new CHIRdEntry(node)).Lit(_.valid -> false.B))))
   private val chiEntriesNext = WireInit(chiEntries)
   private val rdDBQueue      = Module(new Queue(gen = new RdDBEntry(node), entries = 2, flow = false, pipe = false))
   private val txDatPtr       = RegInit(0.U(1.W))
@@ -54,20 +52,21 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   private val txRspBdl   = WireInit(0.U.asTypeOf(new DmaRspFlit))
 
   private val userArid_hi = io.axiAr.bits.user.getWidth - 1
-  private val userArid_lo = log2Ceil(rni.axiEntrySize)
-  private val userEid_hi  = log2Ceil(rni.axiEntrySize) - 1
+  private val userArid_lo = log2Ceil(node.outstanding)
+  private val userEid_hi  = log2Ceil(node.outstanding) - 1
 
 /* 
  * Vec compute
  */
 
-  private val validVec       = chiEntries.map(c => c.isValid)
+  private val validVec       = chiEntries.map(c => c.valid)
   private val blockReqVec    = chiEntries.map(c => (c.arId === io.axiAr.bits.user(userArid_hi, userArid_lo)) && (c.eId =/= io.axiAr.bits.user(userEid_hi, 0)) && c.isToOrder)
 
-  private val shodSendReqVec = chiEntries.map(c => (c.reqNid === 0.U) && (c.state === ChiRState.SENDREQ))
-  private val readDataVec    = chiEntries.map(c => (c.state === ChiRState.SENDDAT) && c.ackNid === 0.U)
-  private val sendAckVec     = chiEntries.map(c => c.state === ChiRState.SENDACK & !c.memAttr.device)
-  private val sameARIdVec    = chiEntries.map(c => !c.haveSendData && (c.arId === io.axiAr.bits.user(userArid_hi, userArid_lo)) && c.isValid)
+  private val shodSendReqVec = chiEntries.map(c => (c.reqNid === 0.U) && (c.shodSendReq))
+  private val readDataVec    = chiEntries.map(c =>  c.shodSendData && c.ackNid === 0.U)
+  private val sendAckVec     = chiEntries.map(c =>  c.shodSendAck)
+  private val shodSendComVec = chiEntries.map(c =>  c.complete && c.valid)
+  private val sameARIdVec    = chiEntries.map(c => !c.state.sendData && (c.arId === io.axiAr.bits.user(userArid_hi, userArid_lo)) && c.valid)
 
   private val sendReqValid   = shodSendReqVec.reduce(_ | _)
   private val readDBValid    = readDataVec.reduce(_ | _)
@@ -78,6 +77,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   private val selSendReq        = StepRREncoder(shodSendReqVec, sendReqValid)
   private val selReadDB         = StepRREncoder(readDataVec, readDBValid)
   private val selSendAck        = StepRREncoder(sendAckVec, sendAckValid)
+  private val selSendFinish     = PriorityEncoder(shodSendComVec)
 
   //Pipe Reg
   private val shodBlockCnt  = PopCount(blockReqVec)
@@ -89,62 +89,63 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
  */
   for(i <- chiEntries.indices) {
     when(io.axiAr.fire && (io.axiAr.bits.id === i.U)) {
-        assert(chiEntries(i).state === ChiRState.FREE)
-        assert(io.reqDB.ready)
-        chiEntries(i).arToChi(io.axiAr.bits, shodBlockCnt, sameARIdCnt, io.respDB.bits)
+      assert(!chiEntries(i).valid)
+      assert(io.reqDB.ready)
+      chiEntries(i).arToChi(io.axiAr.bits, shodBlockCnt, sameARIdCnt, io.respDB.bits)
     }.elsewhen(validVec(i)) {
-        chiEntries(i)  := chiEntriesNext(i)
+      chiEntries(i)  := chiEntriesNext(i)
     }
   }
 
   for(((en, e), i) <- chiEntriesNext.zip(chiEntries).zipWithIndex) {
     when(io.chiReq.fire && (io.chiReq.bits.TxnID === i.U)){
-        assert(e.state === ChiRState.SENDREQ)
-        en.state    := ChiRState.WAITRCT
+      assert(!e.state.sendReq && !e.state.sendData && !e.state.rcvRct && !e.state.rcvDataCmp)
+      en.state.sendReq := true.B
     }
-
-    val fullRcvDataComp =  e.rcvData0 & e.rcvData1
-    val halfRcvDataComp = (e.rcvData0 =/= e.rcvData1) && !e.fromDCT && !e.fullSize
 
     when(rcvIsRct & (rctTxnid === i.U)){
-        assert(e.state === ChiRState.WAITRCT)
-        en.respErr  := io.chiRxRsp.bits.RespErr
-        en.state    := Mux(fullRcvDataComp | halfRcvDataComp, ChiRState.SENDACK, ChiRState.WAITDATA)
+      assert(!e.state.rcvRct)
+      en.respErr      := io.chiRxRsp.bits.RespErr
+      en.state.rcvRct := true.B
     }
     when(rctTxnidPipe.valid & (e.reqNid =/= 0.U) & (chiEntries(rctTxnidPipe.bits).arId === e.arId) && (chiEntries(rctTxnidPipe.bits).eId =/= e.eId)) {
-        en.reqNid   := e.reqNid - 1.U
+      en.reqNid   := e.reqNid - 1.U
     }
 
     when(dataTxnid === i.U & io.chiDat.fire){
-        assert(e.state === ChiRState.WAITDATA || e.state === ChiRState.WAITRCT)
-        en.rcvData0 := Mux(io.chiDat.bits.DataID === 0.U, true.B, e.rcvData0)
-        en.rcvData1 := Mux(io.chiDat.bits.DataID === 2.U, true.B, e.rcvData1)
-        en.respErr  := Mux(e.respErr =/= 0.U, e.respErr, io.chiDat.bits.RespErr)
-        en.homeNid  := io.chiDat.bits.HomeNID
-        en.dbid     := io.chiDat.bits.DBID
-        val fullDataRcvComp = (e.rcvData0 =/= e.rcvData1) && (e.state === ChiRState.WAITDATA)
-        val halfDataRcvComp = !e.fullSize && !fromDCT(io.chiDat.bits.SrcID) && (e.state === ChiRState.WAITDATA)
-        en.state    := Mux(fullDataRcvComp | halfDataRcvComp, ChiRState.SENDACK, e.state)
+      assert(!e.state.rcvDataCmp)
+      en.state.rcvData0 := Mux(io.chiDat.bits.DataID === 0.U, true.B, e.state.rcvData0)
+      en.state.rcvData1 := Mux(io.chiDat.bits.DataID === 2.U, true.B, e.state.rcvData1)
+      en.respErr        := Mux(e.respErr =/= 0.U, e.respErr, io.chiDat.bits.RespErr)
+      en.homeNid        := io.chiDat.bits.HomeNID
+      en.dbid           := io.chiDat.bits.DBID
+    }
+
+    when(e.state.rcvData0 && e.state.rcvData1 || (!e.fromDCT && !e.fullSize && (e.state.rcvData0 =/= e.state.rcvData1))) {
+      en.state.rcvDataCmp := true.B
+    }
+    when(e.allTaskComp) {
+      en.complete := true.B
     }
 
     when((dataTxnid === i.U) & io.chiDat.fire & !e.fullSize & fromDCT(io.chiDat.bits.SrcID)) {
-        assert(e.state === ChiRState.WAITDATA || e.state === ChiRState.WAITRCT)
-        en.fromDCT := true.B
+      assert(!e.state.rcvDataCmp)
+      en.fromDCT := true.B
     }
 
     when(selReadDBPipe.valid && (chiEntries(selReadDBPipe.bits).arId === e.arId) && (e.ackNid =/= 0.U)) {
-        en.ackNid      := e.ackNid - 1.U
+      en.ackNid      := e.ackNid - 1.U
     }
     when((selSendAck === i.U) && io.chiTxRsp.fire) {
-        assert(e.state === ChiRState.SENDACK)
-        en.state    := ChiRState.SENDDAT
+      assert(!e.state.sendAck)
+      en.state.sendAck    := true.B
     }
     when((selReadDB === i.U) & rdDBQueue.io.enq.fire) {
-        assert(e.state === ChiRState.SENDDAT)
-        en.state := ChiRState.FREE
+      assert(!e.state.sendData)
+      en.state.sendData := true.B
     }
-    when((e.state === ChiRState.SENDACK) & e.memAttr.device){
-        en.state := ChiRState.SENDDAT
+    when(io.finish.valid && (selSendFinish === i.U)) {
+      en.valid := false.B
     }
   }
 
@@ -188,10 +189,11 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   io.chiRxRsp.ready            := true.B
   io.chiTxRsp.valid            := sendAckVec.reduce(_ | _)
   io.chiTxRsp.bits             := txRspBdl
-  io.working                   := RegNext(validVec.reduce(_ | _))
   io.chiDat.ready              := io.wrDB.ready
   io.rdDB.valid                := rdDBQueue.io.deq.valid
   io.rdDB.bits                 := txDatBdl
+  io.finish.valid              := shodSendComVec.reduce(_ | _)
+  io.finish.bits               := selSendFinish
   io.wrDB.bits.data            := io.chiDat.bits.Data
   io.wrDB.bits.set             := Mux(chiEntries(dataTxnid).fullSize & io.chiDat.bits.DataID === 2.U, chiEntries(dataTxnid).dbSite2, chiEntries(dataTxnid).dbSite1)
   io.wrDB.valid                := Mux(chiEntries(dataTxnid).fullSize, io.chiDat.valid, 
@@ -205,7 +207,4 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
 /* 
  * Assertion
  */
-  when(rcvIsRct) {
-    assert(!io.chiDat.fire)
-  }
 }
