@@ -178,7 +178,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   frontends.zipWithIndex.foreach {
     case(f, i) =>
       f.io.respDir          := directory.io.rRespVec(i)
-      f.io.reqPoS           <> backend.io.reqPosVec(i)
+      f.io.reqPosVec        := backend.io.reqPosVec2(i)
       f.io.updPosTag        := backend.io.updPosTag
       f.io.cleanPoS         := backend.io.cleanPoS
       f.io.getAddrVec.zip(backend.io.getAddrVec).foreach { case(a, b) => a.hnIdx := b.hnIdx }
@@ -204,6 +204,7 @@ class DongJiang(lanNode: Node, bbnNode: Option[Node] = None)(implicit p: Paramet
   backend.io.getAddrVec.zip(frontends.map(_.io.getAddrVec).transpose).foreach { case(a, b) =>
     a.result := VecInit(b.map(_.result))(a.hnIdx.dirBank)
   }
+  backend.io.posRespVec2.zip(frontends.map(_.io.posRespVec)).foreach { case(a, b) => a <> b }
 
   /*
    * Connect dataBlock

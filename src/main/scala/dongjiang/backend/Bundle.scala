@@ -43,12 +43,6 @@ class ReplTask(implicit p: Parameters) extends DJBundle with HasHnTxnID with Has
   def isReplDIR = isReplSF | isReplLLC
 }
 
-// ReplaceCM request PoS
-class ReqPoS(implicit p: Parameters) extends DJBundle {
-  val req   = Decoupled(new HnIndex with HasChiChannel with HasQoS) // pos way unuse
-  val resp  = Input(new HnTxnID)
-}
-
 // Update HnTxnID from before to next in DataBlock
 class UpdHnTxnID(implicit p: Parameters) extends DJBundle {
   val before  = UInt(hnTxnIDBits.W)

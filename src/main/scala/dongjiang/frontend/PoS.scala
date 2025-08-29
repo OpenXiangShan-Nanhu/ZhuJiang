@@ -9,7 +9,6 @@ import dongjiang.utils._
 import dongjiang.bundle._
 import xs.utils.debug._
 import chisel3.experimental.BundleLiterals._
-import dongjiang.backend.ReqPoS
 
 // ----------------------------------------------------------------------------------------------------- //
 // -------------------------------------------- PoS Bundle --------------------------------------------- //
@@ -174,7 +173,8 @@ class PosSet(implicit p: Parameters) extends DJModule {
     val hnIdx_s1    = Valid(new HnIndex)
     val retry_s1    = Input(Bool())
     // connect to ReplaceCM
-    val reqPoS      = Flipped(new ReqPoS())
+    val reqPoS      = Flipped(Valid(new ChiChnlBundle))
+    val posResp     = Valid(UInt(posWayBits.W))
     val updTag      = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     // update PoS
     val updNest     = if(hasBBN) Some(Flipped(Valid(new PosCanNest))) else None // broadcast signal
@@ -198,7 +198,6 @@ class PosSet(implicit p: Parameters) extends DJModule {
   // Save Alloc in S1
   val allocReg_s1     = RegInit(Valid(new Addr with HasChiChannel).Lit(_.valid -> false.B))
   val allocWayReg_s1  = Reg(UInt(posWayBits.W))
-
 
   /*
    * Receive alloc task from TaskBuffer
@@ -229,7 +228,7 @@ class PosSet(implicit p: Parameters) extends DJModule {
   val matchReqS1_s0   = allocReg_s1.valid & allocTag_s0 === allocReg_s1.bits.Addr.posTag // Make the request for retry
 
   // judge block
-  val block_s0        = Mux(io.alloc_s0.bits.isSnp, blockSnp_s0, blockReq_s0) | matchReqS1_s0 | lockReg | io.reqPoS.req.valid
+  val block_s0        = Mux(io.alloc_s0.bits.isSnp, blockSnp_s0, blockReq_s0) | matchReqS1_s0 | lockReg | io.reqPoS.valid
 
   /*
    * Store alloc task from taskBuf
@@ -244,16 +243,30 @@ class PosSet(implicit p: Parameters) extends DJModule {
    * Retrun ack to TaskBuffer and Block
    */
   io.sleep_s1               := RegNext(io.alloc_s0.valid & hasMatTag)
-  io.block_s1               := RegNext(io.alloc_s0.valid & block_s0) | io.reqPoS.req.valid
-  io.hnIdx_s1.valid         := RegNext(io.alloc_s0.valid) & !io.reqPoS.req.valid // TODO: del it
+  io.block_s1               := RegNext(io.alloc_s0.valid & block_s0) | io.reqPoS.valid
+  io.hnIdx_s1.valid         := RegNext(io.alloc_s0.valid) & !io.reqPoS.valid // TODO: del it
   io.hnIdx_s1.bits.dirBank  := io.dirBank
   io.hnIdx_s1.bits.pos.set  := io.posSet
   io.hnIdx_s1.bits.pos.way  := allocWayReg_s1
 
   /*
+   * Receive replace req from ReplaceCM
+   */
+  val freeVec       = Cat(esVec.map(!_.valid).reverse)
+  val replSelWay    = PriorityMux(Seq(
+    freeVec(djparam.posWays-3, 0).orR -> PriorityEncoder(freeVec),
+    io.reqPoS.bits.isReq -> (posWays-2).U,
+    io.reqPoS.bits.isSnp -> (posWays-1).U
+  ))
+  val reqPosFire    = io.reqPoS.valid & freeVec(replSelWay) & !lockReg
+  // Return HnTxnID
+  io.posResp.valid  := RegNext(reqPosFire, false.B)
+  io.posResp.bits   := RegEnable(replSelWay, reqPosFire)
+
+  /*
    * Lock PoS Set
    */
-  when(io.reqPoS.req.fire) {
+  when(reqPosFire) {
     lockReg := true.B
     HAssert(!lockReg)
   }.elsewhen(io.updTag.valid & io.updTag.bits.hnIdx.dirBank === io.dirBank & io.updTag.bits.hnIdx.pos.set === io.posSet) {
@@ -263,26 +276,12 @@ class PosSet(implicit p: Parameters) extends DJModule {
   // HAssert
   HAssert.checkTimeout(!lockReg, 128, cf"PoS Lock Set TIMEOUT")
 
-
-  /*
-   * Receive replace req from ReplaceCM
-   */
-  val freeVec    = Cat(esVec.map(!_.valid).reverse)
-  val replSelWay = PriorityMux(Seq(
-    freeVec(djparam.posWays-3, 0).orR -> PriorityEncoder(freeVec),
-    io.reqPoS.req.bits.isReq          -> (posWays-2).U,
-    io.reqPoS.req.bits.isSnp          -> (posWays-1).U
-  ))
-  io.reqPoS.req.ready     := freeVec(replSelWay) & !lockReg
-  // Return HnTxnID
-  io.reqPoS.resp.hnTxnID  := VecInit(entries.map(_.io.hnIdx.getTxnID))(replSelWay)
-
   /*
    * Connect entries
    */
   entries.zipWithIndex.foreach { case(e, i) =>
     // hit
-    val replReqHit  = io.reqPoS.req.fire & replSelWay === i.U
+    val replReqHit  = reqPosFire & replSelWay === i.U
     val allocHit    = allocReg_s1.valid  & !io.retry_s1 & allocWayReg_s1 === i.U // TODO: optimize hit logic
     replReqHit.suggestName(f"replReqHit_${i}")
     allocHit.suggestName(f"allocHit${i}")
@@ -291,10 +290,10 @@ class PosSet(implicit p: Parameters) extends DJModule {
     e.io.hnIdx.dirBank      := io.dirBank
     e.io.hnIdx.pos.set      := io.posSet
     e.io.hnIdx.pos.way      := i.U
-    e.io.alloc.valid        := Mux(io.reqPoS.req.valid, replReqHit, allocHit)
-    e.io.alloc.bits.addrVal := !io.reqPoS.req.valid
-    e.io.alloc.bits.addr    := Mux(io.reqPoS.req.valid, 0.U, allocReg_s1.bits.addr)
-    e.io.alloc.bits.channel := Mux(io.reqPoS.req.valid, io.reqPoS.req.bits.channel, allocReg_s1.bits.channel)
+    e.io.alloc.valid        := Mux(io.reqPoS.valid, replReqHit, allocHit)
+    e.io.alloc.bits.addrVal := !io.reqPoS.valid
+    e.io.alloc.bits.addr    := Mux(io.reqPoS.valid, 0.U, allocReg_s1.bits.addr)
+    e.io.alloc.bits.channel := Mux(io.reqPoS.valid, io.reqPoS.bits.channel, allocReg_s1.bits.channel)
     e.io.updTag             := io.updTag
     e.io.clean              := io.clean
     io.stateVec(i)          := e.io.state
@@ -351,7 +350,8 @@ class PosTable(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
     val hnIdx_s1    = Output(new HnIndex)
     val retry_s1    = Input(Bool())
     // connect to ReplaceCM
-    val reqPoS      = Flipped(new ReqPoS())
+    val reqPosVec   = Vec(posSets, Flipped(Valid(new ChiChnlBundle)))
+    val posRespVec  = Vec(posSets, Valid(UInt(posWayBits.W)))
     val updTag      = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     // update PoS
     val updNest     = if(hasBBN) Some(Flipped(Valid(new PosCanNest))) else None // broadcast signal
@@ -387,8 +387,8 @@ class PosTable(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
     set.io.alloc_s0.bits  := io.alloc_s0.bits
 
     // replReq
-    set.io.reqPoS.req.valid := io.reqPoS.req.valid & io.reqPoS.req.bits.pos.set === i.U
-    set.io.reqPoS.req.bits  := io.reqPoS.req.bits
+    set.io.reqPoS.valid   := io.reqPosVec(i).valid
+    set.io.reqPoS.bits    := io.reqPosVec(i).bits
 
     // retry from block
     set.io.retry_s1       := io.retry_s1
@@ -400,7 +400,6 @@ class PosTable(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
       set.io.updNest.get  := io.updNest.get
     }
   }
-  io.reqPoS.req.ready     := VecInit(sets.map(_.io.reqPoS.req.ready))(io.reqPoS.req.bits.pos.set)
 
   /*
    * Connect IO <- PoS
@@ -409,7 +408,7 @@ class PosTable(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   io.block_s1     := Cat(sets.map(_.io.block_s1)).orR
   io.hnIdx_s1     := Mux1H(sets.map(_.io.hnIdx_s1.valid), sets.map(_.io.hnIdx_s1.bits))
   io.wakeup       := Mux1H(sets.map(_.io.wakeup.valid), sets.map(_.io.wakeup))
-  io.reqPoS.resp  := VecInit(sets.map(_.io.reqPoS.resp))(io.reqPoS.req.bits.pos.set)
+  io.posRespVec.zip(sets.map(_.io.posResp)).foreach { case(a, b) => a := b }
   // HAssert
   HAssert(PopCount(sets.map(_.io.hnIdx_s1.valid)) <= 1.U)
   HAssert(PopCount(sets.map(_.io.wakeup.valid)) <= 1.U)

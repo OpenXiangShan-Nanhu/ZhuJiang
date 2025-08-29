@@ -5,7 +5,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import zhujiang.chi._
 import dongjiang._
-import dongjiang.backend.{CMTask, CommitTask, ReqPoS}
+import dongjiang.backend.{CMTask, CommitTask}
 import dongjiang.utils._
 import dongjiang.bundle._
 import dongjiang.data.DataTask
@@ -40,7 +40,8 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
     // Get addr from PoS
     val getAddrVec      = Vec(3, Flipped(new GetAddr)) // txReq + txSnp + writeDir
     // Update PoS Message
-    val reqPoS          = Flipped(new ReqPoS)
+    val reqPosVec       = Vec(posSets, Flipped(Valid(new ChiChnlBundle)))
+    val posRespVec      = Vec(posSets, Valid(UInt(posWayBits.W)))
     val updPosTag       = Flipped(Valid(new Addr with HasAddrValid with HasPackHnIdx))
     val updPosNest      = if(hasBBN) Some(Flipped(Valid(new PosCanNest))) else None
     val cleanPoS        = Flipped(Valid(new PosClean)) // Dont care QoS
@@ -95,6 +96,7 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   io.cleanDB.bits           := decode.io.cleanDB_s3.bits
   io.cmtTask                := decode.io.cmtTask_s3
   io.alrUsePoS              := posTable.io.alrUsePoS
+  io.posRespVec             := posTable.io.posRespVec
   io.working                := hprTaskBuf.io.working | reqTaskBuf.io.working | snpTaskBuf.map(_.io.working).getOrElse(false.B) | posTable.io.working
   HAssert.withEn(io.cleanDB.ready, io.cleanDB.valid)
 
@@ -142,8 +144,7 @@ class Frontend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule 
   posTable.io.retry_s1      := block.io.retry_s1
   posTable.io.clean         := io.cleanPoS
   posTable.io.updTag        := io.updPosTag
-  posTable.io.reqPoS        <> io.reqPoS
-  posTable.io.reqPoS.req.valid    := io.reqPoS.req.valid & io.reqPoS.req.bits.dirBank === io.dirBank
+  posTable.io.reqPosVec     := io.reqPosVec
 
   // block [S1]
   require(!hasBBN, "TODO: connect snpTaskBuf.io.chiTask_s0")

@@ -42,7 +42,8 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
       val sf            = Flipped(Valid(new DirEntry("sf")  with HasHnTxnID))
     }
     // Frontend <> ReplaceCM
-    val reqPosVec       = Vec(djparam.nrDirBank, new ReqPoS)
+    val reqPosVec2      = Vec(djparam.nrDirBank, Vec(posSets, Valid(new ChiChnlBundle)))
+    val posRespVec2     = Vec(djparam.nrDirBank, Vec(posSets, Flipped(Valid(UInt(posWayBits.W)))))
     val updPosTag       = Valid(new Addr with HasAddrValid with HasPackHnIdx)
     // Frontend -> Commit/TaskCM
     val cmtTaskVec      = Vec(djparam.nrDirBank, Flipped(Valid(new CommitTask with HasHnTxnID)))
@@ -94,7 +95,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   /*
    * Connect To Frontend IO
    */
-  io.reqPosVec.zip(replCM.io.reqPosVec).foreach { case(a, b) => a <> b }
+  io.reqPosVec2             <> replCM.io.reqPosVec2
   io.updPosTag              := replCM.io.updPosTag
   if(hasBBN) {
     io.updPosNest.get       := fastQosRRArb.validOut(Seq(readCM.io.updPosNest.get, writeCM.io.updPosNest.get))
@@ -143,6 +144,7 @@ class Backend(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   replCM.io.task            <> FastQueue(commit.io.replTask)
   replCM.io.respDir         := io.respDir
   replCM.io.dataResp        := io.dataResp
+  replCM.io.posRespVec2     := io.posRespVec2
 
   /*
    * Connect CMResp

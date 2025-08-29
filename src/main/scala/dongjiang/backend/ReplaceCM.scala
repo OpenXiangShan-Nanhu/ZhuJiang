@@ -12,6 +12,7 @@ import dongjiang.frontend._
 import dongjiang.frontend.decode._
 import dongjiang.utils._
 import org.chipsalliance.cde.config._
+import xs.utils.arb.VipArbiter
 import xs.utils.debug._
 import zhujiang.chi.ReqOpcode._
 import zhujiang.chi._
@@ -20,37 +21,38 @@ import zhujiang.chi._
 // ------------------------------------------ Replace State -------------------------------------------- //
 // ----------------------------------------------------------------------------------------------------- //
 object ReplaceState {
-  val width     = 4
+  val width     = 5
   val FREE      = 0x0.U
   val REQPOS    = 0x1.U
-  val WRIDIR    = 0x2.U
-  val WAITDIR   = 0x3.U
-  val UPDATEID  = 0x4.U // Update HnTxnID in DataBlock
-  val RESPCMT   = 0x5.U // Send Resp to Commit
-  val REQDB     = 0x6.U // Request DataBuffer
-  val WRITE     = 0x7.U // Send CM Task to WriteCM
-  val SNOOP     = 0x8.U // Send CM Task to SnoopCM
-  val WAITRWRI  = 0x9.U // Wait replace LLC done
-  val WAITRSNP  = 0xA.U // Wait replace SF done
-  val COPYID    = 0xB.U // Copy repl.hnTxnID to task.hnTxnID in ReplaceCM
-  val SAVEDATA  = 0xC.U // Send save and clean to DataBlock
-  val WAITRESP  = 0xD.U // Wait DataBlock Resp
-  val CLEANPOST = 0xE.U // Clean PoS(task.hnTxnID)
-  val CLEANPOSR = 0xF.U // Clean PoS(repl.hnTxnID)
+  val WAITPOS   = 0x2.U
+  val WRIDIR    = 0x3.U
+  val WAITDIR   = 0x4.U
+  val UPDATEID  = 0x5.U  // Update HnTxnID in DataBlock
+  val RESPCMT   = 0x6.U  // Send Resp to Commit
+  val REQDB     = 0x7.U  // Request DataBuffer
+  val WRITE     = 0x8.U  // Send CM Task to WriteCM
+  val SNOOP     = 0x9.U  // Send CM Task to SnoopCM
+  val WAITRWRI  = 0xA.U  // Wait replace LLC done
+  val WAITRSNP  = 0xB.U  // Wait replace SF done
+  val COPYID    = 0xC.U  // Copy repl.hnTxnID to task.hnTxnID in ReplaceCM
+  val SAVEDATA  = 0xD.U  // Send save and clean to DataBlock
+  val WAITRESP  = 0xE.U  // Wait DataBlock Resp
+  val CLEANPOST = 0xF.U  // Clean PoS(task.hnTxnID)
+  val CLEANPOSR = 0x10.U // Clean PoS(repl.hnTxnID)
 }
 
 trait HasReplMes { this: DJBundle =>
   // 0. Replace LLC Directory:
-  //  State: Free -> ReqPoS -> WriDir -> WaitDir ---> UpdHnTxnID -> ReplLLC -> WaitWri -> (RespCmt/CleanPosT) -> CleanPosR -> Free
-  //                    ^                         |                                               ^
-  //                    |                         |--(replWayIsInvalid)--> SaveData --> WaitResp -|
+  //  State: Free -> ReqPoS -> WaitPoS ---> WriDir -> WaitDir ---> UpdHnTxnID -> ReplLLC -> WaitWri -> (RespCmt/CleanPosT) -> CleanPosR -> Free
+  //                    ^               |                      |                                               ^
+  //                    |--- (retry) ----                      |--(replWayIsInvalid)--> SaveData --> WaitResp -|
   //                    |
   //                    ---------- CopyHnTxnID <-----(SnpRespWithData)-------------------------
   //                                                                                          |
   // 1. Replace SnoopFilter:                                                                  |
-  //  State: Free -> ReqPoS -> WriDir -> WaitDir -> RespCmt ---> ReqDB --> ReplSF -> WaitSnp ---> CleanPosR -> Free
-  //                                                         |                                        ^
-  //                                                         |------------(replWayIsInvalid)----------|
+  //  State: Free -> ReqPoS -> WaitPoS ---> WriDir -> WaitDir -> RespCmt ---> ReqDB --> ReplSF -> WaitSnp ---> CleanPosR -> Free
+  //                    ^               |                                 |                                        ^
+  //                    |--- (retry) ----                                 |------------(replWayIsInvalid)----------|
   // 2. No need replace:
   //  State: Free -> WriDir -> RespCmt -> Free
   //
@@ -68,6 +70,7 @@ trait HasReplMes { this: DJBundle =>
   def isFree        = state === FREE
   def isValid       = !isFree
   def isReqPoS      = state === REQPOS
+  def isWaitPoS     = state === WAITPOS
   def isWriDir      = state === WRIDIR
   def isWaitDir     = state === WAITDIR
   def isUpdHnTxnID  = state === UPDATEID
@@ -103,7 +106,8 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     val cmTaskVec       = Vec(2, Decoupled(new CMTask)) // Snoop and Write
     val cmResp          = Flipped(Valid(new CMResp)) // broadcast signal
     // From/To PoS
-    val reqPoS          = new ReqPoS()
+    val reqPoS          = Decoupled(new HnIndex with HasChiChannel)
+    val posRespVec2     = Vec(djparam.nrDirBank, Vec(posSets, Flipped(Valid(UInt(posWayBits.W)))))
     val updPosTag       = Valid(new Addr with HasAddrValid with HasPackHnIdx)
     val cleanPoS        = Decoupled(new PosClean)
     // Write Directory
@@ -163,13 +167,12 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
   /*
    * Request PoS
    */
-  io.reqPoS.req.valid         := reg.isReqPoS
-  io.reqPoS.req.bits.dirBank  := reg.dirBank
-  io.reqPoS.req.bits.pos.set  := reg.posSet
-  io.reqPoS.req.bits.pos.way  := DontCare
-  io.reqPoS.req.bits.channel  := Mux(reg.isReplSF, ChiChannel.SNP, ChiChannel.REQ)
-  io.reqPoS.req.bits.qos      := reg.qos
-  HAssert.withEn(reg.isReplDIR, io.reqPoS.req.valid)
+  io.reqPoS.valid         := reg.isReqPoS
+  io.reqPoS.bits.dirBank  := reg.dirBank
+  io.reqPoS.bits.pos.set  := reg.posSet
+  io.reqPoS.bits.pos.way  := DontCare
+  io.reqPoS.bits.channel  := Mux(reg.isReplSF, ChiChannel.SNP, ChiChannel.REQ)
+  HAssert.withEn(reg.isReplDIR, io.reqPoS.valid)
 
   /*
    * Set HnTxnID:
@@ -190,12 +193,17 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
    *  repl.hnTxnID: Replaced, stores the address that needs to be replaced
    *
    */
+  val posRespHit      = reg.isWaitPoS & io.posRespVec2(reg.dirBank)(reg.posSet).valid
   // CopyID
   when(reg.isCopyID) {
     next.hnTxnID      := reg.repl.hnTxnID
   // ReqPoS
-  }.elsewhen(io.reqPoS.req.fire) {
-    next.repl.hnTxnID := io.reqPoS.resp.hnTxnID
+  }.elsewhen(posRespHit) {
+    val replHnIdx     = Wire(new HnIndex)
+    replHnIdx.dirBank := reg.dirBank
+    replHnIdx.pos.set := reg.posSet
+    replHnIdx.pos.way := io.posRespVec2(reg.dirBank)(reg.posSet).bits
+    next.repl.hnTxnID := replHnIdx.getTxnID
   }
 
   /*
@@ -348,7 +356,11 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
     }
     // Request PoS
     is(REQPOS) {
-      when(io.reqPoS.req.fire)          { next.state := WRIDIR }
+      when(io.reqPoS.fire)              { next.state := WAITPOS }
+    }
+    // Wait PoS Resp
+    is(WAITPOS) {
+      when(true.B)                      { next.state := Mux(posRespHit, WRIDIR, REQPOS) }
     }
     // Write Directory
     is(WRIDIR) {
@@ -413,7 +425,8 @@ class ReplaceEntry(implicit p: Parameters) extends DJModule {
    */
   HAssert.withEn(!(reg.isReplSF & reg.isReplLLC), reg.isValid)
   HAssert.withEn(reg.isFree,        io.alloc.fire)
-  HAssert.withEn(reg.isReqPoS,      reg.isValid & io.reqPoS.req.fire)
+  HAssert.withEn(reg.isReqPoS,      reg.isValid & io.reqPoS.fire)
+  HAssert.withEn(reg.isWaitPoS,     reg.isValid & posRespHit)
   HAssert.withEn(reg.isWriDir,      reg.isValid & io.writeDir.fire)
   HAssert.withEn(reg.isWaitDir,     reg.isValid & dirRespHit)
   HAssert.withEn(reg.isUpdHnTxnID,  reg.isValid & io.updHnTxnID.fire)
@@ -476,7 +489,8 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
     val cmTaskVec       = Vec(2, Decoupled(new CMTask)) // Snoop and Write
     val cmResp          = Flipped(Valid(new CMResp))
     // From/To PoS
-    val reqPosVec       = Vec(djparam.nrDirBank, new ReqPoS())
+    val reqPosVec2      = Vec(djparam.nrDirBank, Vec(posSets, Valid(new ChiChnlBundle)))
+    val posRespVec2     = Vec(djparam.nrDirBank, Vec(posSets, Flipped(Valid(UInt(posWayBits.W)))))
     val updPosTag       = Valid(new Addr with HasAddrValid with HasPackHnIdx)
     val cleanPoS        = Decoupled(new PosClean)
     // Write Directory
@@ -500,10 +514,6 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
    * Module and Wire declaration
    */
   val entries  = Seq.fill(nrReplaceCM) { Module(new ReplaceEntry()) }
-  val dbgVec   = WireInit(VecInit(entries.map(_.io.dbg)))
-  val selIdVec = Wire(Vec(djparam.nrDirBank, UInt(log2Ceil(nrReplaceCM).W)))
-  dontTouch(dbgVec)
-  dontTouch(selIdVec)
 
   /*
    * Receive Replace Task from Commit
@@ -513,26 +523,44 @@ class ReplaceCM(implicit p: Parameters) extends DJModule {
   /*
    * Request PoS
    */
-  io.reqPosVec.map(_.req).zipWithIndex.foreach { case(req, i) =>
-    val hitVec  = VecInit(entries.map{ e => e.io.reqPoS.req.valid & e.io.reqPoS.req.bits.dirBank === i.U })
-    selIdVec(i) := StepRREncoder(hitVec, true.B) // TODO: has risk of StepRREncoder enable
-    req.valid   := hitVec.asUInt.orR
-    req.bits    := VecInit(entries.map(_.io.reqPoS.req.bits))(selIdVec(i))
+  val reqPosReadyVec3 = Wire(Vec(nrReplaceCM, Vec(djparam.nrDirBank, Vec(posSets, Bool()))))
+  io.reqPosVec2.zipWithIndex.foreach { case(reqVec, i) =>
+    reqVec.zipWithIndex.foreach { case(req, j) =>
+      val vipArb    = Module(new VipArbiter(new ChiChnlBundle, nrReplaceCM))
+      val hitVec    = VecInit(entries.map(e => e.io.reqPoS.bits.dirBank === i.U & e.io.reqPoS.bits.pos.set === j.U))
+      val validVec  = VecInit(entries.map(_.io.reqPoS.valid).zip(hitVec).map { case(a, b) => a & b })
+
+      // input valid
+      vipArb.io.in.zip(validVec).foreach { case(a, v) => a.valid := v }
+
+      // input bits
+      vipArb.io.in.zip(entries).foreach { case (a, e) =>  a.bits.channel := e.io.reqPoS.bits.channel }
+
+      // input ready
+      reqPosReadyVec3.zip(vipArb.io.in.zip(hitVec)).foreach { case(r, (a, h)) => r(i)(j) := a.ready & h }
+
+      // output
+      req.valid := vipArb.io.out.valid
+      req.bits  := vipArb.io.out.bits
+      vipArb.io.out.ready := true.B
+    }
   }
-  entries.zipWithIndex.foreach { case(e, i) =>
-    val dirBank           = e.io.reqPoS.req.bits.dirBank
-    e.io.reqPoS.req.ready := io.reqPosVec(dirBank).req.ready & selIdVec(dirBank) === i.U
-    e.io.reqPoS.resp      := io.reqPosVec(dirBank).resp
+
+  // Set entries reqPoS ready
+  entries.map(_.io.reqPoS.ready).zip(reqPosReadyVec3).foreach { case(a, b) =>
+    a := VecInit(b.flatten).asUInt.orR
+    HAssert(PopCount(b.flatten) <= 1.U)
   }
 
   /*
    * Connect Replace <- IO
    */
   entries.foreach { e =>
-    e.io.config   := io.config
-    e.io.cmResp   := io.cmResp
-    e.io.respDir  := io.respDir
-    e.io.dataResp := io.dataResp
+    e.io.config       := io.config
+    e.io.cmResp       := io.cmResp
+    e.io.respDir      := io.respDir
+    e.io.dataResp     := io.dataResp
+    e.io.posRespVec2  := io.posRespVec2
   }
 
   /*
