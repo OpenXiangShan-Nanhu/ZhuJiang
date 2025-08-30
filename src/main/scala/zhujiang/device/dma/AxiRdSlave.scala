@@ -69,7 +69,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
  */
   private val uTailPtrAdd   = io.dAxiAr.fire & (reachPeak | reachBottom)
   private val freeVec       = dArEntrys.map(e => !e.valid & !e.subValid)
-  private val validVec      = dArEntrys.map(e => e.valid & e.subValid)
+  private val validVec      = dArEntrys.map(e => e.valid | e.subValid)
 
   private val selFree       = PriorityEncoder(freeVec)
   private val freeStream    = PriorityEncoder(streamFree)

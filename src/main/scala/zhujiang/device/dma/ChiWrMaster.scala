@@ -34,7 +34,6 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
     val rdDB     = Decoupled(new readWrDataBuffer(node.outstanding))
     val wrDB     = Decoupled(new writeWrDataBuffer(node.outstanding))
     val finish   = Valid(new Finish(node))
-    val working  = Output(Bool())
   })
 
 /* 
@@ -206,7 +205,6 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   io.rdDB.valid     := rdDBQueue.io.deq.valid
   io.chiTxRsp.bits  := txAckBdl
   io.chiTxRsp.valid := sendAckValid
-  io.working        := RegNext(validVec.reduce(_ | _))
 
 
   rdDBQueue.io.enq.bits  := toDBQBdl

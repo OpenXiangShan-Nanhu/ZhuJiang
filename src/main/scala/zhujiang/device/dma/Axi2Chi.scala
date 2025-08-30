@@ -101,7 +101,7 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   FastArbiter(Seq(chiRdMaster.io.chiReq  , chiWrMaster.io.chiReq  ), arbReqOut)
   FastArbiter(Seq(chiRdMaster.io.chiTxRsp, chiWrMaster.io.chiTxRsp), arbRspOut)
 
-  working  := axiRdSlave.io.working || axiWrSlave.io.working || chiWrMaster.io.working || axiArSplit.io.working || axiAwSplit.io.working
+  working  := axiRdSlave.io.working || axiWrSlave.io.working || axiArSplit.io.working || axiAwSplit.io.working
 
   if(icn.tx.req.isDefined) {
     connIcn(icn.tx.req.get         , arbReqOut      )
