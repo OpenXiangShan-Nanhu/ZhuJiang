@@ -23,6 +23,7 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
 
   val axi     = IO(Flipped(new AxiBundle(axiParams)))
   val icn     = IO(new DeviceIcnBundle(node))
+  val debug   = IO(new DMADebug(node))
   val working = IO(Output(Bool()))
 
 
@@ -31,6 +32,7 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
     dontTouch(axi)
     dontTouch(icn)
     dontTouch(working)
+    dontTouch(debug)
   }
   //SubModule
   private val axiRdSlave  = Module(new AxiRdSlave(node))
@@ -49,6 +51,12 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val rxDatQueue  = Module(new Queue(gen = chiRdMaster.io.chiDat.bits.cloneType, entries = 2, pipe = false, flow = false))
   private val rxRspPipe   = Pipe(icn.rx.resp.get.fire, icn.rx.resp.get.bits)
   private val rcvIsRct    = rxRspPipe.valid & rxRspPipe.bits.asTypeOf(chiRdMaster.io.chiRxRsp.bits).Opcode === RspOpcode.ReadReceipt
+
+  private val userArid_hi = axiRdSlave.io.dAxiAr.bits.user.getWidth - 1
+  private val userArid_lo = log2Ceil(node.outstanding)
+
+  private val userAwid_hi = axiWrSlave.io.dAxiAw.bits.user.getWidth - 1
+  private val userAwid_lo = log2Ceil(node.outstanding)
 
   axi.ar                <> rxArQueue.io.enq
   axi.aw                <> rxAwQueue.io.enq
@@ -84,6 +92,14 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   wrDB.io.allocRsp     <> chiWrMaster.io.respDB
   wrDB.io.rdDB         <> chiWrMaster.io.rdDB
   wrDB.io.wrDB         <> chiWrMaster.io.wrDB
+
+  debug.rValid         := axiRdSlave.io.dAxiAr.fire
+  debug.rTxnID         := axiRdSlave.io.dAxiAr.bits.id
+  debug.rARID          := axiRdSlave.io.dAxiAr.bits.user(userArid_hi, userArid_lo)
+
+  debug.wValid         := axiWrSlave.io.dAxiAw.fire
+  debug.wTxnID         := axiWrSlave.io.dAxiAw.bits.id
+  debug.wAWID          := axiWrSlave.io.dAxiAw.bits.user(userAwid_hi, userAwid_lo)
 
   chiRdMaster.io.chiRxRsp.valid := rxRspPipe.valid
   chiRdMaster.io.chiRxRsp.bits  := rxRspPipe.bits

@@ -67,6 +67,10 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val userArid_lo    = log2Ceil(node.outstanding)
   private val userEid_hi     = log2Ceil(node.outstanding) - 1
 
+  private val axiAWID        = io.axiAw.bits.user(userArid_hi, userArid_lo)
+  private val axiEid         = io.axiAw.bits.user(userEid_hi, 0)
+  private val maxNid         = Fill(log2Ceil(node.outstanding), true.B)
+
 
 /* 
  * Vec declare
@@ -74,8 +78,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val validVec   = chiEntries.map(c => c.valid)
   private val sendReqVec = chiEntries.map(c => !c.state.sendReq && c.reqNid === 0.U && c.valid)
 
-  private val blockReqVec     = chiEntries.map(c => (c.awId  === io.axiAw.bits.user(userArid_hi, userArid_lo)) && (c.eId =/= io.axiAw.bits.user(userEid_hi, 0)) && c.isToOrder)
-  private val blockAckVec     = chiEntries.map(c => (c.awId  === io.axiAw.bits.user(userArid_hi, userArid_lo)) && (c.eId =/= io.axiAw.bits.user(userEid_hi, 0)) && !c.state.rcvComp && c.valid)
+
   private val waitDataVec     = chiEntries.map(c => c.valid && !c.state.rcvDataCmp)
   private val sendAckVec      = chiEntries.map(c => (c.isSendAck) && c.ackNid === 0.U)
   private val sendDataVec     = chiEntries.map(c => c.isSendData)
@@ -98,6 +101,14 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val selSendData = StepRREncoder(sendDataVec, sendDataValid)
   private val selSendB    = StepRREncoder(sendBVec, sendBValid)
 
+  private val blockReqVec     = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockReq(axiAWID, axiEid) && !(rcvIsDBID && (rspTxnid === i.U))})
+  private val blockAckVec     = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockAck(axiAWID, axiEid) && !(rcvIsComp && (rspTxnid === i.U))})
+  private val blockBRespVec   = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockBResp(axiAWID) && !(sendBValid && (selSendB === i.U))})
+
+  private val blockReqVecReg  = RegEnable(blockReqVec, io.axiAw.fire)
+  private val blockAckVecReg  = RegEnable(blockAckVec, io.axiAw.fire)
+  private val blockBVecReg    = RegEnable(blockBRespVec, io.axiAw.fire)
+
 // Pipe Reg
   finishBdl.idx      := selFinish
   finishBdl.streamID := chiEntries(selFinish).eId
@@ -107,6 +118,9 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val finishPipe      = Pipe(finishValid, finishBdl)
   private val bidPipe         = Pipe(sendBValid, selSendB)
 
+  private val waitNidSetEn    = RegNext(io.axiAw.fire)
+  private val selIdNextReg    = RegNext(io.axiAw.bits.id, 0.U)
+
 /* 
  * Assign logic
  */
@@ -114,7 +128,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
     when(io.axiAw.fire & (io.axiAw.bits.id === i.U)) {
       assert(!chiEntries(i).valid)
       assert(io.reqDB.ready === true.B)
-      chiEntries(i).awMesInit(io.axiAw.bits, PopCount(blockReqVec), PopCount(blockAckVec), PopCount(sameAWIdVec), io.respDB.bits)
+      chiEntries(i).awMesInit(io.axiAw.bits, maxNid, maxNid, maxNid, io.respDB.bits)
     }.elsewhen(validVec(i)) {
       chiEntries(i) := chiEntriesNext(i)
     }
@@ -163,6 +177,11 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
     }
     when(e.allTaskComp) {
       en.complete := true.B
+    }
+    when(waitNidSetEn && (selIdNextReg === i.U)) {
+      en.reqNid := PopCount(blockReqVecReg)
+      en.ackNid := PopCount(blockAckVecReg)
+      en.bNid   := PopCount(blockBVecReg)
     }
   }
 

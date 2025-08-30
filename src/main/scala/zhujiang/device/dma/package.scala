@@ -9,6 +9,7 @@ import xs.utils.FastArbiter
 import zhujiang.axi._
 import zhujiang.chi._
 import xijiang.Node
+import freechips.rocketchip.amba.ahb.AHBImpMaster.bundle
 
 
 object Burst {
@@ -251,6 +252,9 @@ class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
   def shodSendAck   = valid && !state.sendAck && state.rcvDataCmp
   def allTaskComp   = valid && state.rcvRct & state.sendAck & state.sendData
 
+  def shodBlockReq(arIdIn: UInt, eIdIn : UInt): Bool =  isToOrder && (arId === arIdIn) && (eId =/= eIdIn)
+  def shodBlockRResp(arIdIn: UInt): Bool             =  !state.sendData && (arId === arIdIn) && valid
+
   def arToChi[T <: ARFlit, U <: DataBufferAlloc](b: T, reqNid: UInt, ackNid: UInt, resp: U): CHIRdEntry = {
     this                   := 0.U.asTypeOf(this)
     this.arId              := b.user(b.user.getWidth - 1, log2Ceil(node.outstanding))
@@ -453,6 +457,10 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   def isSendBResp    = valid && state.rcvComp && state.rcvDataCmp && !state.sendBResp
   def allTaskComp    = state.sendAck && state.sendData && state.sendBResp
 
+  def shodBlockReq(awIdIn: UInt, eIdIn: UInt): Bool   = isToOrder && (awId === awIdIn) && (eId =/= eIdIn)
+  def shodBlockAck(awIdIn: UInt, eIdIn: UInt): Bool   = !state.rcvComp && valid && (awId === awIdIn) && (eId =/= eIdIn)
+  def shodBlockBResp(awIdIn: UInt): Bool              = !state.sendBResp && valid && (awId === awIdIn)
+
   def awMesInit[T <: AWFlit, U <: DataBufferAlloc](aw : T, reqNid: UInt, ackNid: UInt, bNid: UInt, resp: U): CHIWEntry = {
     this           := 0.U.asTypeOf(this)
     this.fullSize  := aw.len(0).asBool
@@ -515,4 +523,14 @@ class RdDBWrEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
     this.shift     := b.addr(rni.offset - 1)
     this
   }
+}
+
+class DMADebug(node: Node)(implicit p: Parameters) extends ZJBundle {
+  private val rni = DmaParams(node = node)
+  val wTxnID      = UInt(log2Ceil(node.outstanding).W)
+  val wAWID       = UInt(rni.idBits.W)
+  val wValid      = Bool()
+  val rTxnID      = UInt(log2Ceil(node.outstanding).W)
+  val rARID       = UInt(rni.idBits.W)
+  val rValid      = Bool()
 }

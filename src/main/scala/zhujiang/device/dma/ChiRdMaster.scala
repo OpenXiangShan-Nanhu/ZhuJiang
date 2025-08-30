@@ -55,34 +55,43 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   private val userArid_lo = log2Ceil(node.outstanding)
   private val userEid_hi  = log2Ceil(node.outstanding) - 1
 
+  private val axiARID     = io.axiAr.bits.user(userArid_hi, userArid_lo)
+  private val axiEid      = io.axiAr.bits.user(userEid_hi, 0)
+  private val maxNid      = Fill(log2Ceil(node.outstanding), true.B)
+  private val selReadDB   = WireInit(0.U(log2Ceil(node.outstanding).W))
+
 /* 
  * Vec compute
  */
 
   private val validVec       = chiEntries.map(c => c.valid)
-  private val blockReqVec    = chiEntries.map(c => (c.arId === io.axiAr.bits.user(userArid_hi, userArid_lo)) && (c.eId =/= io.axiAr.bits.user(userEid_hi, 0)) && c.isToOrder)
+  private val blockReqVec    = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockReq(axiARID, axiEid) && !(rcvIsRct && (rctTxnid === i.U))})
+  private val blockReqVecReg = RegEnable(blockReqVec, io.axiAr.fire)
+
+  private val sameARIdVec    = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockRResp(axiARID) && !((selReadDB === i.U) && rdDBQueue.io.enq.fire)})
+  private val sameARIdVecReg = RegEnable(sameARIdVec, io.axiAr.fire)
 
   private val shodSendReqVec = chiEntries.map(c => (c.reqNid === 0.U) && (c.shodSendReq))
   private val readDataVec    = chiEntries.map(c =>  c.shodSendData && c.ackNid === 0.U)
   private val sendAckVec     = chiEntries.map(c =>  c.shodSendAck)
   private val shodSendComVec = chiEntries.map(c =>  c.complete && c.valid)
-  private val sameARIdVec    = chiEntries.map(c => !c.state.sendData && (c.arId === io.axiAr.bits.user(userArid_hi, userArid_lo)) && c.valid)
 
   private val sendReqValid   = shodSendReqVec.reduce(_ | _)
   private val readDBValid    = readDataVec.reduce(_ | _)
   private val sendAckValid   = sendAckVec.reduce(_ | _)
 
 // Sellect from Vec
-  private val sameARIdCnt       = PopCount(sameARIdVec)
   private val selSendReq        = StepRREncoder(shodSendReqVec, sendReqValid)
-  private val selReadDB         = StepRREncoder(readDataVec, readDBValid)
+  selReadDB                    := StepRREncoder(readDataVec, readDBValid)
   private val selSendAck        = StepRREncoder(sendAckVec, sendAckValid)
   private val selSendFinish     = PriorityEncoder(shodSendComVec)
 
   //Pipe Reg
-  private val shodBlockCnt  = PopCount(blockReqVec)
   private val rctTxnidPipe  = Pipe(rcvIsRct, rctTxnid)
   private val selReadDBPipe = Pipe(rdDBQueue.io.enq.fire, selReadDB)
+
+  private val waitNidSetEn  = RegNext(io.axiAr.fire)
+  private val selIdNextReg  = RegNext(io.axiAr.bits.id, 0.U)
 
 /* 
  * CHI Entrys Assign logic
@@ -91,7 +100,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
     when(io.axiAr.fire && (io.axiAr.bits.id === i.U)) {
       assert(!chiEntries(i).valid)
       assert(io.reqDB.ready)
-      chiEntries(i).arToChi(io.axiAr.bits, shodBlockCnt, sameARIdCnt, io.respDB.bits)
+      chiEntries(i).arToChi(io.axiAr.bits, maxNid, maxNid, io.respDB.bits)
     }.elsewhen(validVec(i)) {
       chiEntries(i)  := chiEntriesNext(i)
     }
@@ -146,6 +155,10 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
     }
     when(io.finish.valid && (selSendFinish === i.U)) {
       en.valid := false.B
+    }
+    when(waitNidSetEn && (selIdNextReg === i.U)) {
+      en.reqNid   := PopCount(blockReqVecReg)
+      en.ackNid   := PopCount(sameARIdVecReg)
     }
   }
 
