@@ -48,7 +48,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val uHeadPtr   = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
   private val uTailPtr   = RegInit(CirQAxiEntryPtr(f = false.B, v = 0.U))
 
-  private val dArEntrys  = RegInit(VecInit(Seq.fill(node.outstanding)((new AxiRMstEntry(node)).Lit(_.valid -> false.B))))
+  private val dArEntrys  = RegInit(VecInit(Seq.fill(node.outstanding)((new AxiRMstEntry(node)).Lit(_.valid -> false.B, _.subValid -> false.B))))
   private val streamFree = RegInit(VecInit(Seq.fill(node.outstanding)(true.B)))
 
   private val rxArPipe   = Module(new Queue(gen = new AxiRdEntry(isPipe = true, node = node), entries = 2, pipe = false, flow = false))
