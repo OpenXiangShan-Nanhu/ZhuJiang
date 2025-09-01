@@ -64,7 +64,7 @@ object Read_LAN_DCT_DMT {
   def readOnce_allocate_ewa:      DecodeType = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | isEO | allocate | ewa, readOnce_noAllocate._2)
   def readOnce_allocate_fullSize: DecodeType = (fromLAN | toLAN | reqIs(ReadOnce) | expCompAck | isEO | allocate | isFullSize, Seq(
     // I I I  -> I I I
-    (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send", "save") | cmtDat(CompData) | respIs(I)),
+    (sfMiss | llcIs(I))   -> first(read(ReadNoSnp) | needDB, datIs(CompData) | respIs(UC), cdop("send", "save") | cmtDat(CompData) | respIs(I) | wriLLC(UC)),
     // I I SC -> I I SC
     (sfMiss | llcIs(SC))  -> first(cdop("read", "send") | cmtDat(CompData) | resp(I)),
     // I I UC -> I I UC
