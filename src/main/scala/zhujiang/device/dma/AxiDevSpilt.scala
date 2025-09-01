@@ -95,4 +95,7 @@ class AxiDevSpilt(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   when(io.dAxiAx.fire && !io.dAxiAx.bits.cache(1)){
     assert(io.dAxiAx.bits.len === 0.U)
   }
+  when(io.uAxiAx.fire) {
+    assert(io.uAxiAx.bits.size <= 5.U)
+  }
 }

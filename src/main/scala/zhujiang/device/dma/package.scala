@@ -91,8 +91,6 @@ class AxiRdEntry(isPipe: Boolean, node : Node)(implicit P: Parameters) extends Z
     this.cache      := ar.cache
     this.burst      := ar.burst
     this.spLast     := ar.user.asBool
-    assert(this.range.get <= 4096.U)
-    assert(this.size <= 5.U)
     this
   }
   def getNum(range: UInt, endAddr: UInt, exAddr: UInt, len: UInt, burst: UInt): UInt = {
