@@ -1,5 +1,3 @@
-
-
 idea:
 	mill -i mill.idea.GenIdea/idea
 
@@ -35,6 +33,9 @@ tfs-top: build-dir
 
 verilog: build-dir
 	mill -i zhujiang.test.runMain zhujiang.ZhujiangTop $(RTL_AGRS) -td $(RTL_DIR)
+
+sim-top: build-dir
+	mill -i zhujiang.test.runMain zhujiang.SocSystemTop $(RTL_AGRS) -td $(RTL_DIR)
 
 clean:
 	rm -r build/*

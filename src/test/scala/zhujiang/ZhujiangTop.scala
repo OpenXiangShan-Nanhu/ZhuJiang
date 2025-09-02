@@ -1,5 +1,7 @@
 package zhujiang
 
+import chisel3._
+import chisel3.util.log2Ceil
 import chisel3.stage.ChiselGeneratorAnnotation
 import circt.stage.FirtoolOption
 import org.chipsalliance.cde.config.{Config, Parameters}
@@ -9,49 +11,43 @@ import xs.utils.FileRegisters
 import xs.utils.debug.{HardwareAssertionKey, HwaParams}
 import xs.utils.perf._
 import xs.utils.stage.XsStage
+import zhujiang.system._
 import zhujiang.axi.AxiParams
 import zhujiang.device.AxiDeviceParams
-
 import scala.annotation.tailrec
+import freechips.rocketchip.diplomacy.{AddressRange, AddressSet}
+
+case class MemoryRange(lower: BigInt, upper: BigInt) {
+  def cover(addr: BigInt): Boolean = addr >= lower && addr < upper
+  def cover(addr: UInt): Bool = addr >= lower.U && addr < upper.U
+}
 
 object AddrConfig {
-  // interleaving granularity: 1KiB
-  val mem0 = Seq(
-    (0x0000_8000_0000L, 0x000F_8000_0400L),
-    (0x0001_0000_0000L, 0x000F_0000_0400L),
-    (0x0002_0000_0000L, 0x000F_0000_0400L),
-    (0x0003_0000_0000L, 0x000F_0000_0400L),
-    (0x0004_0000_0000L, 0x000F_0000_0400L),
-  )
-  val mem1 = Seq(
-    (0x0000_8000_0400L, 0x000F_8000_0400L),
-    (0x0001_0000_0400L, 0x000F_0000_0400L),
-    (0x0002_0000_0400L, 0x000F_0000_0400L),
-    (0x0003_0000_0400L, 0x000F_0000_0400L),
-    (0x0004_0000_0400L, 0x000F_0000_0400L),
-  )
-  val mem2 = Seq(
-    (0x0005_0000_0000L, 0x000F_0000_0000L),
-    (0x0006_0000_0000L, 0x000F_0000_0000L),
-    (0x0007_0000_0000L, 0x000F_0000_0000L),
-    (0x0008_0000_0000L, 0x000F_0000_0000L),
-    (0x0009_0000_0000L, 0x000F_0000_0000L),
-    (0x000A_0000_0000L, 0x000F_0000_0000L),
-    (0x000B_0000_0000L, 0x000F_0000_0000L),
-    (0x000C_0000_0000L, 0x000F_0000_0000L),
-  )
-  val mem3 = Seq(
-    (0x0005_0000_0000L, 0x000F_0000_0000L),
-    (0x0006_0000_0000L, 0x000F_0000_0000L),
-    (0x0007_0000_0000L, 0x000F_0000_0000L),
-    (0x0008_0000_0000L, 0x000F_0000_0000L),
-    (0x0009_0000_0000L, 0x000F_0000_0000L),
-    (0x000A_0000_0000L, 0x000F_0000_0000L),
-    (0x000B_0000_0000L, 0x000F_0000_0000L),
-    (0x000C_0000_0000L, 0x000F_0000_0000L),
-  )
-  val memUc = Seq(
-    (0x0000_8000_0000L, 0x000F_8000_0000L),
+  // interleaving granularity: 64B
+  // DDR: 0x0_8000_0000 ~ 0x1F_FFFF_FFFF
+  val interleaveOffset = 6
+  val pmemRange = MemoryRange(0x00_8000_0000L, 0x20_0000_0000L)
+  private val interleaveBits = 1
+  private val interleaveMask = ((0x1L << interleaveBits) - 1) << interleaveOffset
+  private val memFullMask = (1L << log2Ceil(pmemRange.upper)) - 1
+
+  val memFullAddrSet = AddressSet(0x0L, memFullMask).subtract(AddressSet(0x0L, (1L << log2Ceil(pmemRange.lower)) - 1))
+  private val fullMask = (1L << 44) - 1
+
+  def memBank(bank: Long):Seq[(Long, Long)] = {
+    require(bank < (0x1L << interleaveBits))
+    memFullAddrSet.map(as => {
+      val base = as.base | (bank << interleaveOffset)
+      val mask = (as.mask.toLong ^ fullMask) | interleaveMask
+      (base.toLong, mask)
+    })
+  }
+
+  val mem0 = memBank(0)
+  val mem1 = memBank(1)
+
+  val mem_nc = Seq(
+    (0x300_0000_0000L, 0xF00_0000_0000L),
   )
 }
 
@@ -59,33 +55,31 @@ class ZhujiangTopConfig extends Config((site, here, up) => {
   case HardwareAssertionKey => HwaParams(enable = true)
   case PerfCounterOptionsKey => PerfCounterOptions(enablePerfPrint = false, enablePerfDB = false, XSPerfLevel.VERBOSE, 0)
   case ZJParametersKey => ZJParameters(
+    hnxBankOff = AddrConfig.interleaveOffset,
     nodeParams = Seq(
+      NodeParam(nodeType = NodeType.CC, socket = "sync"),
       NodeParam(nodeType = NodeType.P),
       NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 0),
+      NodeParam(nodeType = NodeType.P),
+      NodeParam(nodeType = NodeType.S, axiDevParams = Some(AxiDeviceParams(4, 32, "north", "mem_0")), addrSets = AddrConfig.mem0),
+      NodeParam(nodeType = NodeType.S, axiDevParams = Some(AxiDeviceParams(4, 32, "north", "mem_1")), addrSets = AddrConfig.mem1),
+      NodeParam(nodeType = NodeType.P),
       NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 0),
-      NodeParam(nodeType = NodeType.RI, axiDevParams = Some(AxiDeviceParams(1, 64, "north", "mem_n_0"))),
-      NodeParam(nodeType = NodeType.RI, axiDevParams = Some(AxiDeviceParams(1, 64, "north", "mem_n_1"))),
-      NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 0),
+      NodeParam(nodeType = NodeType.P),
+      NodeParam(nodeType = NodeType.CC, socket = "sync"),
+
+      NodeParam(nodeType = NodeType.CC, socket = "sync"),
+      NodeParam(nodeType = NodeType.P),
       NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 0),
       NodeParam(nodeType = NodeType.P),
-
-      NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "east", "e_0")),  addrSets = AddrConfig.mem2),
-      NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "east", "e_1")),  addrSets = AddrConfig.mem3),
-
-      NodeParam(nodeType = NodeType.CC, socket = "async"),
-      NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 1),
-      NodeParam(nodeType = NodeType.CC, socket = "async"),
-      NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 1),
-      NodeParam(nodeType = NodeType.HI, axiDevParams = Some(AxiDeviceParams(0, 32, "south", "main")), defaultHni = true),
-      NodeParam(nodeType = NodeType.RH, axiDevParams = Some(AxiDeviceParams(0, 32, "south", "main", Some(AxiParams(idBits = 15))))),
-      NodeParam(nodeType = NodeType.M,  axiDevParams = Some(AxiDeviceParams(3, 32, "south"))),
-      NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 1),
-      NodeParam(nodeType = NodeType.CC, socket = "async"),
-      NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 1),
-      NodeParam(nodeType = NodeType.CC, socket = "async"),
-
-      NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "west", "w_0")),  addrSets = AddrConfig.mem0),
-      NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "west", "w_1")),  addrSets = AddrConfig.mem1),
+      NodeParam(nodeType = NodeType.RI, axiDevParams = Some(AxiDeviceParams(1, 64, "south", "main", Some(AxiParams(idBits = 14))))),
+      NodeParam(nodeType = NodeType.HI, axiDevParams = Some(AxiDeviceParams(1, 8, "south", "main")), defaultHni = true),
+      NodeParam(nodeType = NodeType.S, axiDevParams = Some(AxiDeviceParams(1, 32, "south", "uc")), addrSets = AddrConfig.mem_nc),
+      NodeParam(nodeType = NodeType.M, axiDevParams = Some(AxiDeviceParams(5, 32, "south", "hwa"))),
+      NodeParam(nodeType = NodeType.P),
+      NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 0),
+      NodeParam(nodeType = NodeType.P),
+      NodeParam(nodeType = NodeType.CC, socket = "sync"),
     )
   )
   case DebugOptionsKey => DebugOptions(EnablePerfDebug = false)
@@ -138,5 +132,22 @@ object ZhujiangTop extends App {
     ChiselGeneratorAnnotation(() => new Zhujiang()(config))
   ))
   if(config(ZJParametersKey).tfbParams.isDefined) TrafficBoardFileManager.release(config)
+  FileRegisters.write()
+}
+
+object SocSystemTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  (new XsStage).execute(firrtlOpts, Seq(
+    FirtoolOption("-O=release"),
+    FirtoolOption("--disable-all-randomization"),
+    FirtoolOption("--disable-annotation-unknown"),
+    FirtoolOption("--strip-debug-info"),
+    FirtoolOption("--lower-memories"),
+    FirtoolOption("--add-vivado-ram-address-conflict-synthesis-bug-workaround"),
+    FirtoolOption("--lowering-options=noAlwaysComb," +
+      " disallowLocalVariables, disallowMuxInlining," +
+      " emittedLineLength=120, explicitBitcast, locationInfoStyle=plain"),
+    ChiselGeneratorAnnotation(() => new SocSystem()(config))
+  ))
   FileRegisters.write()
 }
