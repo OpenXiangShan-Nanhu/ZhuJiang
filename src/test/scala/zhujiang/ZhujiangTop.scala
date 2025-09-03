@@ -105,6 +105,11 @@ object ZhujiangTopParser {
             case ZJParametersKey => up(ZJParametersKey).copy(modulePrefix = confString)
           }), tail)
 
+        case "--no-tfb" :: tail =>
+          parse(config.alter((site, here, up) => {
+            case ZJParametersKey => up(ZJParametersKey).copy(tfbParams = None)
+          }), tail)
+
         case option :: tail =>
           firrtlOpts :+= option
           parse(config, tail)
@@ -149,5 +154,6 @@ object SocSystemTop extends App {
       " emittedLineLength=120, explicitBitcast, locationInfoStyle=plain"),
     ChiselGeneratorAnnotation(() => new SocSystem()(config))
   ))
+  if(config(ZJParametersKey).tfbParams.isDefined) TrafficBoardFileManager.release(config)
   FileRegisters.write()
 }

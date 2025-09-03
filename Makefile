@@ -35,7 +35,7 @@ verilog: build-dir
 	mill -i zhujiang.test.runMain zhujiang.ZhujiangTop $(RTL_AGRS) -td $(RTL_DIR)
 
 sim-top: build-dir
-	mill -i zhujiang.test.runMain zhujiang.SocSystemTop $(RTL_AGRS) -td $(RTL_DIR)
+	mill -i zhujiang.test.runMain zhujiang.SocSystemTop $(RTL_AGRS) -td $(RTL_DIR) --no-tfb
 
 clean:
 	rm -r build/*
