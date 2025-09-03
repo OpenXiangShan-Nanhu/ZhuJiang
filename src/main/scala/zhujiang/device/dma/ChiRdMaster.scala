@@ -11,7 +11,7 @@ import zhujiang.axi._
 import xs.utils.sram._
 import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, UIntToMask}
-import dongjiang.utils.StepRREncoder
+import dongjiang.utils.VipEncoder
 import freechips.rocketchip.util.DataToAugmentedData
 
 class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
@@ -81,9 +81,9 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   private val sendAckValid   = sendAckVec.reduce(_ | _)
 
 // Sellect from Vec
-  private val selSendReq        = StepRREncoder(shodSendReqVec, sendReqValid)
-  selReadDB                    := StepRREncoder(readDataVec, readDBValid)
-  private val selSendAck        = StepRREncoder(sendAckVec, sendAckValid)
+  private val selSendReq        = VipEncoder(shodSendReqVec, sendReqValid)
+  selReadDB                    := VipEncoder(readDataVec, readDBValid)
+  private val selSendAck        = VipEncoder(sendAckVec, sendAckValid)
   private val selSendFinish     = PriorityEncoder(shodSendComVec)
 
   //Pipe Reg

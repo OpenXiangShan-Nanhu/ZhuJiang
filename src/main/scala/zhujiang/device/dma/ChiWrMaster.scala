@@ -11,7 +11,7 @@ import zhujiang.axi._
 import xs.utils.sram._
 import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, UIntToMask}
-import dongjiang.utils.StepRREncoder
+import dongjiang.utils.VipEncoder
 import freechips.rocketchip.diplomacy.BufferParams.pipe
 import dongjiang.bundle.Chi
 
@@ -95,11 +95,11 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val sendBValid     = sendBVec.reduce(_ | _)
 
 //sellect from Vec
-  private val selSendReq  = StepRREncoder(sendReqVec, sendReqValid)
-  private val selSendAck  = StepRREncoder(sendAckVec, sendAckValid)
-  private val selFinish   = StepRREncoder(finishVec, finishValid)
-  private val selSendData = StepRREncoder(sendDataVec, sendDataValid)
-  private val selSendB    = StepRREncoder(sendBVec, sendBValid)
+  private val selSendReq  = VipEncoder(sendReqVec, sendReqValid)
+  private val selSendAck  = VipEncoder(sendAckVec, sendAckValid)
+  private val selFinish   = VipEncoder(finishVec, finishValid)
+  private val selSendData = VipEncoder(sendDataVec, sendDataValid)
+  private val selSendB    = VipEncoder(sendBVec, sendBValid)
 
   private val blockReqVec     = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockReq(axiAWID, axiEid) && !(rcvIsDBID && (rspTxnid === i.U))})
   private val blockAckVec     = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockAck(axiAWID, axiEid) && !(rcvIsComp && (rspTxnid === i.U))})

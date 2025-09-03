@@ -11,8 +11,6 @@ import zhujiang.axi._
 import xs.utils.sram._
 import xijiang._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
-import dongjiang.utils.StepRREncoder
-
 
 class AxiDevSpilt(node: Node)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private val rni           = DmaParams(node = node)
