@@ -56,7 +56,7 @@ case class DJParam(
   lazy val dsSets    = llcSets * llcWays
 
   require(llcSizeInB >= CacheLine * llcWays, s"illegal llc size: ${llcSizeInB}B")
-  require(sfSizeInB  >= CacheLine * llcWays, s"illegal llc size: ${sfSizeInB}B")
+  require(sfSizeInB  >= CacheLine * sfWays,  s"illegal sf size: ${sfSizeInB}B")
   require(posSets <= llcSets, s"illegal pos size: posSets($posSets) = nrPoS($nrPoS) / posWays($posWays) <= llcSets = $llcSets")
   require(posSets <= sfSets,  s"illegal pos size: posSets($posSets) = nrPoS($nrPoS) / posWays($posWays) <= sfSets = $sfSets")
   require(llcSets >= nrDirBank.max(2), s"illegal llc sets: llcSets($llcSets) = llcSizeInB($llcSizeInB) / CacheLine($CacheLine) / llcWays($llcWays) > max(nrDirBank($nrDirBank), 2)")
@@ -148,7 +148,7 @@ trait HasDJParam extends HasParseZJParam {
   //            = [posTag]   + [posSet] + [dirBank]
   //            = [ci]       + [unUse]
   // [ds]       = [llcSet]   + [llcWay] + [dirBank]
-  //            = [dsIndex]    + [dsBank]
+  //            = [dsIndex]  + [dsBank]
   // full
   lazy val addrBits         = djparam.addressBits
   lazy val ciBits           = 4
