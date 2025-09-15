@@ -92,7 +92,6 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   readRamStage1Pipe.io.enq.bits.resp := io.readDataReq.bits.resp
   readRamStage1Pipe.io.enq.bits.set := io.readDataReq.bits.set
   readRamStage1Pipe.io.enq.bits.originId := io.readDataReq.bits.originId
-  readRamStage1Pipe.io.enq.bits.streamId := io.readDataReq.bits.streamId
   readRamStage1Pipe.io.deq.ready := readRamStage2Pipe.io.enq.ready
 
   readRamStage2Pipe.io.enq.valid := readRamStage1Pipe.io.deq.valid
@@ -100,7 +99,6 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   readRamStage2Pipe.io.enq.bits.last := readRamStage1Pipe.io.deq.bits.last
   readRamStage2Pipe.io.enq.bits.resp := readRamStage1Pipe.io.deq.bits.resp
   readRamStage2Pipe.io.enq.bits.data := dataRam.io.rresp.bits.asUInt
-  readRamStage2Pipe.io.enq.bits.streamId := readRamStage1Pipe.io.deq.bits.streamId
   readRamStage2Pipe.io.deq.ready := io.readDataResp.ready
 
   dataRam.io.rreq.valid := io.readDataReq.valid & readRamStage1Pipe.io.enq.ready
@@ -111,7 +109,6 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   rFlitBdl.data := readRamStage2Pipe.io.deq.bits.data
   rFlitBdl.resp := readRamStage2Pipe.io.deq.bits.resp
   rFlitBdl.last := readRamStage2Pipe.io.deq.bits.last
-  rFlitBdl.user := readRamStage2Pipe.io.deq.bits.streamId
 
   io.readDataReq.ready := readRamStage1Pipe.io.enq.ready
   io.readDataResp.valid := readRamStage2Pipe.io.deq.valid
@@ -124,17 +121,17 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
 }
 
 class DataBufferForRead(node: Node)(implicit p: Parameters) extends ZJModule {
-  private val axiParams = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
-  private val axiParamRUser = axiParams.copy(userBits = log2Ceil(node.outstanding), idBits = log2Ceil(node.outstanding))
+  private val axiParams  = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
+  private val axiParamsR = axiParams.copy(idBits = log2Ceil(node.outstanding))
   val io = IO(new Bundle {
     val alloc = Flipped(Decoupled(Bool()))
-    val axiR = Decoupled(new RFlit(axiParamRUser))
+    val axiR = Decoupled(new RFlit(axiParamsR))
     val wrDB = Flipped(Decoupled(new writeRdDataBuffer(node.outstanding)))
     val rdDB = Flipped(Decoupled(new readRdDataBuffer(node.outstanding, axiParams)))
     val allocRsp = Valid(new DataBufferAlloc(node.outstanding))
   })
 
-  private val dataBuffer = Module(new ChiDataBufferRdRam(axiParamRUser, node.outstanding))
+  private val dataBuffer = Module(new ChiDataBufferRdRam(axiParamsR, node.outstanding))
   private val freelist = Module(new ChiDataBufferFreelist(node.outstanding, node.outstanding))
 
   freelist.io.req.valid := io.alloc.valid

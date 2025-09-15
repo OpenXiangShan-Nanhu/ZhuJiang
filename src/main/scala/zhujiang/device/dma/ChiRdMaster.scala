@@ -29,7 +29,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
     val chiDat   = Flipped(Decoupled(new DataFlit))
     val wrDB     = Decoupled(new writeRdDataBuffer(node.outstanding))
     val rdDB     = Decoupled(new readRdDataBuffer(node.outstanding, axiParams))
-    val finish   = Valid(UInt(log2Ceil(node.outstanding).W))
+    val finish   = Valid(new Finish(node))
   })
 
 /* 
@@ -39,6 +39,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   private val chiEntriesNext = WireInit(chiEntries)
   private val rdDBQueue      = Module(new Queue(gen = new RdDBEntry(node), entries = 2, flow = false, pipe = false))
   private val txDatPtr       = RegInit(0.U(1.W))
+  private val finishBdl      = WireInit(0.U.asTypeOf(new Finish(node)))
 
   //Wire Define
   private val rcvIsRct   = io.chiRxRsp.fire & io.chiRxRsp.bits.Opcode === RspOpcode.ReadReceipt
@@ -92,6 +93,11 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
 
   private val waitNidSetEn  = RegNext(io.axiAr.fire)
   private val selIdNextReg  = RegNext(io.axiAr.bits.id, 0.U)
+
+  finishBdl.idx            := selSendFinish
+  finishBdl.streamID       := chiEntries(selSendFinish).eId
+
+  private val finishPipe    = Pipe(shodSendComVec.reduce(_ | _), finishBdl)
 
 /* 
  * CHI Entrys Assign logic
@@ -153,7 +159,7 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
       assert(!e.state.sendData)
       en.state.sendData := true.B
     }
-    when(io.finish.valid && (selSendFinish === i.U)) {
+    when(shodSendComVec.reduce(_|_) && (selSendFinish === i.U)) {
       en.valid := false.B
     }
     when(waitNidSetEn && (selIdNextReg === i.U)) {
@@ -205,8 +211,9 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   io.chiDat.ready              := io.wrDB.ready
   io.rdDB.valid                := rdDBQueue.io.deq.valid
   io.rdDB.bits                 := txDatBdl
-  io.finish.valid              := shodSendComVec.reduce(_ | _)
-  io.finish.bits               := selSendFinish
+  io.finish.valid              := finishPipe.valid
+  io.finish.bits.idx           := finishPipe.bits.idx
+  io.finish.bits.streamID      := finishPipe.bits.streamID
   io.wrDB.bits.data            := io.chiDat.bits.Data
   io.wrDB.bits.set             := Mux(chiEntries(dataTxnid).fullSize & io.chiDat.bits.DataID === 2.U, chiEntries(dataTxnid).dbSite2, chiEntries(dataTxnid).dbSite1)
   io.wrDB.valid                := Mux(chiEntries(dataTxnid).fullSize, io.chiDat.valid, 

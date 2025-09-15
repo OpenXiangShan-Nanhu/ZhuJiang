@@ -17,7 +17,7 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
   private val axiParams     = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
   private val axiParamsUser = axiParams.copy(idBits = log2Ceil(node.outstanding), userBits = axiParams.idBits + log2Ceil(node.outstanding))
   private val axiParamsLast = axiParams.copy(userBits = 1)
-  private val axiParamRUser  = axiParams.copy(userBits = log2Ceil(node.outstanding), idBits = log2Ceil(node.outstanding))
+  private val axiParamsR    = axiParams.copy(idBits = log2Ceil(node.outstanding))
 
   private class CirQAxiEntryPtr extends CircularQueuePtr[CirQAxiEntryPtr](rni.axiEntrySize)
   private object CirQAxiEntryPtr {
@@ -35,8 +35,8 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
     val uAxiAr   = Flipped(Decoupled(new ARFlit(axiParamsLast)))
     val uAxiR    = Decoupled(new RFlit(axiParams))
     val dAxiAr   = Decoupled(new ARFlit(axiParamsUser))
-    val dAxiR    = Flipped(Decoupled(new RFlit(axiParamRUser)))
-    val finish   = Flipped(Valid(UInt(log2Ceil(node.outstanding).W)))
+    val dAxiR    = Flipped(Decoupled(new RFlit(axiParamsR)))
+    val finish   = Flipped(Valid(new Finish(node)))
     val working  = Output(Bool())
   })
 
@@ -119,15 +119,15 @@ class AxiRdSlave(node: Node)(implicit p: Parameters) extends ZJModule with HasCi
       when(io.dAxiR.fire & io.dAxiR.bits.id === i.U){
         e.beat  := !e.beat
       }
-      when(io.finish.valid && (io.finish.bits === i.U)) {
+      when(io.finish.valid && (io.finish.bits.idx === i.U)) {
         assert(e.subValid)
         e.subValid := false.B
       }
   }
 
-  when(io.dAxiR.fire && io.dAxiR.bits._last && (dArEntrys(io.dAxiR.bits.id).last | dArEntrys(io.dAxiR.bits.id).noMerge)) {
-    assert(!streamFree(io.dAxiR.bits.user))
-    streamFree(io.dAxiR.bits.user) := true.B
+  when(io.finish.valid && (dArEntrys(io.finish.bits.idx).last | dArEntrys(io.finish.bits.idx).noMerge)) {
+    assert(!streamFree(io.finish.bits.streamID))
+    streamFree(io.finish.bits.streamID) := true.B
   }
   when(rxArPipe.io.deq.fire) {
     assert(streamFree.reduce(_ | _))

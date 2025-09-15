@@ -283,14 +283,12 @@ class readRdDataBuffer(outstanding: Int, axiParams: AxiParams)(implicit p: Param
   val id       = UInt(log2Ceil(outstanding).W)
   val resp     = UInt(2.W)
   val originId = UInt(axiParams.idBits.W)
-  val streamId = UInt(log2Ceil(outstanding).W)
   val last     = Bool()
 
   def SetBdl[T <: RdDBEntry](c: T, i: UInt): readRdDataBuffer = {
     this.id       := c.idx
     this.originId := c.arID
     this.resp     := c.respErr
-    this.streamId := c.streamId
     this.set      := Mux(i === 1.U, c.dbSite2, c.dbSite1)
     this.last     := Mux(c.double & i === 0.U, false.B, true.B)
     this
@@ -315,7 +313,6 @@ class writeWrDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBund
 class respDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
   val data     = UInt(dw.W)
   val id       = UInt(log2Ceil(outstanding).W)
-  val streamId = UInt(log2Ceil(outstanding).W)
   val resp     = UInt(2.W)
   val last     = Bool()
 }
