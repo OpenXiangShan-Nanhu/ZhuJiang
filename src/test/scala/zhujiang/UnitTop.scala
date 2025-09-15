@@ -23,6 +23,7 @@ import dongjiang.backend._
 import dongjiang.frontend._
 import xs.utils.debug.{HardwareAssertionKey, HwaParams}
 import zhujiang.device.AxiDeviceParams
+import zhujiang.axi.AxiParams
 
 object UnitTop {
   val _firtoolOpts = Seq(
@@ -222,7 +223,34 @@ object DongJiangTop extends App {
           nrDirBank = nrDirBank,
           llcWays = 4,
           sfWays = 4,
-        ))
+        )),
+        nodeParams = Seq(
+          NodeParam(nodeType = NodeType.CC, socket = "sync"),
+          NodeParam(nodeType = NodeType.P),
+          NodeParam(nodeType = NodeType.HF, bankId = 0, hfpId = 0),
+          NodeParam(nodeType = NodeType.P),
+          NodeParam(nodeType = NodeType.S, axiDevParams = Some(AxiDeviceParams(4, 32, "north", "mem_0")), addrSets = AddrConfig.mem0),
+          NodeParam(nodeType = NodeType.S, axiDevParams = Some(AxiDeviceParams(4, 32, "north", "mem_1")), addrSets = AddrConfig.mem1),
+          NodeParam(nodeType = NodeType.P),
+          NodeParam(nodeType = NodeType.HF, bankId = 1, hfpId = 0),
+          NodeParam(nodeType = NodeType.P),
+          NodeParam(nodeType = NodeType.CC, socket = "sync"),
+
+          NodeParam(nodeType = NodeType.CC, socket = "sync"),
+          NodeParam(nodeType = NodeType.P),
+          NodeParam(nodeType = NodeType.HF, bankId = 3, hfpId = 0),
+          NodeParam(nodeType = NodeType.P),
+          NodeParam(nodeType = NodeType.RI, axiDevParams = Some(AxiDeviceParams(1, 64, "north", "mem_n_0", Some(AxiParams(idBits = 14))))),
+          NodeParam(nodeType = NodeType.RI, axiDevParams = Some(AxiDeviceParams(1, 64, "north", "mem_n_1", Some(AxiParams(idBits = 14))))),
+          NodeParam(nodeType = NodeType.HI, axiDevParams = Some(AxiDeviceParams(1, 8, "south", "main")), defaultHni = true),
+          NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "west", "w_0")),  addrSets = AddrConfig.mem0),
+          NodeParam(nodeType = NodeType.S,  axiDevParams = Some(AxiDeviceParams(1, 32, "west", "w_1")),  addrSets = AddrConfig.mem1),
+          NodeParam(nodeType = NodeType.M, axiDevParams = Some(AxiDeviceParams(5, 32, "south", "hwa"))),
+          NodeParam(nodeType = NodeType.P),
+          NodeParam(nodeType = NodeType.HF, bankId = 2, hfpId = 0),
+          NodeParam(nodeType = NodeType.P),
+          NodeParam(nodeType = NodeType.CC, socket = "sync"),
+        )
       )
     })))
   ))
