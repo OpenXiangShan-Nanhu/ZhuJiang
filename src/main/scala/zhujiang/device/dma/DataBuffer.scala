@@ -12,7 +12,7 @@ import zhujiang.chi.ReqOpcode
 import zhujiang.chi.DatOpcode
 import xijiang._
 
-class ChiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
+class ChiDataBufferFreelist(bufferSize: Int)(implicit p: Parameters) extends ZJModule with HasCircularQueuePtrHelper {
   private class ChiDataBufferFreelistPtr extends CircularQueuePtr[ChiDataBufferFreelistPtr](bufferSize)
 
   private object ChiDataBufferFreelistPtr {
@@ -60,10 +60,10 @@ class ChiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
   freelist(tailPtr.value) := Mux(io.release.valid, io.release.bits, freelist(tailPtr.value))
 }
 
-class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Parameters) extends ZJModule {
+class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int, outstanding: Int)(implicit p: Parameters) extends ZJModule {
   val io = IO(new Bundle {
     val writeDataReq = Flipped(Decoupled(new writeRdDataBuffer(bufferSize)))
-    val readDataReq = Flipped(Decoupled(new readRdDataBuffer(bufferSize, axiParams)))
+    val readDataReq = Flipped(Decoupled(new readRdDataBuffer(bufferSize, outstanding, axiParams)))
     val readDataResp = Decoupled(new RFlit(axiParams))
     val relSet = Valid(UInt(log2Ceil(bufferSize).W))
   })
@@ -77,8 +77,8 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
   ))
 
   private val wrRamPipe = Pipe(io.writeDataReq.fire, io.writeDataReq.bits)
-  private val readRamStage1Pipe = Module(new Queue(new readRdDataBuffer(bufferSize, axiParams), entries = 1, pipe = false))
-  private val readRamStage2Pipe = Module(new Queue(new respDataBuffer(bufferSize), entries = 2, pipe = false))
+  private val readRamStage1Pipe = Module(new Queue(new readRdDataBuffer(bufferSize, outstanding, axiParams), entries = 1, pipe = true))
+  private val readRamStage2Pipe = Module(new Queue(new respDataBuffer(bufferSize), entries = 1, pipe = true))
   private val rFlitBdl = WireInit(0.U.asTypeOf(new RFlit(axiParams)))
 
 
@@ -123,16 +123,17 @@ class ChiDataBufferRdRam(axiParams: AxiParams, bufferSize: Int)(implicit p: Para
 class DataBufferForRead(node: Node)(implicit p: Parameters) extends ZJModule {
   private val axiParams  = node.axiDevParams.get.extPortParams.getOrElse(AxiParams())
   private val axiParamsR = axiParams.copy(idBits = log2Ceil(node.outstanding))
+  private val rni        = DmaParams(node = node)
   val io = IO(new Bundle {
     val alloc = Flipped(Decoupled(Bool()))
     val axiR = Decoupled(new RFlit(axiParamsR))
-    val wrDB = Flipped(Decoupled(new writeRdDataBuffer(node.outstanding)))
-    val rdDB = Flipped(Decoupled(new readRdDataBuffer(node.outstanding, axiParams)))
-    val allocRsp = Valid(new DataBufferAlloc(node.outstanding))
+    val wrDB = Flipped(Decoupled(new writeRdDataBuffer(rni.bufferSize)))
+    val rdDB = Flipped(Decoupled(new readRdDataBuffer(rni.bufferSize, node.outstanding, axiParams)))
+    val allocRsp = Valid(new DataBufferAlloc(rni.bufferSize))
   })
 
-  private val dataBuffer = Module(new ChiDataBufferRdRam(axiParamsR, node.outstanding))
-  private val freelist = Module(new ChiDataBufferFreelist(node.outstanding, node.outstanding))
+  private val dataBuffer = Module(new ChiDataBufferRdRam(axiParamsR, rni.bufferSize, node.outstanding))
+  private val freelist = Module(new ChiDataBufferFreelist(rni.bufferSize))
 
   freelist.io.req.valid := io.alloc.valid
   freelist.io.req.bits := io.alloc.bits
@@ -214,7 +215,7 @@ class ChiDataBufferWrRam(bufferSize: Int)(implicit p: Parameters) extends ZJModu
   assert(dataRam.io.wreq.ready, "if ready is false, please use Queue, Do not use Pipe")
 }
 
-class DataBufferForWrite(bufferSize: Int, ctrlSize: Int)(implicit p: Parameters) extends ZJModule {
+class DataBufferForWrite(bufferSize: Int)(implicit p: Parameters) extends ZJModule {
   val io = IO(new Bundle {
     val alloc = Flipped(Decoupled(Bool()))
     val dData = Decoupled(new DataFlit)
@@ -223,7 +224,7 @@ class DataBufferForWrite(bufferSize: Int, ctrlSize: Int)(implicit p: Parameters)
     val allocRsp = Valid(new DataBufferAlloc(bufferSize))
   })
 
-  private val freelist = Module(new ChiDataBufferFreelist(ctrlSize, bufferSize))
+  private val freelist = Module(new ChiDataBufferFreelist(bufferSize))
   private val dataBuffer = Module(new ChiDataBufferWrRam(bufferSize))
 
   freelist.io.req.valid := io.alloc.valid

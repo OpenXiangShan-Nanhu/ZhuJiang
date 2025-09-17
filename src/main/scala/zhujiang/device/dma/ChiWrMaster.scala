@@ -24,15 +24,15 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
 
   val io = IO(new Bundle {
     val reqDB    = Decoupled(Bool())
-    val respDB   = Input(Valid(new DataBufferAlloc(node.outstanding)))
+    val respDB   = Input(Valid(new DataBufferAlloc(rni.bufferSize)))
     val axiAw    = Flipped(Decoupled(new AWFlit(axiParamsUser)))
     val axiW     = Flipped(Decoupled(new WFlit(axiWParamsUser))) 
     val axiB     = Decoupled(new BFlit(axiParams))
     val chiReq   = Decoupled(new ReqFlit)
     val chiRxRsp = Flipped(Decoupled(new RespFlit))
     val chiTxRsp = Decoupled(new RespFlit)
-    val rdDB     = Decoupled(new readWrDataBuffer(node.outstanding))
-    val wrDB     = Decoupled(new writeWrDataBuffer(node.outstanding))
+    val rdDB     = Decoupled(new readWrDataBuffer(rni.bufferSize))
+    val wrDB     = Decoupled(new writeWrDataBuffer(rni.bufferSize))
     val finish   = Valid(new Finish(node))
   })
 

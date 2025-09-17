@@ -46,6 +46,7 @@ case class DmaParams(
   lazy val sizeBits  = axiParams.sizeBits
   lazy val lenBits   = axiParams.lenBits
   lazy val cntBits   = log2Ceil(4096 / cacheBytes) + 1
+  lazy val bufferSize = node.outstanding * 2
 
 }
 class Finish(node : Node)(implicit P: Parameters) extends ZJBundle {
@@ -234,8 +235,8 @@ class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
   val memAttr       = new MemAttr
   val homeNid       = UInt(niw.W)
   val dbid          = UInt(12.W)
-  val dbSite1       = UInt(log2Ceil(node.outstanding).W)
-  val dbSite2       = UInt(log2Ceil(node.outstanding).W)
+  val dbSite1       = UInt(log2Ceil(rni.bufferSize).W)
+  val dbSite2       = UInt(log2Ceil(rni.bufferSize).W)
   val respErr       = UInt(2.W)
   val reqNid        = UInt(log2Ceil(node.outstanding).W)
   val ackNid        = UInt(log2Ceil(node.outstanding).W)
@@ -278,8 +279,8 @@ class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
 
 
 
-class readRdDataBuffer(outstanding: Int, axiParams: AxiParams)(implicit p: Parameters) extends ZJBundle {
-  val set      = UInt(log2Ceil(outstanding).W)
+class readRdDataBuffer(bufferSize: Int, outstanding: Int, axiParams: AxiParams)(implicit p: Parameters) extends ZJBundle {
+  val set      = UInt(log2Ceil(bufferSize).W)
   val id       = UInt(log2Ceil(outstanding).W)
   val resp     = UInt(2.W)
   val originId = UInt(axiParams.idBits.W)
@@ -295,18 +296,18 @@ class readRdDataBuffer(outstanding: Int, axiParams: AxiParams)(implicit p: Param
   }
 }
 
-class DataBufferAlloc(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
-  val buf          = Vec(2, UInt(log2Ceil(outstanding).W))
+class DataBufferAlloc(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
+  val buf          = Vec(2, UInt(log2Ceil(bufferSize).W))
   val num          = UInt(2.W)
 }
 
-class writeRdDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
-  val set    = UInt(log2Ceil(outstanding).W)
+class writeRdDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
+  val set    = UInt(log2Ceil(bufferSize).W)
   val data   = UInt(dw.W)
 }
 
-class writeWrDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
-  val set   = UInt(log2Ceil(outstanding).W)
+class writeWrDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
+  val set   = UInt(log2Ceil(bufferSize).W)
   val data  = UInt(dw.W)
   val mask  = UInt(bew.W)
 }
@@ -316,8 +317,8 @@ class respDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle 
   val resp     = UInt(2.W)
   val last     = Bool()
 }
-class readWrDataBuffer(outstanding: Int)(implicit p: Parameters) extends ZJBundle {
-  val set     = UInt(log2Ceil(outstanding).W)
+class readWrDataBuffer(bufferSize: Int)(implicit p: Parameters) extends ZJBundle {
+  val set     = UInt(log2Ceil(bufferSize).W)
   val tgtId   = UInt(niw.W)
   val txnID   = UInt(12.W)
   val dataID  = UInt(2.W)
@@ -439,8 +440,8 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val tgtid          = UInt(niw.W)
   val addr           = UInt(raw.W)
   val dbid           = UInt(12.W)
-  val dbSite1        = UInt(log2Ceil(node.outstanding).W)
-  val dbSite2        = UInt(log2Ceil(node.outstanding).W)
+  val dbSite1        = UInt(log2Ceil(rni.bufferSize).W)
+  val dbSite2        = UInt(log2Ceil(rni.bufferSize).W)
   val state          = new WrState
   val valid          = Bool()
   val complete       = Bool()
@@ -483,8 +484,8 @@ class RdDBEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val arID          = UInt(rni.idBits.W)
   val idx           = UInt(log2Ceil(node.outstanding).W)
   val double        = Bool()
-  val dbSite1       = UInt(log2Ceil(node.outstanding).W)
-  val dbSite2       = UInt(log2Ceil(node.outstanding).W)
+  val dbSite1       = UInt(log2Ceil(rni.bufferSize).W)
+  val dbSite2       = UInt(log2Ceil(rni.bufferSize).W)
   val respErr       = UInt(2.W)
   val streamId      = UInt(log2Ceil(node.outstanding).W)
 
@@ -505,8 +506,8 @@ class RdDBWrEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val tgtId    = UInt(niw.W)
   val txnID    = UInt(12.W)
   val fullSize = Bool()
-  val dbSite1  = UInt(log2Ceil(node.outstanding).W)
-  val dbSite2  = UInt(log2Ceil(node.outstanding).W)
+  val dbSite1  = UInt(log2Ceil(rni.bufferSize).W)
+  val dbSite2  = UInt(log2Ceil(rni.bufferSize).W)
   val shift    = UInt(1.W)
 
   def rdWrDBInit[T <: CHIWEntry](b: T): RdDBWrEntry = {

@@ -42,7 +42,7 @@ class Axi2Chi(node: Node)(implicit p: Parameters) extends ZJModule {
   private val axiArSplit  = Module(new AxiDevSpilt(node = node))
   private val axiAwSplit  = Module(new AxiDevSpilt(node = node))
   private val rdDB        = Module(new DataBufferForRead(node))
-  private val wrDB        = Module(new DataBufferForWrite(bufferSize = node.outstanding, ctrlSize = node.outstanding))
+  private val wrDB        = Module(new DataBufferForWrite(rni.bufferSize))
 
   private val arbReqOut   = Wire(chiWrMaster.io.chiReq.cloneType)
   private val arbRspOut   = Wire(chiWrMaster.io.chiTxRsp.cloneType)

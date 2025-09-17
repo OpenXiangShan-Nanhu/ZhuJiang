@@ -22,13 +22,13 @@ class ChiRdMaster(node: Node)(implicit p: Parameters) extends ZJModule {
   val io = IO(new Bundle {
     val axiAr    = Flipped(Decoupled(new ARFlit(axiParamsUser)))
     val reqDB    = Decoupled(Bool())
-    val respDB   = Input(Valid(new DataBufferAlloc(node.outstanding)))
+    val respDB   = Input(Valid(new DataBufferAlloc(rni.bufferSize)))
     val chiReq   = Decoupled(new ReqFlit)
     val chiRxRsp = Flipped(Decoupled(new RespFlit))
     val chiTxRsp = Decoupled(new RespFlit)
     val chiDat   = Flipped(Decoupled(new DataFlit))
-    val wrDB     = Decoupled(new writeRdDataBuffer(node.outstanding))
-    val rdDB     = Decoupled(new readRdDataBuffer(node.outstanding, axiParams))
+    val wrDB     = Decoupled(new writeRdDataBuffer(rni.bufferSize))
+    val rdDB     = Decoupled(new readRdDataBuffer(rni.bufferSize, node.outstanding, axiParams))
     val finish   = Valid(new Finish(node))
   })
 
