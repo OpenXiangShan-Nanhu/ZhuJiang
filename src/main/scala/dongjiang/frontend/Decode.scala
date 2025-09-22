@@ -17,6 +17,24 @@ import dongjiang.frontend.decode._
 import dongjiang.data._
 import xs.utils.ParallelLookUp
 import dongjiang.backend.GetDecRes
+import dongjiang.frontend.decode.Decode._
+
+class FstDec(implicit p: Parameters) extends Module {
+  val io = IO(new Bundle {
+    val inst  = Input(new ChiInst)
+    val out   = Output(MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W)))
+  })
+  io.out := Decode.firstDec(io.inst)
+}
+
+class SecDec(implicit p: Parameters) extends DJModule {
+  val io = IO(new Bundle {
+    val inst  = Input(new StateInst)
+    val in    = Input(MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W)))
+    val out   = Output(MixedVec(UInt(log2Ceil(Decode.l_ci).W), UInt(log2Ceil(Decode.l_si).W), UInt(log2Ceil(Decode.l_ti).W), UInt(log2Ceil(Decode.l_sti).W)))
+  })
+  io.out := Decode.secondDec(io.in, io.inst)
+}
 
 class Decode(implicit p: Parameters) extends DJModule {
   /*
@@ -42,6 +60,8 @@ class Decode(implicit p: Parameters) extends DJModule {
   /*
    * Module Reg and Wire declaration
    */
+  val fstDec            = Module(new FstDec)
+  val secDec            = Module(new SecDec)
   val getDecRes         = Module(new GetDecRes)
   val validReg_s3       = RegNext(io.task_s2.valid, false.B)
   val taskReg_s3        = RegEnable(io.task_s2.bits, io.task_s2.valid)
@@ -67,12 +87,18 @@ class Decode(implicit p: Parameters) extends DJModule {
   /*
    * Get Decode Result
    */
-  val decList_s2          = Decode.firstDec(chiInst_s2)
-  val decList_s3          = Decode.secondDec(RegEnable(decList_s2, io.task_s2.valid), stateInst_s3)
-  val taskCode_s3         = getDecRes.io.taskCode
-  val cmtCode_s3          = getDecRes.io.commitCode
+  // first
+  fstDec.io.inst  := chiInst_s2
+  val decList_s2  = fstDec.io.out
+  // second
+  secDec.io.inst  := stateInst_s3
+  secDec.io.in    := RegEnable(decList_s2, io.task_s2.valid)
+  val decList_s3  = secDec.io.out
+  // get decode result
   getDecRes.io.list.valid := validReg_s3
   getDecRes.io.list.bits  := decList_s3
+  val taskCode_s3         = getDecRes.io.taskCode
+  val cmtCode_s3          = getDecRes.io.commitCode
   dontTouch(decList_s2)
   dontTouch(decList_s3)
 
