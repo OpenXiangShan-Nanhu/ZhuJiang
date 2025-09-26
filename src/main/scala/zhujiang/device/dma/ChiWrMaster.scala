@@ -82,7 +82,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val waitDataVec     = chiEntries.map(c => c.valid && !c.state.rcvDataCmp)
   private val sendAckVec      = chiEntries.map(c => (c.isSendAck) && c.ackNid === 0.U)
   private val sendDataVec     = chiEntries.map(c => c.isSendData)
-  private val finishVec       = chiEntries.map(c => c.complete && c.valid)
+  private val finishVec       = chiEntries.map(c => c.complete && c.valid && (c.finishNid === 0.U))
   private val sendBVec        = chiEntries.map(c => c.isSendBResp && (c.bNid === 0.U))
   private val sameAWIdVec     = chiEntries.map(c => !c.state.sendBResp && (c.awId === io.axiAw.bits.user(userArid_hi, userArid_lo) && c.valid))
 
@@ -104,10 +104,12 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
   private val blockReqVec     = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockReq(axiAWID, axiEid) && !(rcvIsDBID && (rspTxnid === i.U))})
   private val blockAckVec     = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockAck(axiAWID, axiEid) && !(rcvIsComp && (rspTxnid === i.U))})
   private val blockBRespVec   = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockBResp(axiAWID) && !(sendBValid && (selSendB === i.U))})
+  private val blockFshVec     = VecInit(chiEntries.zipWithIndex.map{case(c, i) => c.shodBlockFinish(axiEid) && !((selFinish === i.U) && finishValid)})
 
   private val blockReqVecReg  = RegEnable(blockReqVec, io.axiAw.fire)
   private val blockAckVecReg  = RegEnable(blockAckVec, io.axiAw.fire)
   private val blockBVecReg    = RegEnable(blockBRespVec, io.axiAw.fire)
+  private val blockFshVecReg  = RegEnable(blockFshVec, io.axiAw.fire)
 
 // Pipe Reg
   finishBdl.idx      := selFinish
@@ -128,7 +130,7 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
     when(io.axiAw.fire & (io.axiAw.bits.id === i.U)) {
       assert(!chiEntries(i).valid)
       assert(io.reqDB.ready === true.B)
-      chiEntries(i).awMesInit(io.axiAw.bits, maxNid, maxNid, maxNid, io.respDB.bits)
+      chiEntries(i).awMesInit(io.axiAw.bits, maxNid, maxNid, maxNid, maxNid, io.respDB.bits)
     }.elsewhen(validVec(i)) {
       chiEntries(i) := chiEntriesNext(i)
     }
@@ -164,6 +166,9 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
       assert(e.complete)
       en.valid   := false.B
     }
+    when(finishPipe.valid && (finishPipe.bits.streamID === e.eId) && (e.finishNid =/= 0.U)) {
+      en.finishNid := e.finishNid - 1.U
+    }
     when(io.axiB.fire && selSendB === i.U) {
       assert(!e.state.sendBResp)
       en.state.sendBResp   := true.B
@@ -179,9 +184,10 @@ class ChiWrMaster(node: Node)(implicit p: Parameters) extends ZJModule with HasC
       en.complete := true.B
     }
     when(waitNidSetEn && (selIdNextReg === i.U)) {
-      en.reqNid := PopCount(blockReqVecReg)
-      en.ackNid := PopCount(blockAckVecReg)
-      en.bNid   := PopCount(blockBVecReg)
+      en.reqNid    := PopCount(blockReqVecReg)
+      en.ackNid    := PopCount(blockAckVecReg)
+      en.bNid      := PopCount(blockBVecReg)
+      en.finishNid := PopCount(blockFshVecReg)
     }
   }
 

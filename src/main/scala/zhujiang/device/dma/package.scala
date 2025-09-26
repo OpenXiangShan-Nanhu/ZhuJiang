@@ -240,6 +240,7 @@ class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
   val respErr       = UInt(2.W)
   val reqNid        = UInt(log2Ceil(node.outstanding).W)
   val ackNid        = UInt(log2Ceil(node.outstanding).W)
+  val finishNid     = UInt(log2Ceil(node.outstanding).W)
   val state         = new RdState
   val valid         = Bool()
   val complete      = Bool()
@@ -253,8 +254,9 @@ class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
 
   def shodBlockReq(arIdIn: UInt, eIdIn : UInt): Bool =  isToOrder && (arId === arIdIn) && (eId =/= eIdIn)
   def shodBlockRResp(arIdIn: UInt): Bool             =  !state.sendData && (arId === arIdIn) && valid
+  def shodBlockFinish(eIdIn: UInt): Bool             =  valid && (eIdIn === eId)
 
-  def arToChi[T <: ARFlit, U <: DataBufferAlloc](b: T, reqNid: UInt, ackNid: UInt, resp: U): CHIRdEntry = {
+  def arToChi[T <: ARFlit, U <: DataBufferAlloc](b: T, reqNid: UInt, ackNid: UInt, finishNid: UInt, resp: U): CHIRdEntry = {
     this                   := 0.U.asTypeOf(this)
     this.arId              := b.user(b.user.getWidth - 1, log2Ceil(node.outstanding))
     this.eId               := b.user(log2Ceil(node.outstanding) - 1, 0)
@@ -270,6 +272,7 @@ class CHIRdEntry(node: Node)(implicit p : Parameters) extends ZJBundle {
     this.dbSite2           := resp.buf(1)
     this.reqNid            := reqNid
     this.ackNid            := ackNid
+    this.finishNid         := finishNid
     this.state.sendAck     := Mux(!b.cache(1), true.B, false.B)
     this.valid             := true.B
     this
@@ -436,6 +439,7 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   val reqNid         = UInt(log2Ceil(node.outstanding).W)
   val ackNid         = UInt(log2Ceil(node.outstanding).W)
   val bNid           = UInt(log2Ceil(node.outstanding).W)
+  val finishNid      = UInt(log2Ceil(node.outstanding).W)
   val memAttr        = new MemAttr
   val tgtid          = UInt(niw.W)
   val addr           = UInt(raw.W)
@@ -456,8 +460,9 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   def shodBlockReq(awIdIn: UInt, eIdIn: UInt): Bool   = isToOrder && (awId === awIdIn) && (eId =/= eIdIn)
   def shodBlockAck(awIdIn: UInt, eIdIn: UInt): Bool   = !state.rcvComp && valid && (awId === awIdIn) && (eId =/= eIdIn)
   def shodBlockBResp(awIdIn: UInt): Bool              = !state.sendBResp && valid && (awId === awIdIn)
+  def shodBlockFinish(eIdIn: UInt): Bool              = (eId === eIdIn) && valid
 
-  def awMesInit[T <: AWFlit, U <: DataBufferAlloc](aw : T, reqNid: UInt, ackNid: UInt, bNid: UInt, resp: U): CHIWEntry = {
+  def awMesInit[T <: AWFlit, U <: DataBufferAlloc](aw : T, reqNid: UInt, ackNid: UInt, bNid: UInt, finishNid: UInt, resp: U): CHIWEntry = {
     this           := 0.U.asTypeOf(this)
     this.fullSize  := aw.len(0).asBool
     this.qos       := aw.qos
@@ -467,6 +472,7 @@ class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
     this.reqNid    := reqNid
     this.ackNid    := ackNid
     this.bNid      := bNid
+    this.finishNid := finishNid
     this.addr      := aw.addr
     this.dbSite1   := resp.buf(0)
     this.dbSite2   := resp.buf(1)
