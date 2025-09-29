@@ -128,7 +128,7 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   dontTouch(replArray.io)
 
   // lockTable
-  val lockTable = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays) { new DJBundle {
+  val lockTable = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays - 1) { new DJBundle {
     val valid   = Bool()
     val set     = UInt(param.setBits.W)
     val way     = UInt(param.wayBits.W)
@@ -351,10 +351,12 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   // Note:
   //  1. '-' indicate dont care
   //  2. 'old' and 'new' indicate 'lock' state
-  val read_d3     =  shiftReg.read(D3) & !shiftReg.write(D3) & !shiftReg.repl(D3)
-  val write_d3    = !shiftReg.read(D3) &  shiftReg.write(D3) & !shiftReg.repl(D3)
-  val readRepl_d3 =  shiftReg.read(D3) & !shiftReg.write(D3) &  shiftReg.repl(D3)
-  val wriRepl_d3  = !shiftReg.read(D3) &  shiftReg.write(D3) &  shiftReg.repl(D3)
+  val read_d3         =  shiftReg.read(D3) & !shiftReg.write(D3) & !shiftReg.repl(D3)
+  val write_d3        = !shiftReg.read(D3) &  shiftReg.write(D3) & !shiftReg.repl(D3)
+  val readRepl_d3     =  shiftReg.read(D3) & !shiftReg.write(D3) &  shiftReg.repl(D3)
+  val wriRepl_d3      = !shiftReg.read(D3) &  shiftReg.write(D3) &  shiftReg.repl(D3)
+  val unLockHitVec2   = Wire(Vec(posSets, Vec(posWays - 1, Bool())))
+  val reqHitVec2      = Wire(Vec(posSets, Vec(posWays - 1, Bool())))
   lockTable.zipWithIndex.foreach { case(lockSet, i) =>
     lockSet.zipWithIndex.foreach { case(lock, j) =>
       // hnIdx
@@ -371,6 +373,9 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
       val write       = write_d3    & reqHit
       val readRepl    = readRepl_d3 & reqHit
       val wriRepl     = wriRepl_d3  & reqHit
+
+      unLockHitVec2(i)(j) := unLockHit
+      reqHitVec2(i)(j)    := reqHit
 
       reqHit.suggestName  (f"reqHit_${i}_${j}")
       readMiss.suggestName(f"write_${i}_${j}")
@@ -410,6 +415,8 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
       HAssert.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i.U}][${j.U}]")
     }
   }
+  HAssert.withEn(PopCount(unLockHitVec2.flatten) === 1.U, io.unlock.valid & io.unlock.bits.hnIdx.dirBank === io.dirBank & (io.unlock.bits.hnIdx.pos.way < (posWays-1).U))
+  HAssert.withEn(PopCount(reqHitVec2.flatten) === 1.U,    shiftReg.req(D3))
 
   when(shiftReg.req(D3) | io.unlock.valid) {
     lockTable := lockNext

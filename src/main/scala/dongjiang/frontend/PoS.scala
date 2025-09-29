@@ -254,9 +254,9 @@ class PosSet(implicit p: Parameters) extends DJModule {
    */
   val freeVec       = Cat(esVec.map(!_.valid).reverse)
   val replSelWay    = PriorityMux(Seq(
-    freeVec(djparam.posWays-3, 0).orR -> PriorityEncoder(freeVec),
-    io.reqPoS.bits.isReq -> (posWays-2).U,
-    io.reqPoS.bits.isSnp -> (posWays-1).U
+    (io.reqPoS.bits.isReq & freeVec(posWays-1)) -> (posWays-1).U,
+    (io.reqPoS.bits.isSnp & freeVec(posWays-2)) -> (posWays-2).U,
+    true.B -> PriorityEncoder(freeVec.asBools.dropRight(2)),
   ))
   val reqPosFire    = io.reqPoS.valid & freeVec(replSelWay) & !lockReg
   // Return HnTxnID
@@ -332,8 +332,8 @@ class PosSet(implicit p: Parameters) extends DJModule {
  *  6. offset :
  *
  * Special Entry:
- * Entry*: Reserve for LLC Replace
  * Entry#: Reserve for Snoop Evict
+ * Entry*: Reserve for LLC Replace
  */
 class PosTable(isTop: Boolean = false)(implicit p: Parameters) extends DJModule {
   override def isTopModule: Boolean = isTop
