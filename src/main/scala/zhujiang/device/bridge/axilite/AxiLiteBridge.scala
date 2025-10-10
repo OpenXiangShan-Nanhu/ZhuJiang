@@ -16,7 +16,8 @@ import zhujiang.chi.FlitHelper.connIcn
 class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Parameters) extends ZJModule {
   private val compareTagBits = 16
   require(node.nodeType == NodeType.HI)
-  private val axiParams = AxiParams(idBits = log2Ceil(node.outstanding), dataBits = busDataBits, addrBits = raw)
+  private val _axiP = node.axiDevParams.get.extPortParams.getOrElse(AxiParams(idBits = log2Ceil(node.outstanding)))
+  private val axiParams = _axiP.copy(dataBits = busDataBits, addrBits = raw)
 
   val icn = IO(new DeviceIcnBundle(node))
   val axi = IO(new AxiBundle(axiParams))

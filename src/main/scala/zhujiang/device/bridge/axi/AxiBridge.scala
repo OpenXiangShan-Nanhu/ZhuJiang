@@ -19,7 +19,8 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule {
   private val compareTagBits = 32
   private val tagOffset = 6
   require(node.nodeType == NodeType.S)
-  private val axiParams = AxiParams(idBits = log2Ceil(node.outstanding), dataBits = dw, addrBits = raw)
+  private val _axiP = node.axiDevParams.get.extPortParams.getOrElse(AxiParams(idBits = log2Ceil(node.outstanding)))
+  private val axiParams = _axiP.copy(dataBits = dw, addrBits = raw)
 
   val icn = IO(new DeviceIcnBundle(node))
   val axi = IO(new AxiBundle(axiParams))
