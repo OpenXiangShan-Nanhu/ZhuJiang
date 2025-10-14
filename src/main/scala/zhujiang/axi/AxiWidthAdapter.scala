@@ -39,7 +39,7 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
   for(i <- arvld.indices) {
     when(io.mst.ar.fire && arsel.bits(i)) {
       arvld(i) := true.B
-    }.elsewhen(io.slv.r.fire && io.slv.r.bits.id === i.U) {
+    }.elsewhen(io.mst.r.fire && io.mst.r.bits.id === arinfo(i).id && io.mst.r.bits._last && arvld(i)) {
       arvld(i) := false.B
     }
     when(io.mst.ar.fire && arsel.bits(i)) {
