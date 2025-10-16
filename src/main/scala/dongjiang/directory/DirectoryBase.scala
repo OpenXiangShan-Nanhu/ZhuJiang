@@ -128,7 +128,8 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   dontTouch(replArray.io)
 
   // lockTable
-  val lockTable = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(posWays - 1) { new DJBundle {
+  val lockWays  = if(dirType == "llc") posWays - 1 else posWays -2
+  val lockTable = RegInit(VecInit(Seq.fill(posSets) { VecInit(Seq.fill(lockWays) { new DJBundle {
     val valid   = Bool()
     val set     = UInt(param.setBits.W)
     val way     = UInt(param.wayBits.W)
@@ -355,8 +356,8 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
   val write_d3        = !shiftReg.read(D3) &  shiftReg.write(D3) & !shiftReg.repl(D3)
   val readRepl_d3     =  shiftReg.read(D3) & !shiftReg.write(D3) &  shiftReg.repl(D3)
   val wriRepl_d3      = !shiftReg.read(D3) &  shiftReg.write(D3) &  shiftReg.repl(D3)
-  val unLockHitVec2   = Wire(Vec(posSets, Vec(posWays - 1, Bool())))
-  val reqHitVec2      = Wire(Vec(posSets, Vec(posWays - 1, Bool())))
+  val unLockHitVec2   = Wire(Vec(posSets, Vec(lockWays, Bool())))
+  val reqHitVec2      = Wire(Vec(posSets, Vec(lockWays, Bool())))
   lockTable.zipWithIndex.foreach { case(lockSet, i) =>
     lockSet.zipWithIndex.foreach { case(lock, j) =>
       // hnIdx
@@ -415,7 +416,7 @@ class DirectoryBase(dirType: String, powerCtl: Boolean)(implicit p: Parameters) 
       HAssert.checkTimeout(!lock.valid, TIMEOUT_LOCK, cf"TIMEOUT: Directory Lock Index[${i.U}][${j.U}]")
     }
   }
-  HAssert.withEn(PopCount(unLockHitVec2.flatten) === 1.U, io.unlock.valid & io.unlock.bits.hnIdx.dirBank === io.dirBank & (io.unlock.bits.hnIdx.pos.way < (posWays-1).U))
+  HAssert.withEn(PopCount(unLockHitVec2.flatten) === 1.U, io.unlock.valid & io.unlock.bits.hnIdx.dirBank === io.dirBank & (io.unlock.bits.hnIdx.pos.way < lockWays.U))
   HAssert.withEn(PopCount(reqHitVec2.flatten) === 1.U,    shiftReg.req(D3))
 
   when(shiftReg.req(D3) | io.unlock.valid) {

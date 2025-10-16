@@ -52,7 +52,7 @@ class ChiResp extends Bundle with HasChiResp
  * Chi State
  */
 object ChiState {
-  val width = 3
+  val width = 2
 
   def I = "b00".U(width.W)
   def SC = "b01".U(width.W)
