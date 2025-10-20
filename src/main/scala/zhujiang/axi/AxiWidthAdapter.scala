@@ -1,6 +1,7 @@
 package zhujiang.axi
 
 import chisel3._
+import chisel3.experimental.noPrefix
 import chisel3.util._
 import xs.utils.PickOneLow
 
@@ -14,16 +15,14 @@ class AxiWidthAdapterWBundle(axiP: AxiParams) extends Bundle {
     this.size := in.size
     this.id   := in.id
   }
-  def := (in: ARFlit): Unit = {
-    this.addr := in.addr
-    this.size := in.size
-    this.id   := in.id
-  }
+
 }
+
 class AxiWidthAdapterRBundle(axiP: AxiParams, outstanding: Int) extends Bundle {
-  val bits = new ARFlit(axiP)
+  val addr = UInt(axiP.addrBits.W)
+  val size = UInt(axiP.sizeBits.W)
+  val id = UInt(axiP.idBits.W)
   val nid = UInt(log2Ceil(outstanding).W)
-  val haveSendAR = Bool()
 }
 
 class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:Int) extends Module {
@@ -36,42 +35,43 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
   private val seg = sdw / mdw
   private val awq = Module(new Queue(new AxiWidthAdapterWBundle(mstParams), entries = outstanding))
   private val wq = Module(new Queue(new WFlit(mstParams), entries = 2))
+  private val rq = Module(new Queue(new RFlit(slvParams), entries = 1, pipe = true))
   private val arvld = RegInit(VecInit(Seq.fill(outstanding)(false.B)))
   private val arinfo = Reg(Vec(outstanding, new AxiWidthAdapterRBundle(mstParams, outstanding)))
   private val arsel = PickOneLow(arvld)
-  private val setNid = PopCount(arinfo.zip(arvld).map{case(i, v) => (i.bits.id === io.mst.ar.bits.id) && v})
+  private val setNid = PopCount(arinfo.zip(arvld).map{case(i, v) => (i.id === io.mst.ar.bits.id) && v})
+  private val infoSelOH = Wire(Vec(outstanding, Bool()))
   require(mdw <= sdw, "AXI width adapter dose not support wide-to-narrow convert for now!")
 
-  for(i <- arvld.indices) {
+  for(i <- arvld.indices) noPrefix {
+    val rFireMayHit = WireInit(io.mst.r.valid && io.mst.r.ready && io.mst.r.bits.id === arinfo(i).id && arvld(i))
+    rFireMayHit.suggestName(s"r_fire_may_hit_$i")
+
     when(io.mst.ar.fire && arsel.bits(i)) {
       arvld(i) := true.B
-    }.elsewhen(io.mst.r.fire && io.mst.r.bits.id === arinfo(i).bits.id && io.mst.r.bits._last && arvld(i) && arinfo(i).nid === 0.U) {
+    }.elsewhen(rFireMayHit && io.mst.r.bits._last && arinfo(i).nid === 0.U) {
       arvld(i) := false.B
-      assert(arinfo(i).haveSendAR)
     }
+
     when(io.mst.ar.fire && arsel.bits(i)) {
-      arinfo(i).bits       := io.mst.ar.bits
-      arinfo(i).nid        := setNid
-      arinfo(i).haveSendAR := false.B
+      arinfo(i).size := io.mst.ar.bits.size
+      arinfo(i).id := io.mst.ar.bits.id
     }
-  }
 
-  for((e, i) <- arinfo.zipWithIndex) {
-    when(io.mst.r.bits._last && io.mst.r.fire && (arinfo(io.slv.r.bits.id).bits.id === e.bits.id) && (e.nid =/= 0.U) && arvld(i)) {
-      e.nid := e.nid - 1.U
+    when(io.mst.ar.fire && arsel.bits(i)) {
+      arinfo(i).nid := setNid
+    }.elsewhen(rFireMayHit && io.mst.r.bits._last && arinfo(i).nid =/= 0.U) {
+      arinfo(i).nid := arinfo(i).nid - 1.U
     }
-    when(io.slv.ar.fire && (io.slv.ar.bits.id === i.U)) {
-      e.haveSendAR := true.B
-    }
-    when(io.mst.r.fire && (io.slv.r.bits.id === i.U)) {
-      arinfo(i).bits.addr := arinfo(i).bits.addr + (1.U << arinfo(i).bits.size)
-    }
-  }
-  
-  private val arinfoSendVec = arinfo.zip(arvld).map{case(i, v) => v && !i.haveSendAR && (i.nid === 0.U)}
-  private val arvalid       = arinfoSendVec.reduce(_ | _)
-  private val selSendAR     = PriorityEncoder(arinfoSendVec)
 
+    when(io.mst.ar.fire && arsel.bits(i)) {
+      arinfo(i).addr := io.mst.ar.bits.addr
+    }.elsewhen(rFireMayHit && arinfo(i).nid === 0.U) {
+      arinfo(i).addr := arinfo(i).addr + (1.U << arinfo(i).size)
+    }
+
+    infoSelOH(i) := arvld(i) && arinfo(i).id === io.slv.r.bits.id && arinfo(i).nid === 0.U
+  }
 
   //AW Channel Connection
   awq.io.enq.valid := io.mst.aw.valid && io.slv.aw.ready
@@ -81,10 +81,9 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
   io.mst.aw.ready := io.slv.aw.ready && awq.io.enq.ready
 
   //AR Channel Connection
-  io.slv.ar.valid := arvalid
-  io.slv.ar.bits := arinfo(selSendAR).bits
-  io.slv.ar.bits.id := selSendAR
-  io.mst.ar.ready := arsel.valid
+  io.slv.ar.valid := io.mst.ar.valid && arsel.valid
+  io.slv.ar.bits := io.mst.ar.bits
+  io.mst.ar.ready := io.slv.ar.ready && arsel.valid
 
   //W Channel Connection
   private val strb = Wire(Vec(seg, UInt((mdw / 8).W)))
@@ -103,14 +102,17 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
   io.mst.b <> io.slv.b
 
   //R Channel Connection
-  private val infoSel = arinfo(io.slv.r.bits.id(log2Ceil(outstanding) - 1, 0))
-  private val raddrcvt = if(sdw > mdw) infoSel.bits.addr(log2Ceil(sdw / 8) - 1, log2Ceil(mdw / 8)) else 0.U
-  private val rdata = io.slv.r.bits.data.asTypeOf(Vec(seg, UInt(mdw.W)))
-  io.mst.r.valid := io.slv.r.valid
-  io.mst.r.bits := io.slv.r.bits
+  private val infoSelOHReg = RegEnable(infoSelOH, io.slv.r.fire)
+  private val infoSel = Mux1H(infoSelOHReg, arinfo)
+  private val raddrcvt = if(sdw > mdw) infoSel.addr(log2Ceil(sdw / 8) - 1, log2Ceil(mdw / 8)) else 0.U
+  private val rdata = rq.io.deq.bits.data.asTypeOf(Vec(seg, UInt(mdw.W)))
+  rq.io.enq <> io.slv.r
+  io.mst.r <> rq.io.deq
   io.mst.r.bits.data := rdata(raddrcvt)
-  io.mst.r.bits.id := infoSel.bits.id
-  io.slv.r.ready := io.mst.r.ready
+
+  when(io.slv.r.fire) {
+    assert(PopCount(infoSelOH) === 0.U, s"Multiple R entries are hit!")
+  }
 }
 
 object AxiWidthAdapter {
