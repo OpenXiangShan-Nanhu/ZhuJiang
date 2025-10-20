@@ -117,8 +117,8 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
   io.mst.r <> rq.io.deq
   io.mst.r.bits.data := rdata(raddrcvt)
 
-  when(io.slv.r.fire) {
-    assert(PopCount(infoSelOH) === 0.U, s"Multiple R entries are hit!")
+  when(io.mst.r.fire) {
+    assert(PopCount(infoSelOH) === 1.U, s"Multiple R entries are hit!")
   }
 }
 
