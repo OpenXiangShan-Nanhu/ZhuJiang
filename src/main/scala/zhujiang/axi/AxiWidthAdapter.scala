@@ -38,8 +38,12 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
   private val arvld = RegInit(VecInit(Seq.fill(outstanding)(false.B)))
   private val arinfo = Reg(Vec(outstanding, new AxiWidthAdapterRBundle(mstParams, outstanding)))
   private val arsel = PickOneLow(arvld)
-  private val setNid = PopCount(arinfo.zip(arvld).map{case(i, v) => (i.id === io.mst.ar.bits.id) && v})
   private val infoSelOH = Wire(Vec(outstanding, Bool()))
+  private val nidCalcVec = Wire(Vec(outstanding, Bool()))
+  private val rawNid = PopCount(nidCalcVec)
+  private val cncrtWkVld = io.mst.r.fire && io.mst.ar.fire && io.mst.r.bits._last && io.mst.r.bits.id === io.mst.ar.bits.id
+  private val cncrtWkVldReg = RegNext(cncrtWkVld)
+  private val cncrtWkEtrReg = RegEnable(arsel.bits, cncrtWkVld)
   require(mdw <= sdw, "AXI width adapter dose not support wide-to-narrow convert for now!")
 
   for(i <- arvld.indices) noPrefix {
@@ -60,8 +64,10 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
     }
 
     when(arFireHit) {
-      arinfo(i).nid := setNid
-    }.elsewhen(rFireMayHit && io.mst.r.bits._last && arinfo(i).nid =/= 0.U) {
+      arinfo(i).nid := rawNid
+    }.elsewhen((cncrtWkVldReg && cncrtWkEtrReg(i)) && (rFireMayHit && io.mst.r.bits._last && arinfo(i).nid =/= 0.U)) {
+      arinfo(i).nid := arinfo(i).nid - 2.U
+    }.elsewhen((cncrtWkVldReg && cncrtWkEtrReg(i)) || (rFireMayHit && io.mst.r.bits._last && arinfo(i).nid =/= 0.U)) {
       arinfo(i).nid := arinfo(i).nid - 1.U
     }
 
@@ -71,7 +77,8 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
       arinfo(i).addr := arinfo(i).addr + (1.U << arinfo(i).size)
     }
 
-    infoSelOH(i) := arvld(i) && arinfo(i).id === io.slv.r.bits.id && arinfo(i).nid === 0.U
+    infoSelOH(i) := arvld(i) && arinfo(i).id === io.mst.r.bits.id && arinfo(i).nid === 0.U
+    nidCalcVec(i) := arvld(i) && arinfo(i).id === io.mst.ar.bits.id
   }
 
   //AW Channel Connection
@@ -103,8 +110,7 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
   io.mst.b <> io.slv.b
 
   //R Channel Connection
-  private val infoSelOHReg = RegEnable(infoSelOH, io.slv.r.fire)
-  private val infoSel = Mux1H(infoSelOHReg, arinfo)
+  private val infoSel = Mux1H(infoSelOH, arinfo)
   private val raddrcvt = if(sdw > mdw) infoSel.addr(log2Ceil(sdw / 8) - 1, log2Ceil(mdw / 8)) else 0.U
   private val rdata = rq.io.deq.bits.data.asTypeOf(Vec(seg, UInt(mdw.W)))
   rq.io.enq <> io.slv.r
