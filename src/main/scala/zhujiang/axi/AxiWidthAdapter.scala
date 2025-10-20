@@ -15,7 +15,6 @@ class AxiWidthAdapterWBundle(axiP: AxiParams) extends Bundle {
     this.size := in.size
     this.id   := in.id
   }
-
 }
 
 class AxiWidthAdapterRBundle(axiP: AxiParams, outstanding: Int) extends Bundle {
@@ -46,25 +45,27 @@ class AxiWidthAdapter(slvParams: AxiParams, mstParams: AxiParams, outstanding:In
   for(i <- arvld.indices) noPrefix {
     val rFireMayHit = WireInit(io.mst.r.valid && io.mst.r.ready && io.mst.r.bits.id === arinfo(i).id && arvld(i))
     rFireMayHit.suggestName(s"r_fire_may_hit_$i")
+    val arFireHit = WireInit(io.mst.ar.fire && arsel.bits(i))
+    arFireHit.suggestName(s"ar_fire_hit_$i")
 
-    when(io.mst.ar.fire && arsel.bits(i)) {
+    when(arFireHit) {
       arvld(i) := true.B
     }.elsewhen(rFireMayHit && io.mst.r.bits._last && arinfo(i).nid === 0.U) {
       arvld(i) := false.B
     }
 
-    when(io.mst.ar.fire && arsel.bits(i)) {
+    when(arFireHit) {
       arinfo(i).size := io.mst.ar.bits.size
       arinfo(i).id := io.mst.ar.bits.id
     }
 
-    when(io.mst.ar.fire && arsel.bits(i)) {
+    when(arFireHit) {
       arinfo(i).nid := setNid
     }.elsewhen(rFireMayHit && io.mst.r.bits._last && arinfo(i).nid =/= 0.U) {
       arinfo(i).nid := arinfo(i).nid - 1.U
     }
 
-    when(io.mst.ar.fire && arsel.bits(i)) {
+    when(arFireHit) {
       arinfo(i).addr := io.mst.ar.bits.addr
     }.elsewhen(rFireMayHit && arinfo(i).nid === 0.U) {
       arinfo(i).addr := arinfo(i).addr + (1.U << arinfo(i).size)
