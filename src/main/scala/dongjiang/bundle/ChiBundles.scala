@@ -155,7 +155,7 @@ trait HasChiSnpField { this: Bundle =>
  * Chi RespErr
  */
 trait HasRespErr { this: Bundle =>
-  val respErr = Bool()
+  val respErr = UInt(RespErr.width.W)
 
   def isOK    = respErr === RespErr.NormalOkay
   def isEXOK  = respErr === RespErr.ExclusiveOkay
