@@ -431,7 +431,7 @@ class WrState extends Bundle {
 
 class CHIWEntry(node: Node)(implicit p: Parameters) extends ZJBundle {
   private val rni    = DmaParams(node = node)
-  val awId           = UInt(log2Ceil(node.outstanding).W)
+  val awId           = UInt(rni.idBits.W)
   val eId            = UInt(log2Ceil(node.outstanding).W)
   val qos            = UInt(4.W)
   val fullSize       = Bool()
